@@ -4,6 +4,7 @@ import android.util.Log
 import com.lowkey.facechat.relay.RelayClient
 import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
+import com.meta.wearable.dat.core.selectors.SpecificDeviceSelector
 import com.meta.wearable.dat.core.session.DeviceSession
 import com.meta.wearable.dat.core.session.DeviceSessionState
 import com.meta.wearable.dat.core.types.LinkState
@@ -63,12 +64,29 @@ class HudPresenter(private val relay: RelayClient) {
       armPeekTimer()
       return
     }
-    val selector = AutoDeviceSelector(filter = { d -> d.linkState == LinkState.CONNECTED && d.isDisplayCapable() })
+    // Strategy: skip the AutoDeviceSelector filter (which rejects any device whose
+    // link isn't already CONNECTED). Pick the first known display-capable device id
+    // and let the SDK try to bring its link up on demand via SpecificDeviceSelector.
+    val knownIds = Wearables.devices.value
+    val meta = Wearables.devicesMetadata
+    val candidate = knownIds.firstOrNull { id ->
+      val d = meta[id]?.value
+      d != null && d.deviceType.name == "META_RAYBAN_DISPLAY" && d.isDisplayCapable()
+    }
+    if (candidate == null) {
+      Log.w("HudPresenter", "no display-capable device known to SDK (${knownIds.size} total)")
+      return
+    }
+    val initial = meta[candidate]?.value
+    Log.i("HudPresenter", "createSession via SpecificDeviceSelector id=$candidate link=${initial?.linkState} name=${initial?.name}")
+    val selector = SpecificDeviceSelector(candidate)
     Wearables.createSession(selector).fold(
       onSuccess = { s ->
+        Log.i("HudPresenter", "createSession SUCCESS via SpecificDeviceSelector")
         session = s
         scope.launch {
           s.state.collect { st ->
+            Log.i("HudPresenter", "session.state -> $st")
             if (st == DeviceSessionState.STARTED && display == null) attachDisplay(s)
           }
         }
@@ -76,6 +94,11 @@ class HudPresenter(private val relay: RelayClient) {
       },
       onFailure = { e, _ ->
         Log.w("HudPresenter", "createSession failed: ${e.description}")
+        Log.w("HudPresenter", "  known device count = ${knownIds.size}")
+        knownIds.forEach { id ->
+          val d = meta[id]?.value
+          Log.w("HudPresenter", "  device id=$id name=${d?.name} link=${d?.linkState} type=${d?.deviceType} compat=${d?.compatibility} disp=${d?.isDisplayCapable()}")
+        }
       },
     )
   }
