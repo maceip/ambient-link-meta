@@ -1,0 +1,35 @@
+# Android
+relay-android/.gradle/
+relay-android/.kotlin/
+relay-android/build/
+relay-android/app/build/
+relay-android/local.properties
+relay-android/captures/
+*.apk
+*.aab
+
+# iOS / Xcode
+relay-ios/build/
+relay-ios/.build/
+relay-ios/.swiftpm/
+relay-ios/DerivedData/
+relay-ios/*.xcodeproj/xcuserdata/
+relay-ios/*.xcworkspace/xcuserdata/
+
+# Web
+web/node_modules/
+push-test/node_modules/
+
+# Local config
+.env
+.env.*
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp

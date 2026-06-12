@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#000000</color>
+    <color name="surface">#0a0a0f</color>
+    <color name="app_icon_background">#00A884</color>
+</resources>

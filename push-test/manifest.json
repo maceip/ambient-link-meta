@@ -1,0 +1,12 @@
+{
+  "name": "fc push test",
+  "short_name": "fc-push",
+  "description": "Probe whether Stella's web-app runtime surfaces PWA notifications on the HUD.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B141A",
+  "theme_color": "#0B141A",
+  "icons": []
+}

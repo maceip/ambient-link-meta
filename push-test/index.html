@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no">
+  <meta name="mrbd-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0B141A">
+  <title>fc push test</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root { --bg:#0B141A; --surface:#111B21; --text:#E9EDEF; --muted:#8696A0; --ok:#00A884; --bad:#E57373; --warn:#E0A800; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text);
+      font: 13px/1.35 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+    h1 { font-size:14px; margin: 8px 12px; }
+    .row { display:flex; gap:8px; padding: 6px 12px; }
+    button { background: var(--ok); color:#fff; border:0; border-radius:18px; padding:8px 14px;
+      font-size:12px; font-weight:600; cursor:pointer; }
+    button.warn { background: var(--warn); }
+    button.bad  { background: var(--bad); }
+    pre#log { margin: 8px 12px; padding:8px; background:var(--surface); border-radius:6px;
+      max-height: 60vh; overflow-y:auto; font: 11px/1.35 ui-monospace, Menlo, monospace;
+      white-space: pre-wrap; word-break: break-all; }
+    .ok   { color: var(--ok); }
+    .bad  { color: var(--bad); }
+    .warn { color: var(--warn); }
+    .dim  { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <h1>fc push test — Stella PWA notification probe</h1>
+
+  <div class="row">
+    <button id="b-detect">1 · detect</button>
+    <button id="b-perm" class="warn">2 · permission</button>
+    <button id="b-reg">3 · register sw</button>
+  </div>
+  <div class="row">
+    <button id="b-notify-page" class="warn">4a · notify (page)</button>
+    <button id="b-notify-sw"   class="warn">4b · notify (sw)</button>
+  </div>
+  <div class="row">
+    <button id="b-sub">5 · subscribe push</button>
+    <button id="b-push" class="bad">6 · request server push</button>
+  </div>
+  <div class="row">
+    <button id="b-clear" class="dim">clear log</button>
+  </div>
+
+  <pre id="log"></pre>
+
+  <script src="probe.js"></script>
+</body>
+</html>

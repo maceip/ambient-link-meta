@@ -1,0 +1,12 @@
+{
+  "name": "face chat",
+  "short_name": "chat",
+  "description": "Coding-agent chat threads for Meta Display glasses.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B141A",
+  "theme_color": "#0B141A",
+  "icons": []
+}

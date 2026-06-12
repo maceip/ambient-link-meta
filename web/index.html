@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no">
+  <meta name="description" content="face-chat — multi-agent chat on Meta Display glasses.">
+  <meta name="mrbd-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0B141A">
+  <title>face chat</title>
+  <!-- Meta's official template (vendor/.../templates/styles.css) — single source of truth. -->
+  <link rel="stylesheet" href="styles.css">
+  <!-- Chat-specific layer ONLY. Bubbles + composer + thread-list extensions. -->
+  <link rel="stylesheet" href="chat.css">
+  <link rel="manifest" href="manifest.json">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    }
+  </script>
+</head>
+<body>
+
+  <!-- THREAD LIST (WhatsApp "Chats" tab) -->
+  <section id="view-threads" class="view">
+    <header>
+      <span id="status" class="pill off">●</span>
+      <span class="title">chats</span>
+      <span id="meta" class="meta"></span>
+    </header>
+    <ul id="threads" role="list"></ul>
+  </section>
+
+  <!-- THREAD VIEW (single conversation, WhatsApp message screen) -->
+  <section id="view-thread" class="view hidden">
+    <header>
+      <button id="back" class="iconbtn" aria-label="back">‹</button>
+      <span id="t-avatar" class="avatar">·</span>
+      <span class="title-block">
+        <span id="t-title">claude</span>
+        <span id="t-sub" class="sub">online</span>
+      </span>
+    </header>
+    <div id="messages-wrap">
+      <div id="messages" role="log" aria-live="polite"></div>
+    </div>
+    <form id="composer">
+      <input id="prompt" type="text" placeholder="message" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button type="submit" id="send" title="send">↑</button>
+    </form>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">face·chat</string>
+    <string name="notif_channel_id">face_chat_daemon</string>
+    <string name="notif_channel_name">face·chat daemon</string>
+    <string name="notif_running">listening for agent events…</string>
+</resources>

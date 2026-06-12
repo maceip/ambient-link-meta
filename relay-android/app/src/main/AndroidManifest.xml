@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <application
+        android:name=".App"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/FaceChatTheme">
+
+        <meta-data
+            android:name="com.meta.wearable.mwdat.APPLICATION_ID"
+            android:value="${mwdat_application_id}" />
+        <meta-data
+            android:name="com.meta.wearable.mwdat.CLIENT_TOKEN"
+            android:value="${mwdat_client_token}" />
+        <meta-data
+            android:name="com.meta.wearable.mwdat.DAM_ENABLED"
+            android:value="true" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/FaceChatTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".relay.RelayService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- Probe: NotificationListenerService. Lets us snoop com.anthropic.claude notifications
+             and inspect their action PendingIntents. Requires user grant in Settings → Notifications,
+             or via adb:  settings put secure enabled_notification_listeners <pkg>/<svc> -->
+        <service
+            android:name=".probe.ClaudeNotificationListener"
+            android:exported="true"
+            android:label="face·chat notif probe"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
