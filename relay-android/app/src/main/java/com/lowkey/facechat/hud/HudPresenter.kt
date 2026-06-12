@@ -20,7 +20,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import com.meta.wearable.dat.core.types.DeviceIdentifier
 
 // Owns the DAT session lifecycle and renders the peek + expanded cards.
 // State machine matches phone-shared/PROTOCOL.md.
@@ -56,6 +59,25 @@ class HudPresenter(private val relay: RelayClient) {
     if (current?.thread == thread) closeSession()
   }
 
+  // How long to wait for linkState to flip to CONNECTED after a yank arrives.
+  // The SDK doesn't expose a public "request connect" API; we observe metadata
+  // and hope Stella brings the link up. If it doesn't within this window, we
+  // drop the yank and log why.
+  private val LINK_WAIT_MS = 20_000L
+
+  // Per-device metadata subscription. Started lazily so we have a long-lived
+  // log of linkState transitions for diagnosis, not just a one-shot wait.
+  private val watchedDevices = mutableSetOf<String>()
+  private fun startWatchingLink(id: DeviceIdentifier) {
+    if (!watchedDevices.add(id.toString())) return
+    val flow = Wearables.devicesMetadata[id] ?: return
+    scope.launch {
+      flow.collect { d ->
+        Log.i("HudPresenter", "link-watch: id=$id name=${d.name} link=${d.linkState} disp=${d.isDisplayCapable()} compat=${d.compatibility}")
+      }
+    }
+  }
+
   private fun openSessionAndPeek() {
     if (display != null) {
       // Already have a live session — just re-render the peek with the new content.
@@ -64,9 +86,7 @@ class HudPresenter(private val relay: RelayClient) {
       armPeekTimer()
       return
     }
-    // Strategy: skip the AutoDeviceSelector filter (which rejects any device whose
-    // link isn't already CONNECTED). Pick the first known display-capable device id
-    // and let the SDK try to bring its link up on demand via SpecificDeviceSelector.
+
     val knownIds = Wearables.devices.value
     val meta = Wearables.devicesMetadata
     val candidate = knownIds.firstOrNull { id ->
@@ -77,12 +97,37 @@ class HudPresenter(private val relay: RelayClient) {
       Log.w("HudPresenter", "no display-capable device known to SDK (${knownIds.size} total)")
       return
     }
-    val initial = meta[candidate]?.value
-    Log.i("HudPresenter", "createSession via SpecificDeviceSelector id=$candidate link=${initial?.linkState} name=${initial?.name}")
-    val selector = SpecificDeviceSelector(candidate)
-    Wearables.createSession(selector).fold(
+
+    // Make sure we're logging link-state transitions for this device going forward.
+    startWatchingLink(candidate)
+
+    val initialState = meta[candidate]?.value?.linkState
+    if (initialState == LinkState.CONNECTED) {
+      Log.i("HudPresenter", "device already CONNECTED, opening session immediately")
+      tryCreateSession(candidate)
+      return
+    }
+
+    Log.i("HudPresenter", "device link=$initialState — waiting up to ${LINK_WAIT_MS}ms for CONNECTED")
+    scope.launch {
+      val ok = withTimeoutOrNull(LINK_WAIT_MS) {
+        meta[candidate]?.first { it.linkState == LinkState.CONNECTED }
+      } != null
+      if (ok) {
+        Log.i("HudPresenter", "device transitioned to CONNECTED — opening session")
+        tryCreateSession(candidate)
+      } else {
+        val finalState = meta[candidate]?.value?.linkState
+        Log.w("HudPresenter", "timed out waiting for CONNECTED (final link=$finalState); dropping yank")
+      }
+    }
+  }
+
+  private fun tryCreateSession(candidate: DeviceIdentifier) {
+    Log.i("HudPresenter", "createSession via SpecificDeviceSelector id=$candidate")
+    Wearables.createSession(SpecificDeviceSelector(candidate)).fold(
       onSuccess = { s ->
-        Log.i("HudPresenter", "createSession SUCCESS via SpecificDeviceSelector")
+        Log.i("HudPresenter", "createSession SUCCESS")
         session = s
         scope.launch {
           s.state.collect { st ->
@@ -92,14 +137,7 @@ class HudPresenter(private val relay: RelayClient) {
         }
         s.start()
       },
-      onFailure = { e, _ ->
-        Log.w("HudPresenter", "createSession failed: ${e.description}")
-        Log.w("HudPresenter", "  known device count = ${knownIds.size}")
-        knownIds.forEach { id ->
-          val d = meta[id]?.value
-          Log.w("HudPresenter", "  device id=$id name=${d?.name} link=${d?.linkState} type=${d?.deviceType} compat=${d?.compatibility} disp=${d?.isDisplayCapable()}")
-        }
-      },
+      onFailure = { e, _ -> Log.w("HudPresenter", "createSession failed: ${e.description}") },
     )
   }
 
