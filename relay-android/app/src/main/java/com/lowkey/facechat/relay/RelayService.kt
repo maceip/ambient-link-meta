@@ -12,6 +12,7 @@ import com.lowkey.facechat.BuildConfig
 import com.lowkey.facechat.MainActivity
 import com.lowkey.facechat.R
 import com.lowkey.facechat.hud.HudPresenter
+import com.lowkey.facechat.wearables.WearablesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -46,7 +47,7 @@ class RelayService : Service() {
     val url = intent?.getStringExtra(EXTRA_URL)
       ?: getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("relay_url", BuildConfig.DEFAULT_RELAY_URL)
       ?: BuildConfig.DEFAULT_RELAY_URL
-    restart(url)
+    scope.launch { restart(url) }
     return START_STICKY
   }
 
@@ -54,7 +55,7 @@ class RelayService : Service() {
     eventsJob?.cancel()
     client?.stop()
     val c = RelayClient(url)
-    val p = HudPresenter(c)
+    val p = HudPresenter(applicationContext, c, WearablesRepository.getInstance(applicationContext))
     client = c
     presenter = p
     _status.update { it.copy(url = url, connected = false) }
@@ -65,7 +66,8 @@ class RelayService : Service() {
           is RelayClient.Event.Connected    -> { _status.update { it.copy(connected = true,  lastError = null) }; setNotif("connected") }
           is RelayClient.Event.Disconnected -> { _status.update { it.copy(connected = false) };                  setNotif("reconnecting…") }
           is RelayClient.Event.Hello        -> _status.update { it.copy(threads = ev.threads.map { t -> t.label }) }
-          is RelayClient.Event.ThreadIdle   -> p.yank(ev.thread, ev.label, ev.lastAssistant)
+          is RelayClient.Event.ThreadIdle   -> p.refresh(ev.yank)
+          is RelayClient.Event.HudYank      -> p.yank(ev.yank)
           is RelayClient.Event.ThreadBusy   -> p.cancelIfFor(ev.thread)
           is RelayClient.Event.Error        -> _status.update { it.copy(lastError = ev.msg) }
         }
@@ -115,6 +117,12 @@ class RelayService : Service() {
     private val _status = MutableStateFlow(Status())
     val status: StateFlow<Status> = _status.asStateFlow()
     private var state: RelayService? = null
+
+    /** Debug: push a test card to glasses (adb broadcast). */
+    fun debugYank(yank: com.lowkey.facechat.hud.AgentYank) {
+      state?.presenter?.yank(yank)
+    }
+
     fun start(ctx: Context, url: String?) {
       ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().apply {
         if (url != null) putString("relay_url", url)

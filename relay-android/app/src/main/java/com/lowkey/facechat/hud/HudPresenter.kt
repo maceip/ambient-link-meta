@@ -1,20 +1,17 @@
 package com.lowkey.facechat.hud
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
+import com.lowkey.facechat.dictation.DictationCallback
+import com.lowkey.facechat.dictation.DictationManager
 import com.lowkey.facechat.relay.RelayClient
-import com.meta.wearable.dat.core.Wearables
-import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
-import com.meta.wearable.dat.core.selectors.SpecificDeviceSelector
-import com.meta.wearable.dat.core.session.DeviceSession
-import com.meta.wearable.dat.core.session.DeviceSessionState
+import com.lowkey.facechat.wearables.WearablesRepository
+import com.lowkey.facechat.wearables.WearablesRuntime
+import com.meta.wearable.dat.core.types.DeviceIdentifier
 import com.meta.wearable.dat.core.types.LinkState
 import com.meta.wearable.dat.display.Display
-import com.meta.wearable.dat.display.addDisplay
-import com.meta.wearable.dat.display.types.DisplayState
-import com.meta.wearable.dat.display.views.ButtonStyle
-import com.meta.wearable.dat.display.views.FlexBoxBackground
-import com.meta.wearable.dat.display.views.TextColor
-import com.meta.wearable.dat.display.views.TextStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,136 +20,140 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import com.meta.wearable.dat.core.types.DeviceIdentifier
 
-// Owns the DAT session lifecycle and renders the peek + expanded cards.
-// State machine matches phone-shared/PROTOCOL.md.
-//
-// One presenter per RelayService instance. Last-yank-wins: if a new ThreadIdle arrives
-// while ENGAGED, the current session is replaced.
-class HudPresenter(private val relay: RelayClient) {
-  enum class State { AMBIENT, PEEKING, ENGAGED, SNOOZED }
+class HudPresenter(
+  private val appContext: Context,
+  private val relay: RelayClient,
+  private val wearables: WearablesRepository,
+) {
+  enum class State { AMBIENT, PEEKING, ENGAGED, FOLLOWUP, DICTATING, SNOOZED }
 
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-  private var session: DeviceSession? = null
-  private var display: Display? = null
-  private var current: Yank? = null
+  private val datSession = DatDisplaySession(scope)
+  private var current: AgentYank? = null
+  private var pending: AgentYank? = null
+  private var dictatingPartial = ""
   private var peekTimer: Job? = null
   private var snoozeTimer: Job? = null
   private var state: State = State.AMBIENT
 
-  data class Yank(val thread: String, val label: String, val lastAssistant: String)
-
-  // The peek auto-dismisses after this if the user doesn't engage.
-  private val PEEK_TIMEOUT_MS = 12_000L
-  // After "snooze" the same yank re-fires after this delay.
+  private val PEEK_TIMEOUT_MS = 30_000L
+  private val DICTATE_TIMEOUT_MS = 300_000L
   private val SNOOZE_MS = 60_000L
+  private val LINK_WAIT_MS = 20_000L
 
-  fun yank(thread: String, label: String, lastAssistant: String) {
-    // Cancel any queued snooze; replace any open peek/engaged session.
+  fun yank(yank: AgentYank) {
+    if (!WearablesRuntime.initialized) {
+      Log.w("HudPresenter", "Wearables SDK not initialized (open app and grant BT permissions)")
+      return
+    }
+    if ((state == State.PEEKING || state == State.ENGAGED || state == State.FOLLOWUP) &&
+      current?.thread != null && current?.thread != yank.thread) {
+      pending = yank
+      Log.i("HudPresenter", "queued yank thread=${yank.thread} (busy with ${current?.thread})")
+      return
+    }
     snoozeTimer?.cancel(); snoozeTimer = null
-    current = Yank(thread, label, lastAssistant)
+    current = yank
     openSessionAndPeek()
+  }
+
+  fun refresh(yank: AgentYank) {
+    if (current?.thread == yank.thread &&
+      (state == State.PEEKING || state == State.ENGAGED || state == State.FOLLOWUP)) {
+      Log.i("HudPresenter", "refresh thread=${yank.thread} state=$state")
+      current = yank
+      renderCurrent()
+      return
+    }
+    // Host echoes our reply as thread_idle — don't pop the card back up.
+    if (state == State.AMBIENT && yank.lastUserInput.isNotBlank()) {
+      Log.i("HudPresenter", "skip re-yank after user reply thread=${yank.thread}")
+      return
+    }
+    yank(yank)
   }
 
   fun cancelIfFor(thread: String) {
     if (current?.thread == thread) closeSession()
+    if (pending?.thread == thread) pending = null
   }
 
-  // How long to wait for linkState to flip to CONNECTED after a yank arrives.
-  // The SDK doesn't expose a public "request connect" API; we observe metadata
-  // and hope Stella brings the link up. If it doesn't within this window, we
-  // drop the yank and log why.
-  private val LINK_WAIT_MS = 20_000L
+  private fun isHudDevice(d: com.meta.wearable.dat.core.types.Device): Boolean =
+    d.isDisplayCapable()
 
-  // Per-device metadata subscription. Started lazily so we have a long-lived
-  // log of linkState transitions for diagnosis, not just a one-shot wait.
-  private val watchedDevices = mutableSetOf<String>()
-  private fun startWatchingLink(id: DeviceIdentifier) {
-    if (!watchedDevices.add(id.toString())) return
-    val flow = Wearables.devicesMetadata[id] ?: return
-    scope.launch {
-      flow.collect { d ->
-        Log.i("HudPresenter", "link-watch: id=$id name=${d.name} link=${d.linkState} disp=${d.isDisplayCapable()} compat=${d.compatibility}")
-      }
+  private fun connectedDisplayDevice(): DeviceIdentifier? {
+    val meta = wearables.devicesMetadata.value
+    return wearables.devices.value.firstOrNull { id ->
+      val d = meta[id]
+      d != null && isHudDevice(d) && d.linkState == LinkState.CONNECTED
+    }
+  }
+
+  private fun displayCapableDevice(): DeviceIdentifier? {
+    val meta = wearables.devicesMetadata.value
+    return wearables.devices.value.firstOrNull { id ->
+      val d = meta[id]
+      d != null && isHudDevice(d)
     }
   }
 
   private fun openSessionAndPeek() {
-    if (display != null) {
-      // Already have a live session — just re-render the peek with the new content.
+    if (datSession.activeDisplay != null) {
       state = State.PEEKING
       renderPeek()
       armPeekTimer()
       return
     }
 
-    val knownIds = Wearables.devices.value
-    val meta = Wearables.devicesMetadata
-    val candidate = knownIds.firstOrNull { id ->
-      val d = meta[id]?.value
-      d != null && d.deviceType.name == "META_RAYBAN_DISPLAY" && d.isDisplayCapable()
+    val connected = connectedDisplayDevice()
+    if (connected != null) {
+      prepareAndPeek(connected)
+      return
     }
+
+    val candidate = displayCapableDevice()
     if (candidate == null) {
-      Log.w("HudPresenter", "no display-capable device known to SDK (${knownIds.size} total)")
+      Log.w("HudPresenter", "no display-capable device known to SDK — waiting for pairing")
+      waitForDisplayDeviceThenPeek()
       return
     }
 
-    // Make sure we're logging link-state transitions for this device going forward.
-    startWatchingLink(candidate)
-
-    val initialState = meta[candidate]?.value?.linkState
-    if (initialState == LinkState.CONNECTED) {
-      Log.i("HudPresenter", "device already CONNECTED, opening session immediately")
-      tryCreateSession(candidate)
-      return
-    }
-
-    Log.i("HudPresenter", "device link=$initialState — waiting up to ${LINK_WAIT_MS}ms for CONNECTED")
     scope.launch {
       val ok = withTimeoutOrNull(LINK_WAIT_MS) {
-        meta[candidate]?.first { it.linkState == LinkState.CONNECTED }
+        wearables.devicesMetadata.first { meta ->
+          meta[candidate]?.linkState == LinkState.CONNECTED
+        }
       } != null
-      if (ok) {
-        Log.i("HudPresenter", "device transitioned to CONNECTED — opening session")
-        tryCreateSession(candidate)
-      } else {
-        val finalState = meta[candidate]?.value?.linkState
-        Log.w("HudPresenter", "timed out waiting for CONNECTED (final link=$finalState); dropping yank")
+      if (ok) prepareAndPeek(candidate)
+      else {
+        Log.w("HudPresenter", "timed out waiting for CONNECTED — retrying when link appears")
+        waitForDisplayDeviceThenPeek()
       }
     }
   }
 
-  private fun tryCreateSession(candidate: DeviceIdentifier) {
-    Log.i("HudPresenter", "createSession via SpecificDeviceSelector id=$candidate")
-    Wearables.createSession(SpecificDeviceSelector(candidate)).fold(
-      onSuccess = { s ->
-        Log.i("HudPresenter", "createSession SUCCESS")
-        session = s
-        scope.launch {
-          s.state.collect { st ->
-            Log.i("HudPresenter", "session.state -> $st")
-            if (st == DeviceSessionState.STARTED && display == null) attachDisplay(s)
-          }
+  private fun waitForDisplayDeviceThenPeek() {
+    scope.launch {
+      withTimeoutOrNull(LINK_WAIT_MS * 3) {
+        wearables.devicesMetadata.first { meta ->
+          meta.values.any { isHudDevice(it) && it.linkState == LinkState.CONNECTED }
         }
-        s.start()
-      },
-      onFailure = { e, _ -> Log.w("HudPresenter", "createSession failed: ${e.description}") },
-    )
+      } ?: run {
+        Log.w("HudPresenter", "still no connected display device after wait")
+        return@launch
+      }
+      val id = connectedDisplayDevice() ?: return@launch
+      prepareAndPeek(id)
+    }
   }
 
-  private fun attachDisplay(s: DeviceSession) {
-    s.addDisplay().fold(
-      onSuccess = { d ->
-        display = d
-        scope.launch {
-          d.state.collect { ds ->
-            if (ds == DisplayState.STARTED) { state = State.PEEKING; renderPeek(); armPeekTimer() }
-          }
-        }
-      },
-      onFailure = { e, _ -> Log.w("HudPresenter", "addDisplay failed: ${e.description}") },
-    )
+  private fun prepareAndPeek(deviceId: DeviceIdentifier) {
+    datSession.prepareDisplay(deviceId) { d ->
+      state = State.PEEKING
+      renderPeek(d)
+      armPeekTimer()
+    }
   }
 
   private fun armPeekTimer() {
@@ -163,84 +164,169 @@ class HudPresenter(private val relay: RelayClient) {
     }
   }
 
-  // ── Peek card: label, truncated message, [open] [snooze] [dismiss]
-  private fun renderPeek() {
-    val d = display ?: return
-    val y = current ?: return
-    scope.launch {
-      d.sendContent {
-        flexBox(gap = 8, padding = 16) {
-          text(y.label, style = TextStyle.META, color = TextColor.SECONDARY)
-          flexBox(padding = 12, background = FlexBoxBackground.CARD) {
-            text(y.lastAssistant.take(200), style = TextStyle.BODY)
-          }
-          flexBox(gap = 6, padding = 0, background = FlexBoxBackground.NONE) {
-            button("open",    style = ButtonStyle.PRIMARY,   onClick = { onEngage() })
-            button("snooze",  style = ButtonStyle.SECONDARY, onClick = { onSnooze() })
-            button("dismiss", style = ButtonStyle.OUTLINE,   onClick = { closeSession() })
-          }
-        }
-      }
+  private fun renderCurrent() {
+    when (state) {
+      State.PEEKING -> renderPeek()
+      State.ENGAGED -> renderExpanded()
+      State.FOLLOWUP -> renderFollowUp()
+      State.DICTATING -> renderDictating()
+      else -> {}
     }
   }
 
-  // ── Expanded card: full message + classified chip set
+  private fun renderPeek(d: Display? = datSession.activeDisplay) {
+    val display = d ?: return
+    val y = current ?: return
+    val chips = ChipSet.forYank(y)
+    val primary = chips.firstOrNull() ?: return
+    val secondary = chips.getOrNull(1) ?: return
+
+    HudWidgets.sendPeek(
+      scope, display, y,
+      onPrimary = { onChip(primary) },
+      onSecondary = { onChip(secondary) },
+      primaryLabel = primary.label,
+      secondaryLabel = secondary.label,
+    )
+  }
+
   private fun renderExpanded() {
-    val d = display ?: return
+    val d = datSession.activeDisplay ?: return
     val y = current ?: return
-    val chips = ChipSet.forLastAssistant(y.lastAssistant)
-    scope.launch {
-      d.sendContent {
-        flexBox(gap = 8, padding = 16) {
-          text(y.label, style = TextStyle.META, color = TextColor.SECONDARY)
-          flexBox(padding = 12, background = FlexBoxBackground.CARD) {
-            text(y.lastAssistant, style = TextStyle.BODY)
-          }
-          flexBox(gap = 6, padding = 0, background = FlexBoxBackground.NONE) {
-            chips.forEach { c ->
-              val style = when (c.kind) {
-                ChipKind.SEND        -> ButtonStyle.PRIMARY
-                ChipKind.ASK_FOLLOWUP -> ButtonStyle.SECONDARY
-                ChipKind.DISMISS     -> ButtonStyle.OUTLINE
-                ChipKind.SNOOZE      -> ButtonStyle.OUTLINE
-              }
-              button(c.label, style = style, onClick = { onChip(c) })
-            }
-          }
-        }
-      }
+    HudWidgets.sendExpanded(scope, d, y, ChipSet.forYank(y), ::onChip)
+  }
+
+  private fun renderFollowUp() {
+    val d = datSession.activeDisplay ?: return
+    val y = current ?: return
+    state = State.FOLLOWUP
+    peekTimer?.cancel()
+    HudWidgets.sendFollowUp(scope, d, y, ChipSet.followUpChips(y.agent), ::onChip)
+  }
+
+  private fun renderDictating() {
+    val d = datSession.activeDisplay ?: return
+    val y = current ?: return
+    HudWidgets.sendDictating(
+      scope, d, y, dictatingPartial,
+      onSend = { finishDictating(commit = true) },
+      onCancel = { finishDictating(commit = false) },
+    )
+  }
+
+  private fun finishDictating(commit: Boolean) {
+    val y = current ?: return
+    if (commit) {
+      DictationManager.stop(commitPartial = true)
+    } else {
+      DictationManager.stop(commitPartial = false)
+      relay.sendDictateAbort(y.thread)
+      dictatingPartial = ""
+      state = State.PEEKING
+      renderPeek()
+      armPeekTimer()
     }
   }
 
-  private fun onEngage() { state = State.ENGAGED; peekTimer?.cancel(); renderExpanded() }
+  private fun startDictating(y: AgentYank) {
+    if (DictationManager.isActive()) return
+    state = State.DICTATING
+    dictatingPartial = ""
+    peekTimer?.cancel()
+    peekTimer = scope.launch {
+      delay(DICTATE_TIMEOUT_MS)
+      if (state == State.DICTATING) finishDictating(commit = true)
+    }
+    relay.sendDictateBegin(y.thread)
+    renderDictating()
+    DictationManager.start(
+      appContext,
+      object : DictationCallback {
+        override fun onPartial(text: String) {
+          dictatingPartial = text
+          relay.sendDictatePartial(y.thread, text)
+          renderDictating()
+        }
+        override fun onFinal(text: String) {
+          dictatingPartial = ""
+          relay.sendDictateCommit(y.thread, text)
+          DictationManager.stop(commitPartial = false, notify = false)
+          closeSession()
+        }
+        override fun onCancelled() {
+          relay.sendDictateAbort(y.thread)
+          dictatingPartial = ""
+          state = State.PEEKING
+          renderPeek()
+          armPeekTimer()
+        }
+        override fun onError(message: String) {
+          Log.w("HudPresenter", "dictate error: $message")
+          relay.sendDictateAbort(y.thread)
+          dictatingPartial = ""
+          state = State.PEEKING
+          renderPeek()
+          armPeekTimer()
+        }
+      },
+    )
+  }
+
+  private fun onChip(c: Chip) {
+    val y = current ?: return
+    if (state == State.DICTATING) {
+      when (c.label) {
+        "send" -> finishDictating(commit = true)
+        "cancel" -> finishDictating(commit = false)
+      }
+      return
+    }
+    Log.i("HudPresenter", "chip tapped: ${c.label} thread=${y.thread}")
+    when (c.kind) {
+      ChipKind.SEND -> {
+        if (c.text != null) {
+          relay.sendInput(y.thread, c.text, c.enter)
+          closeSession()
+        }
+      }
+      ChipKind.DICTATE -> startDictating(y)
+      ChipKind.MODIFY -> {
+        try {
+          val url = relay.companionComposeUrl(y.thread)
+          Log.i("HudPresenter", "modify → companion $url")
+          appContext.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+          )
+        } catch (e: Exception) {
+          Log.e("HudPresenter", "modify open failed: ${e.message}")
+        }
+        closeSession()
+      }
+      ChipKind.DISMISS -> closeSession()
+      ChipKind.SNOOZE -> onSnooze()
+    }
+  }
+
   private fun onSnooze() {
     state = State.SNOOZED
     val y = current
-    closeSession()
+    closeSession(clearPending = false)
     snoozeTimer = scope.launch {
       delay(SNOOZE_MS)
-      if (y != null) yank(y.thread, y.label, y.lastAssistant)
-    }
-  }
-  private fun onChip(c: Chip) {
-    val y = current
-    when (c.kind) {
-      ChipKind.SEND -> {
-        if (y != null && c.text != null) relay.sendInput(y.thread, c.text, c.enter)
-        closeSession()
-      }
-      ChipKind.ASK_FOLLOWUP -> { /* TODO: secondary chip picker — pre-canned + history */ closeSession() }
-      ChipKind.DISMISS -> closeSession()
-      ChipKind.SNOOZE  -> onSnooze()
+      if (y != null) yank(y)
     }
   }
 
-  private fun closeSession() {
+  private fun closeSession(clearPending: Boolean = true) {
     peekTimer?.cancel(); peekTimer = null
-    try { session?.stop() } catch (_: Throwable) {}
-    display = null
-    session = null
+    if (DictationManager.isActive()) {
+      DictationManager.stop(commitPartial = false, notify = false)
+    }
+    dictatingPartial = ""
+    datSession.stop()
     current = null
     state = State.AMBIENT
+    val next = if (clearPending) pending.also { pending = null } else null
+    if (next != null) yank(next)
   }
 }

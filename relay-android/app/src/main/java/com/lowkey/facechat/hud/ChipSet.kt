@@ -1,38 +1,37 @@
 package com.lowkey.facechat.hud
 
-// Pattern-classify the agent's last message to pick the expanded-card chip set.
-// Matches the table in phone-shared/PROTOCOL.md. Keep iOS in sync.
-//
-// A chip carries a label, an outgoing `text` payload, an `enter` flag, and a `kind` that
-// the HudPresenter uses to decide whether to fire-and-close (most chips) vs open a
-// follow-up picker (`ASK_FOLLOWUP`) vs handle as a session control (`DISMISS`, `SNOOZE`).
+// Pattern-classify agent output to pick HUD chip sets. Host sets awaiting=question|done.
+
 data class Chip(val label: String, val text: String?, val enter: Boolean = true, val kind: ChipKind = ChipKind.SEND)
-enum class ChipKind { SEND, ASK_FOLLOWUP, DISMISS, SNOOZE }
+enum class ChipKind { SEND, DICTATE, MODIFY, DISMISS, SNOOZE }
 
 object ChipSet {
-  private val SEND_OK     = Chip("looks good",   "looks good, thanks")
-  private val SEND_GO     = Chip("continue",     "continue")
   private val SEND_YES    = Chip("yes",          "yes")
-  private val SEND_NO     = Chip("no",           "no")
-  private val SEND_MORE   = Chip("tell me more", "tell me more")
+  private val SEND_CONT   = Chip("continue",     "continue")
+  private val SEND_VERIFY = Chip("verify",       "please verify the tasks are completed")
   private val SEND_APPRV  = Chip("approve",      "y")
   private val SEND_DENY   = Chip("deny",         "n")
-  private val ASK_FOLLOW  = Chip("ask follow-up", null, kind = ChipKind.ASK_FOLLOWUP)
-  private val DISMISS     = Chip("dismiss",      null, kind = ChipKind.DISMISS)
-  private val SNOOZE      = Chip("snooze",       null, kind = ChipKind.SNOOZE)
+  private val DICTATE     = Chip("dictate",      null, kind = ChipKind.DICTATE)
+  private val MODIFY      = Chip("modify",       null, kind = ChipKind.MODIFY)
 
-  fun forLastAssistant(last: String): List<Chip> {
-    val trimmed = last.trim().lowercase()
-    val isApprovalPrompt =
-      Regex("\\b[yY]/[nN]\\b").containsMatchIn(last) ||
-      "approve this" in trimmed || "do you want to allow" in trimmed
-    if (isApprovalPrompt) return listOf(SEND_APPRV, SEND_DENY, DISMISS)
+  fun forYank(yank: AgentYank): List<Chip> = when (yank.awaiting) {
+    Awaiting.PERMISSION -> listOf(SEND_APPRV, SEND_DENY)
+    Awaiting.QUESTION   -> listOf(SEND_YES, DICTATE)
+    Awaiting.DONE       -> listOf(SEND_CONT, MODIFY)
+    else                -> listOf(SEND_CONT, MODIFY)
+  }
 
-    val asksQuestion = trimmed.endsWith("?") ||
-      "should i"      in trimmed || "would you like" in trimmed ||
-      "do you want"   in trimmed || "shall i"        in trimmed
-    if (asksQuestion) return listOf(SEND_YES, SEND_NO, SEND_MORE, DISMISS)
-
-    return listOf(SEND_GO, SEND_OK, ASK_FOLLOW, DISMISS)
+  fun followUpChips(agent: String): List<Chip> {
+    val agentKey = agent.lowercase()
+    val extras = when {
+      "codex" in agentKey -> listOf(Chip("fix errors", "fix any errors and try again"))
+      "claude" in agentKey -> listOf(Chip("continue task", "continue with the current task"))
+      else -> emptyList()
+    }
+    return listOf(
+      Chip("change it", "actually, change the approach"),
+      Chip("explain more", "can you explain that in more detail?"),
+      Chip("what's next?", "what should we do next?"),
+    ) + extras
   }
 }

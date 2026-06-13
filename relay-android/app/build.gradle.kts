@@ -29,9 +29,18 @@ android {
       providers.gradleProperty("mwdat_client_token").orNull
         ?: localProperties.getProperty("mwdat_client_token", "")
 
+    // String resources so PackageManager returns APPLICATION_ID as String, not coerced Long.
+    resValue("string", "mwdat_application_id", manifestPlaceholders["mwdat_application_id"] as String)
+    resValue("string", "mwdat_client_token", manifestPlaceholders["mwdat_client_token"] as String)
     val defaultRelay = providers.gradleProperty("relay_url").orNull
       ?: localProperties.getProperty("relay_url", "wss://example.com/face-chat/ws")
     buildConfigField("String", "DEFAULT_RELAY_URL", "\"" + defaultRelay + "\"")
+    buildConfigField("String", "SODA_PACK_CPU_SHA256", "\"fac23ca956f473c5025621784a1657a1663a16b0754886b975f3cde3f1345f04\"")
+    buildConfigField("long", "SODA_PACK_CPU_SIZE_BYTES", "56458465L")
+
+    ndk {
+      abiFilters += setOf("arm64-v8a")
+    }
   }
 
   buildTypes {
@@ -46,7 +55,10 @@ android {
   }
   kotlinOptions { jvmTarget = "1.8" }
   buildFeatures { compose = true; buildConfig = true }
-  packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+  packaging {
+    resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    jniLibs { useLegacyPackaging = true }
+  }
 }
 
 dependencies {
@@ -58,4 +70,11 @@ dependencies {
   implementation(libs.mwdat.core)
   implementation(libs.mwdat.display)
   implementation(libs.okhttp)
+  implementation("com.getkeepsafe.relinker:relinker:1.4.5")
+  implementation("com.google.protobuf:protobuf-javalite:4.34.1")
+  implementation(files("libs/recovered-soda.jar"))
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+  androidTestImplementation("androidx.test.ext:junit:1.2.1")
+  androidTestImplementation("androidx.test:runner:1.6.2")
 }

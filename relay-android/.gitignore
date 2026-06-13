@@ -1,3 +1,6 @@
 app/build/
 build/
 local.properties
+app/libs/recovered-soda.jar
+app/src/main/jniLibs/
+app/src/main/assets/soda/

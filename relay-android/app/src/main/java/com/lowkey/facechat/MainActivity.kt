@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,8 +15,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,33 +22,45 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lowkey.facechat.hud.DatDisplaySession
 import com.lowkey.facechat.relay.RelayService
-import com.meta.wearable.dat.core.Wearables
-import com.meta.wearable.dat.core.selectors.SpecificDeviceSelector
-import com.meta.wearable.dat.core.session.DeviceSessionState
+import com.lowkey.facechat.wearables.WearablesRepository
+import com.lowkey.facechat.wearables.WearablesRuntime
+import com.meta.wearable.dat.core.types.LinkState
 import com.meta.wearable.dat.core.types.RegistrationState
-import com.meta.wearable.dat.display.Display
-import com.meta.wearable.dat.display.addDisplay
-import com.meta.wearable.dat.display.types.DisplayState
 import com.meta.wearable.dat.display.views.ButtonStyle
 import com.meta.wearable.dat.display.views.FlexBoxBackground
 import com.meta.wearable.dat.display.views.TextColor
 import com.meta.wearable.dat.display.views.TextStyle
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import android.util.Log
 
-// Minimal "settings + status" UI. The actual work lives in RelayService; this Activity
-// just lets the user pair with the glasses (Wearables registration), point the daemon at
-// the relay URL, and verify the connection is alive.
 class MainActivity : ComponentActivity() {
+  private val wearablesRepo by lazy { WearablesRepository.getInstance(applicationContext) }
+
+  private val permissionsLauncher =
+    registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+      val btOk = WearablesRuntime.PERMISSIONS.all { results[it] == true }
+      if (btOk) {
+        WearablesRuntime.initialize(this)
+        RelayService.start(this, null)
+        maybeAutoPairGlasses()
+      } else {
+        Toast.makeText(this, "Bluetooth permissions are required for glasses HUD", Toast.LENGTH_LONG).show()
+      }
+      maybeRequestNotificationPermission()
+    }
+
   private val notifPerm = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
+  private val micPerm = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+    if (!ok) Log.w("MainActivity", "mic permission denied — dictate will not work")
+  }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    if (Build.VERSION.SDK_INT >= 33 &&
-        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-      notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
-    }
     setContent {
       MaterialTheme(colorScheme = darkColorScheme(
         background = Color(0xFF000000),
@@ -56,18 +68,62 @@ class MainActivity : ComponentActivity() {
         primary    = Color(0xFF00D4FF),
       )) {
         Surface(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars), color = MaterialTheme.colorScheme.background) {
-          SettingsScreen(this)
+          SettingsScreen(this, wearablesRepo)
         }
       }
+    }
+  }
+
+  override fun onStart() {
+    super.onStart()
+    if (WearablesRuntime.permissionsGranted(this)) {
+      WearablesRuntime.initialize(this)
+      maybeRequestNotificationPermission()
+      maybeRequestMicPermission()
+      RelayService.start(this, null)
+      maybeAutoPairGlasses()
+    } else {
+      permissionsLauncher.launch(WearablesRuntime.PERMISSIONS)
+    }
+  }
+
+  /** Opens Meta's pairing flow automatically — required once before HUD cards work. */
+  private fun maybeAutoPairGlasses() {
+    val reg = wearablesRepo.registrationState.value
+    if (reg != RegistrationState.REGISTERED) {
+      Log.i("MainActivity", "auto-starting glasses registration (state=$reg)")
+      wearablesRepo.startRegistration(this)
+    }
+  }
+
+  private fun maybeRequestMicPermission() {
+    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      micPerm.launch(Manifest.permission.RECORD_AUDIO)
+    }
+  }
+
+  private fun maybeRequestNotificationPermission() {
+    if (Build.VERSION.SDK_INT >= 33 &&
+      checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+      notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
   }
 }
 
 @Composable
-private fun SettingsScreen(activity: ComponentActivity) {
+private fun SettingsScreen(activity: ComponentActivity, wearablesRepo: WearablesRepository) {
   val ctx = androidx.compose.ui.platform.LocalContext.current
-  val regState by Wearables.registrationState.collectAsState(initial = RegistrationState.UNAVAILABLE)
+  val regState by wearablesRepo.registrationState.collectAsState()
+  val devicesMeta by wearablesRepo.devicesMetadata.collectAsState()
   val svcStatus by RelayService.status.collectAsState()
+  val sdkReady = WearablesRuntime.initialized
+
+  val displayDevice = devicesMeta.values.firstOrNull { it.isDisplayCapable() }
+  val linkLabel = displayDevice?.linkState?.name?.lowercase() ?: "unknown"
+  val linkColor = when (displayDevice?.linkState) {
+    LinkState.CONNECTED -> Color(0xFF00FF88)
+    else -> Color(0xFFFFAA00)
+  }
 
   var url by remember {
     mutableStateOf(ctx.getSharedPreferences("face-chat-final", Context.MODE_PRIVATE)
@@ -78,14 +134,25 @@ private fun SettingsScreen(activity: ComponentActivity) {
     Text("face·chat", color = Color.White, fontSize = 22.sp)
     Text("background daemon — keeps glasses notifiable from your relay", color = Color(0xFFA0A0B0), fontSize = 12.sp)
 
+    if (!sdkReady) {
+      Text("grant Bluetooth permissions to initialize glasses SDK", color = Color(0xFFFFAA00), fontSize = 12.sp)
+    }
+
     StatusRow("glasses pairing", regState.name, when (regState) {
       RegistrationState.REGISTERED  -> Color(0xFF00FF88)
       RegistrationState.AVAILABLE,
       RegistrationState.REGISTERING -> Color(0xFFFFAA00)
       else -> Color(0xFFFF4466)
     })
-    if (regState != RegistrationState.REGISTERED) {
-      Button(onClick = { Wearables.startRegistration(activity) }) { Text("pair glasses") }
+    if (displayDevice != null) {
+      StatusRow("glasses link", linkLabel, linkColor)
+      Text(
+        "${displayDevice.name} · ${displayDevice.compatibility.name.lowercase()}",
+        color = Color(0xFFA0A0B0), fontSize = 11.sp,
+      )
+    }
+    if (regState != RegistrationState.REGISTERED && sdkReady) {
+      Button(onClick = { wearablesRepo.startRegistration(activity) }) { Text("pair glasses") }
     }
 
     StatusRow("relay", if (svcStatus.connected) "connected" else "disconnected",
@@ -102,86 +169,57 @@ private fun SettingsScreen(activity: ComponentActivity) {
       modifier = Modifier.fillMaxWidth(),
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Button(onClick = { RelayService.start(ctx, url) }) { Text("start daemon") }
+      Button(
+        onClick = { RelayService.start(ctx, url) },
+        enabled = sdkReady,
+      ) { Text("start daemon") }
       OutlinedButton(onClick = { RelayService.stop(ctx) }) { Text("stop") }
     }
 
-    // ── DEBUG ────────────────────────────────────────────────────────────
-    // Direct DAT round-trip: pick the first known device, createSession,
-    // addDisplay, sendContent with a one-shot card. Bypasses relay, hooks,
-    // mux — isolates "can we render a widget on the HUD at all?"
     val scope = rememberCoroutineScope()
+    val debugSession = remember { DatDisplaySession(CoroutineScope(SupervisorJob() + Dispatchers.Main)) }
+    val canDebug = sdkReady && displayDevice != null && displayDevice.linkState == LinkState.CONNECTED
+
     Spacer(Modifier.height(8.dp))
     Text("debug", color = Color(0xFFA0A0B0), fontSize = 11.sp)
+    if (displayDevice != null && displayDevice.linkState != LinkState.CONNECTED) {
+      Text(
+        "open Meta AI / connect glasses in Stella until link shows connected",
+        color = Color(0xFFFFAA00), fontSize = 11.sp,
+      )
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Button(onClick = { scope.launch { debugFireWidget() } }) { Text("DEBUG: fire widget") }
+      Button(
+        onClick = {
+          val id = devicesMeta.entries.firstOrNull { it.value == displayDevice }?.key ?: return@Button
+          scope.launch { debugFireWidget(debugSession, id) }
+        },
+        enabled = canDebug,
+      ) { Text("DEBUG: fire widget") }
     }
   }
 }
 
-// Direct DAT call — no relay, no mux, no WS. Just: pick the first known
-// device, open a session, add a Display, and sendContent a hello card.
-// All logs under tag `fc.debug` for easy grep.
-private suspend fun debugFireWidget() {
+private suspend fun debugFireWidget(session: DatDisplaySession, deviceId: com.meta.wearable.dat.core.types.DeviceIdentifier) {
   val TAG = "fc.debug"
-  val ids = Wearables.devices.value
-  Log.i(TAG, "known devices count=${ids.size}")
-  val meta = Wearables.devicesMetadata
-  ids.forEach { id ->
-    val d = meta[id]?.value
-    Log.i(TAG, "  id=$id name=${d?.name} link=${d?.linkState} type=${d?.deviceType} compat=${d?.compatibility} disp=${d?.isDisplayCapable()}")
-  }
-  val target = ids.firstOrNull()
-  if (target == null) { Log.w(TAG, "no known device"); return }
-  Log.i(TAG, "createSession via SpecificDeviceSelector id=$target")
-  Wearables.createSession(SpecificDeviceSelector(target)).fold(
-    onSuccess = { s ->
-      Log.i(TAG, "createSession SUCCESS")
-      kotlinx.coroutines.GlobalScope.launch {
-        s.state.collect { st ->
-          Log.i(TAG, "session.state -> $st")
-          if (st == DeviceSessionState.STARTED) attachAndRender(s)
+  Log.i(TAG, "prepareDisplay id=$deviceId")
+  session.prepareDisplay(deviceId) { d ->
+    kotlinx.coroutines.GlobalScope.launch {
+      d.sendContent {
+        flexBox(gap = 8, padding = 16) {
+          text("debug", style = TextStyle.META, color = TextColor.SECONDARY)
+          flexBox(padding = 12, background = FlexBoxBackground.CARD) {
+            text("Hello from face·chat debug.", style = TextStyle.BODY)
+          }
+          flexBox(gap = 6, padding = 0, background = FlexBoxBackground.NONE) {
+            button("ok", style = ButtonStyle.PRIMARY, onClick = { Log.i(TAG, "button tapped") })
+          }
         }
-      }
-      s.start()
-    },
-    onFailure = { e, _ -> Log.e(TAG, "createSession FAIL: ${e.description}") },
-  )
-}
-
-private fun attachAndRender(s: com.meta.wearable.dat.core.session.DeviceSession) {
-  val TAG = "fc.debug"
-  s.addDisplay().fold(
-    onSuccess = { d ->
-      Log.i(TAG, "addDisplay SUCCESS")
-      kotlinx.coroutines.GlobalScope.launch {
-        d.state.collect { ds ->
-          Log.i(TAG, "display.state -> $ds")
-          if (ds == DisplayState.STARTED) sendDebugCard(d)
-        }
-      }
-    },
-    onFailure = { e, _ -> Log.e(TAG, "addDisplay FAIL: ${e.description}") },
-  )
-}
-
-private fun sendDebugCard(d: Display) {
-  val TAG = "fc.debug"
-  kotlinx.coroutines.GlobalScope.launch {
-    d.sendContent {
-      flexBox(gap = 8, padding = 16) {
-        text("debug", style = TextStyle.META, color = TextColor.SECONDARY)
-        flexBox(padding = 12, background = FlexBoxBackground.CARD) {
-          text("Hello from face·chat debug.", style = TextStyle.BODY)
-        }
-        flexBox(gap = 6, padding = 0, background = FlexBoxBackground.NONE) {
-          button("ok", style = ButtonStyle.PRIMARY, onClick = { Log.i(TAG, "button tapped") })
-        }
-      }
-    }.fold(
-      onSuccess = { Log.i(TAG, "sendContent SUCCESS — widget should be on HUD now") },
-      onFailure = { e, _ -> Log.e(TAG, "sendContent FAIL: ${e.description}") },
-    )
+      }.fold(
+        onSuccess = { Log.i(TAG, "sendContent SUCCESS — widget should be on HUD now") },
+        onFailure = { e, _ -> Log.e(TAG, "sendContent FAIL: ${e.description}") },
+      )
+    }
   }
 }
 

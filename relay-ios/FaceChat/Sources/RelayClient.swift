@@ -1,7 +1,3 @@
-// WS client using URLSessionWebSocketTask. Implements the subset of the protocol
-// (see ../phone-shared/PROTOCOL.md) the daemon needs: on connect → send `subscribe`;
-// emit Hello / ThreadIdle / ThreadBusy events; outbound `input` / `special` send JSON frames.
-// Exponential reconnect backoff 500ms → 10s.
 import Foundation
 
 @MainActor
@@ -11,7 +7,8 @@ final class RelayClient {
     case connected
     case disconnected
     case hello(threads: [ThreadMeta])
-    case threadIdle(thread: String, label: String, lastAssistant: String)
+    case threadIdle(yank: AgentYank)
+    case hudYank(yank: AgentYank)
     case threadBusy(thread: String)
     case error(String)
   }
@@ -21,6 +18,7 @@ final class RelayClient {
   private var backoff: TimeInterval = 0.5
   private var loopTask: Task<Void, Never>?
   private var labels: [String: String] = [:]
+  private var agents: [String: String] = [:]
 
   let events: AsyncStream<Event>
   private let cont: AsyncStream<Event>.Continuation
@@ -74,39 +72,46 @@ final class RelayClient {
     }
   }
 
+  private func parseYank(_ obj: [String: Any]) -> AgentYank {
+    let id = obj["thread"] as? String ?? ""
+    let awaiting: Awaiting = (obj["awaiting"] as? String) == "permission" ? .permission : .reply
+    let perm = (obj["permissionPrompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    return AgentYank(
+      thread: id,
+      label: (obj["label"] as? String) ?? labels[id] ?? id,
+      agent: (obj["agent"] as? String) ?? agents[id] ?? "generic",
+      lastAssistant: obj["lastAssistant"] as? String ?? "",
+      awaiting: awaiting,
+      permissionPrompt: (perm?.isEmpty == false) ? perm : nil
+    )
+  }
+
   private func handle(_ raw: String) {
     guard let data = raw.data(using: .utf8),
           let obj  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let type = obj["type"] as? String else { return }
     switch type {
     case "hello":
-      labels.removeAll()
+      labels.removeAll(); agents.removeAll()
       let arr = (obj["threads"] as? [[String: Any]]) ?? []
       var threads: [ThreadMeta] = []
       for t in arr {
         let id = t["id"] as? String ?? ""
         let label = (t["label"] as? String) ?? id
         let agent = (t["agent"] as? String) ?? "generic"
-        labels[id] = label
+        labels[id] = label; agents[id] = agent
         threads.append(.init(id: id, label: label, agent: agent))
       }
       cont.yield(.hello(threads: threads))
-    case "thread_idle":
-      let id = obj["thread"] as? String ?? ""
-      cont.yield(.threadIdle(
-        thread: id,
-        label:  labels[id] ?? id,
-        lastAssistant: obj["lastAssistant"] as? String ?? "",
-      ))
-    case "thread_busy":
-      cont.yield(.threadBusy(thread: obj["thread"] as? String ?? ""))
+    case "thread_idle": cont.yield(.threadIdle(yank: parseYank(obj)))
+    case "hud_yank":    cont.yield(.hudYank(yank: parseYank(obj)))
+    case "thread_busy": cont.yield(.threadBusy(thread: obj["thread"] as? String ?? ""))
     default: break
     }
   }
 
   func sendInput(thread: String, text: String, enter: Bool = true) {
-    let payload: [String: Any] = ["type": "input", "thread": thread, "text": text, "enter": enter]
-    sendJSON(payload)
+    sendJSON(["type": "input", "thread": thread, "text": text, "enter": enter])
   }
   func sendSpecial(thread: String, key: String) {
     sendJSON(["type": "special", "thread": thread, "key": key])

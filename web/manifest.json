@@ -1,12 +1,12 @@
 {
-  "name": "face chat",
-  "short_name": "chat",
-  "description": "Coding-agent chat threads for Meta Display glasses.",
+  "name": "ambient link",
+  "short_name": "ambient",
+  "description": "Agent companion for Meta Display glasses — mirrors HUD peek cards.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#0B141A",
-  "theme_color": "#0B141A",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": []
 }
