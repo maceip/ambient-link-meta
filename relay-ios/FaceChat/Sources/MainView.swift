@@ -46,6 +46,14 @@ struct MainView: View {
           }.buttonStyle(.borderedProminent)
           Button("stop") { daemon.stop() }.buttonStyle(.bordered)
         }
+
+        // ── DEBUG ────────────────────────────────────────────────────────
+        // Direct DAT round-trip: pick the first known device, createSession,
+        // addDisplay, sendContent a one-shot card. Bypasses relay/WS — isolates
+        // "can we render a widget on the HUD at all?" Logs under tag fc.debug.
+        Spacer().frame(height: 8)
+        Text("debug").font(.system(size: 11)).foregroundStyle(.secondary)
+        Button("DEBUG: fire widget") { debugFireWidget() }.buttonStyle(.bordered)
       }
       .padding(20)
     }

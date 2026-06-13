@@ -23,6 +23,13 @@ final class HudPresenter {
   private let peekTimeoutMs: UInt64 = 12_000
   private let snoozeMs:      UInt64 = 60_000
 
+  // How long to wait for linkState to flip to .connected after a yank arrives, and how
+  // often to re-poll while waiting. The SDK exposes no public "request connect" API; using
+  // SpecificDeviceSelector lets the DAT runtime lazily bring the link up, and we observe
+  // metadata until it does. Mirrors phone-android HudPresenter.LINK_WAIT_MS.
+  private let linkWaitMs: UInt64 = 20_000
+  private let linkPollMs: UInt64 = 500
+
   init(wearables: any WearablesInterface, relay: RelayClient) {
     self.wearables = wearables
     self.relay = relay
@@ -39,17 +46,67 @@ final class HudPresenter {
 
   private func openSessionAndPeek() {
     if display != nil {
+      // Already have a live session — just re-render the peek with the new content.
       state = .peeking; renderPeek(); armPeekTimer(); return
     }
+
+    // Find the first display-capable device the SDK knows about. We deliberately do NOT
+    // pre-filter on linkState (the old AutoDeviceSelector did, which rejects a device whose
+    // link is still .disconnected and so could never trigger a wake) — instead we pick the
+    // device and let SpecificDeviceSelector bring the link up on demand.
+    let ids = wearables.devices
+    guard let candidate = ids.first(where: { wearables.deviceForIdentifier($0)?.supportsDisplay() == true }) else {
+      NSLog("[face-chat] no display-capable device known to SDK (\(ids.count) total)")
+      return
+    }
+
+    let initial = wearables.deviceForIdentifier(candidate)?.linkState
+    if initial == .connected {
+      NSLog("[face-chat] device already CONNECTED, opening session immediately")
+      createSession(for: candidate)
+      return
+    }
+
+    NSLog("[face-chat] device link=\(String(describing: initial)) — waiting up to \(linkWaitMs)ms for CONNECTED")
+    Task { [weak self] in
+      guard let self else { return }
+      if await self.awaitConnected(candidate) {
+        NSLog("[face-chat] device transitioned to CONNECTED — opening session")
+        self.createSession(for: candidate)
+      } else {
+        let final = self.wearables.deviceForIdentifier(candidate)?.linkState
+        NSLog("[face-chat] timed out waiting for CONNECTED (final link=\(String(describing: final))); dropping yank")
+      }
+    }
+  }
+
+  // Poll the device's linkState until it reaches .connected or linkWaitMs elapses. Logs
+  // every observed transition so a stuck link is diagnosable from device logs — the iOS
+  // analog of phone-android's startWatchingLink metadata subscription.
+  private func awaitConnected(_ id: DeviceIdentifier) async -> Bool {
+    let deadline = DispatchTime.now().uptimeNanoseconds + linkWaitMs * 1_000_000
+    var last: LinkState? = nil
+    while DispatchTime.now().uptimeNanoseconds < deadline {
+      let ls = wearables.deviceForIdentifier(id)?.linkState
+      if ls != last {
+        NSLog("[face-chat] link-watch: id=\(id) link=\(String(describing: ls))")
+        last = ls
+      }
+      if ls == .connected { return true }
+      try? await Task.sleep(nanoseconds: linkPollMs * 1_000_000)
+    }
+    return false
+  }
+
+  private func createSession(for id: DeviceIdentifier) {
+    NSLog("[face-chat] createSession via SpecificDeviceSelector id=\(id)")
     do {
-      let selector = AutoDeviceSelector(wearables: wearables, filter: { d in
-        d.linkState == .connected && d.supportsDisplay()
-      })
-      let s = try wearables.createSession(deviceSelector: selector)
+      let s = try wearables.createSession(deviceSelector: SpecificDeviceSelector(device: id))
       session = s
       Task { [weak self] in
         for await st in s.stateStream() {
           guard let self else { return }
+          NSLog("[face-chat] session.state -> \(st)")
           if st == .started, self.display == nil { await self.attachDisplay(s) }
         }
       }

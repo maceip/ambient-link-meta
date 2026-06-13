@@ -19,7 +19,8 @@ FaceChat/
 │   ├── RelayClient.swift     ← URLSessionWebSocketTask wrapper + reconnect
 │   ├── HudPresenter.swift    ← DAT session lifecycle + peek/expand renders
 │   ├── ChipSet.swift         ← classifier — same patterns as Kotlin twin
-│   └── DaemonState.swift     ← @Observable status object, mirrors Android
+│   ├── DaemonState.swift     ← @Observable status object, mirrors Android
+│   └── DebugFireWidget.swift ← DEBUG-only direct sendContent round-trip
 └── Resources/
     └── Info.plist            ← MWDAT keys, BG modes, opt-out analytics
 ```
