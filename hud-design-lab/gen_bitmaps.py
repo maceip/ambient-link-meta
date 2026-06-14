@@ -180,8 +180,8 @@ def render_bitmap_framed():
     # identity strip
     sx, sy = m + 20, m + 18
     rr(d, (sx, sy, sx + 30, sy + 30), 9, fill=(BLUE[0]//4, BLUE[1]//4, BLUE[2]//3))
-    txt(d, (sx + 15, sy + 15), "fc", font(15, "Bold"), BLUE, anchor="mm")
-    txt(d, (sx + 40, sy + 1), "face·chat", font(19, "Semibold"), WHITE)
+    txt(d, (sx + 15, sy + 15), "al", font(15, "Bold"), BLUE, anchor="mm")
+    txt(d, (sx + 40, sy + 1), "ambient link", font(19, "Semibold"), WHITE)
     txt(d, (W - m - 20, sy + 4), "now", font(16, "Regular"), SECOND, anchor="ra")
     d.line([( (m+18)*S, (sy+44)*S), ((W-m-18)*S, (sy+44)*S)], fill=STROKE, width=max(1, S))
     # inset content area

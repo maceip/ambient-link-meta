@@ -3,7 +3,7 @@
   'use strict';
 
   var CS = window.AmbientChipSet;
-  var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/face-chat/ws';
+  var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ambient-link/ws';
 
   var statusEl   = document.getElementById('status');
   var threadsUl  = document.getElementById('threads');
@@ -396,7 +396,7 @@
   }
 
   function ingest(ev) {
-    return fetch('/face-chat/ingest', {
+    return fetch('/ambient-link/ingest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(ev),
@@ -454,7 +454,7 @@
   }
 
   function syncFromHost() {
-    fetch('/face-chat/status')
+    fetch('/ambient-link/status')
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data) return;

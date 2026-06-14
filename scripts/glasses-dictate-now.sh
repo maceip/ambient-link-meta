@@ -2,7 +2,7 @@
 # Hands-free glasses dictate — grant perms, install, pop test card on HUD.
 set -euo pipefail
 
-PKG=com.lowkey.facechat
+PKG=com.lowkey.ambientlink
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 log() { printf '==> %s\n' "$*"; }
@@ -25,7 +25,7 @@ fi
 
 log "pushing question to glasses HUD (daemon must already be running)"
 PROMPT="${1:?usage: $0 \"exact question text\"}"
-adb shell am broadcast -a com.lowkey.facechat.DEBUG_HUD_YANK \
+adb shell am broadcast -a com.lowkey.ambientlink.DEBUG_HUD_YANK \
   --es prompt "$PROMPT" \
   --es thread cursor \
   -p "$PKG"
@@ -35,4 +35,4 @@ echo "ON YOUR GLASSES:"
 echo "  1. Card shows dictate | dismiss (not yes)"
 echo "  2. Tap dictate, speak, tap send when done"
 echo
-echo "Phone stays in pocket. Host must be running at ws://YOUR_LAN_IP:5181/face-chat/ws"
+echo "Phone stays in pocket. Host must be running at ws://YOUR_LAN_IP:5181/ambient-link/ws"

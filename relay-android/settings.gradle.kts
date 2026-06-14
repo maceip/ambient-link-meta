@@ -35,5 +35,5 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "FaceChatFinal"
+rootProject.name = "AmbientLinkFinal"
 include(":app")

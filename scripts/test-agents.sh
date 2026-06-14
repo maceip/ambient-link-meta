@@ -10,7 +10,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 curl -sf "$HOST/healthz" >/dev/null || fail "host down"
 
-read -r THREAD SESSION <<<"$(curl -sf "$HOST/face-chat/status" | python3 -c "
+read -r THREAD SESSION <<<"$(curl -sf "$HOST/ambient-link/status" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 delivery = {e['SessionID']: e for e in d.get('delivery') or []}
@@ -22,7 +22,7 @@ for s in d.get('sessions') or []:
 ")"
 [[ -n "$THREAD" && -n "$SESSION" ]] || fail "no live session with delivery endpoint (start claude/codex/cursor-agent in a terminal)"
 
-curl -sf -X POST "$HOST/face-chat/debug/input" \
+curl -sf -X POST "$HOST/ambient-link/debug/input" \
   -H 'Content-Type: application/json' \
   -d "{\"thread\":\"$THREAD\",\"text\":\"$MARKER\",\"enter\":true}" >/dev/null
 

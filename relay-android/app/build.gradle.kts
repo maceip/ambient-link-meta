@@ -12,11 +12,11 @@ val localProperties = Properties().apply {
 }
 
 android {
-  namespace = "com.lowkey.facechat"
+  namespace = "com.lowkey.ambientlink"
   compileSdk = 35
 
   defaultConfig {
-    applicationId = "com.lowkey.facechat"
+    applicationId = "com.lowkey.ambientlink"
     minSdk = 31
     targetSdk = 35
     versionCode = 1
@@ -33,7 +33,7 @@ android {
     resValue("string", "mwdat_application_id", manifestPlaceholders["mwdat_application_id"] as String)
     resValue("string", "mwdat_client_token", manifestPlaceholders["mwdat_client_token"] as String)
     val defaultRelay = providers.gradleProperty("relay_url").orNull
-      ?: localProperties.getProperty("relay_url", "wss://example.com/face-chat/ws")
+      ?: localProperties.getProperty("relay_url", "wss://example.com/ambient-link/ws")
     buildConfigField("String", "DEFAULT_RELAY_URL", "\"" + defaultRelay + "\"")
     buildConfigField("String", "SODA_PACK_CPU_SHA256", "\"fac23ca956f473c5025621784a1657a1663a16b0754886b975f3cde3f1345f04\"")
     buildConfigField("long", "SODA_PACK_CPU_SIZE_BYTES", "56458465L")

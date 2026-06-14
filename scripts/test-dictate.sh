@@ -20,8 +20,8 @@ if adb devices 2>/dev/null | grep -qE '\tdevice$'; then
   "$ROOT/scripts/provision-soda-from-neural.sh"
   (cd "$ROOT/relay-android" && ./gradlew :app:installDebug -q)
   if adb install -r -g "$ROOT/relay-android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" 2>/dev/null; then
-    adb shell am instrument -w -e class com.lowkey.facechat.soda.SodaSmokeTest \
-      com.lowkey.facechat.test/androidx.test.runner.AndroidJUnitRunner
+    adb shell am instrument -w -e class com.lowkey.ambientlink.soda.SodaSmokeTest \
+      com.lowkey.ambientlink.test/androidx.test.runner.AndroidJUnitRunner
   else
     echo "skip instrumented test (approve test APK install on phone)"
     unzip -l "$ROOT/relay-android/app/build/outputs/apk/debug/app-debug.apk" | grep -q libsoda_dev_jni && \

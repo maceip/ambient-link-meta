@@ -11,7 +11,7 @@ if [[ $# -lt 1 ]] || [[ -z "${1:-}" ]]; then
 fi
 PROMPT="$1"
 
-curl -sf -X POST "$HOST/face-chat/debug/yank" \
+curl -sf -X POST "$HOST/ambient-link/debug/yank" \
   -H 'Content-Type: application/json' \
   -d "$(printf '{"thread":"%s","label":"cursor","agent":"cursor","awaiting":"question","lastAssistant":%s}' \
     "$THREAD" \

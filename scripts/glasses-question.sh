@@ -15,7 +15,7 @@ json_escape() {
 }
 mj=$(json_escape "$MSG")
 
-curl -sf -X POST "$HOST/face-chat/debug/yank" \
+curl -sf -X POST "$HOST/ambient-link/debug/yank" \
   -H 'Content-Type: application/json' \
   -d "{\"thread\":\"$THREAD\",\"label\":\"cursor\",\"agent\":\"cursor\",\"awaiting\":\"question\",\"lastAssistant\":\"$mj\"}" \
   >/dev/null

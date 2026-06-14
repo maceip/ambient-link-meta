@@ -16,7 +16,7 @@ send_one() {
   local tj bj
   tj=$(json_escape "$THREAD")
   bj=$(json_escape "$text")
-  curl -sf -X POST "$HOST/face-chat/debug/input" \
+  curl -sf -X POST "$HOST/ambient-link/debug/input" \
     -H 'Content-Type: application/json' \
     -d "{\"thread\":\"$tj\",\"text\":\"$bj\",\"enter\":true}"
   [[ "${AMBIENT_SAY:-}" == "1" ]] && say -v Samantha "sent" 2>/dev/null || true

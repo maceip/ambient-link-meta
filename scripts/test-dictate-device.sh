@@ -13,7 +13,7 @@ FIXTURE_DIR="$ROOT/scripts/test-fixtures/audio"
 SLUG="${SLUG:-define_polymorphism}"
 EXPECT="${EXPECT:-polymorphism}"
 PHRASE="${PHRASE:-Define polymorphism.}"
-PKG="com.lowkey.facechat"
+PKG="com.lowkey.ambientlink"
 FIXTURE_NAME="${SLUG}.wav"
 DEVICE_PRIVATE_PATH="/data/data/$PKG/files/ambient-link-test/$FIXTURE_NAME"
 WAV="$FIXTURE_DIR/${SLUG}.wav"
@@ -72,7 +72,7 @@ sleep 2
 
 log "injecting fixture via DEBUG_SODA_FIXTURE (expect substring: $EXPECT)"
 adb logcat -c
-adb shell am broadcast -a com.lowkey.facechat.DEBUG_SODA_FIXTURE \
+adb shell am broadcast -a com.lowkey.ambientlink.DEBUG_SODA_FIXTURE \
   --es path "$DEVICE_PRIVATE_PATH" \
   --es expect "$EXPECT" \
   -p "$PKG"

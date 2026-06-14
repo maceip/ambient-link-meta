@@ -31,7 +31,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
-        android:theme="@style/FaceChatTheme">
+        android:theme="@style/AmbientLinkTheme">
 
         <meta-data
             android:name="com.meta.wearable.mwdat.APPLICATION_ID"
@@ -47,7 +47,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:theme="@style/FaceChatTheme">
+            android:theme="@style/AmbientLinkTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -57,7 +57,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="facechat" />
+                <data android:scheme="ambientlink" />
             </intent-filter>
         </activity>
 
@@ -66,7 +66,7 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:taskAffinity=""
-            android:theme="@style/FaceChatTheme" />
+            android:theme="@style/AmbientLinkTheme" />
 
         <service
             android:name=".relay.RelayService"
@@ -79,7 +79,7 @@
         <service
             android:name=".probe.ClaudeNotificationListener"
             android:exported="true"
-            android:label="face·chat notif probe"
+            android:label="ambient link notif probe"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />

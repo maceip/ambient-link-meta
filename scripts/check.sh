@@ -15,7 +15,7 @@ ok() { echo "$1" >>"$LOG"; }
   [[ "$(lsof -iTCP:5181 -sTCP:LISTEN -n -P 2>/dev/null | awk 'NR>1' | wc -l | tr -d ' ')" == "1" ]] || fail "expected 1 listener on 5181"
   ok "single host listener"
 
-  STATUS="$(curl -sf http://127.0.0.1:5181/face-chat/status)"
+  STATUS="$(curl -sf http://127.0.0.1:5181/ambient-link/status)"
   JHEAD="$(echo "$STATUS" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("journal",0))')"
   [[ -n "$JHEAD" ]] || fail "status missing journal head"
   ok "journal head=$JHEAD"
@@ -27,16 +27,16 @@ ok() { echo "$1" >>"$LOG"; }
   ok "APK SODA ok"
 
   if adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{ok=1} END{exit !ok}'; then
-    adb shell am start -n com.lowkey.facechat/.MainActivity >/dev/null 2>&1 || true
+    adb shell am start -n com.lowkey.ambientlink/.MainActivity >/dev/null 2>&1 || true
     sleep 2
-    PID="$(adb shell pidof com.lowkey.facechat 2>/dev/null | tr -d '\r')"
+    PID="$(adb shell pidof com.lowkey.ambientlink 2>/dev/null | tr -d '\r')"
     adb logcat -c >/dev/null 2>&1 || true
-    curl -sf -X POST http://127.0.0.1:5181/face-chat/debug/yank \
+    curl -sf -X POST http://127.0.0.1:5181/ambient-link/debug/yank \
       -H 'Content-Type: application/json' \
       -d '{"thread":"check-yank","label":"check","agent":"cursor","awaiting":"done","lastAssistant":"check.sh yank — tap dismiss on glasses"}' >/dev/null
     sleep 3
     if ! adb logcat -d ${PID:+--pid=$PID} 2>/dev/null | grep -q "RelayClient:"; then
-      fail "phone relay not logging (open face·chat, check relay URL)"
+      fail "phone relay not logging (open ambient link, check relay URL)"
     fi
     ok "phone relay logcat"
   else

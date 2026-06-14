@@ -2,7 +2,7 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 
 const HOST = process.env.AMBIENT_HOST || 'http://127.0.0.1:5181';
-const WS = process.env.AMBIENT_WS || 'ws://127.0.0.1:5181/face-chat/ws';
+const WS = process.env.AMBIENT_WS || 'ws://127.0.0.1:5181/ambient-link/ws';
 
 async function get(path) {
   const res = await fetch(HOST + path);
@@ -62,15 +62,21 @@ describe('host HTTP', () => {
   });
 
   it('status includes journal and relay_debug fields', async () => {
-    const data = await get('/face-chat/status');
+    const data = await get('/ambient-link/status');
     assert.ok('journal' in data);
     assert.ok('relay_debug' in data);
     assert.ok(Array.isArray(data.sessions));
     assert.ok(Array.isArray(data.delivery));
   });
 
-  it('index is served from host web root', async () => {
-    const res = await fetch(HOST + '/');
+  it('root redirects to ambient-link app base', async () => {
+    const res = await fetch(HOST + '/', { redirect: 'manual' });
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get('location'), '/ambient-link/');
+  });
+
+  it('index is served from ambient-link app base', async () => {
+    const res = await fetch(HOST + '/ambient-link/');
     assert.equal(res.status, 200);
     const html = await res.text();
     assert.match(html, /id="host-panel"/);
@@ -80,7 +86,7 @@ describe('host HTTP', () => {
 describe('WS protocol', () => {
   let status;
   before(async () => {
-    status = await get('/face-chat/status');
+    status = await get('/ambient-link/status');
   });
 
   it('hello includes threads and relay_debug flag', async () => {
@@ -104,7 +110,7 @@ describe('WS protocol', () => {
     await once(ws, 'message'); // hello
     const marker = 'web-yank-' + Date.now();
     const cardP = waitForType(ws, 'hud_yank', 12000);
-    await post('/face-chat/debug/yank', {
+    await post('/ambient-link/debug/yank', {
       thread,
       label: 'web-test',
       agent: sess ? sess.agent : 'cursor',

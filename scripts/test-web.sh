@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOST="${AMBIENT_HOST:-http://127.0.0.1:5181}"
-WS="${AMBIENT_WS:-ws://127.0.0.1:5181/face-chat/ws}"
+WS="${AMBIENT_WS:-ws://127.0.0.1:5181/ambient-link/ws}"
 LOG=/tmp/ambient-web-test.log
 : >"$LOG"
 

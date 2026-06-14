@@ -62,7 +62,7 @@ fi
 for _ in $(seq 1 20); do
   if curl -sf "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
     IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo '?')"
-    echo "host up on $LISTEN (LAN: ws://$IP:${PORT}/face-chat/ws)"
+    echo "host up on $LISTEN (LAN: ws://$IP:${PORT}/ambient-link/ws)"
     echo "logs: $LOG"
     exit 0
   fi

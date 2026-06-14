@@ -14,7 +14,7 @@ fi
 
 export SESSION AGENT CWD MSG
 
-curl -sf -X POST "$HOST/face-chat/ingest" -H 'Content-Type: application/json' -d "$(python3 -c '
+curl -sf -X POST "$HOST/ambient-link/ingest" -H 'Content-Type: application/json' -d "$(python3 -c '
 import json, os
 print(json.dumps({
   "source": "virtual",
@@ -25,7 +25,7 @@ print(json.dumps({
 }))
 ')" || true
 
-curl -sf -X POST "$HOST/face-chat/ingest" -H 'Content-Type: application/json' -d "$(python3 -c '
+curl -sf -X POST "$HOST/ambient-link/ingest" -H 'Content-Type: application/json' -d "$(python3 -c '
 import json, os
 print(json.dumps({
   "source": "virtual",

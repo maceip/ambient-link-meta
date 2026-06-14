@@ -1,20 +1,20 @@
-# phone-ios
+# relay-ios
 
-Native iOS daemon. Same job as `phone-android`: hold a DAT iOS session, listen
+Native iOS daemon. Same job as `relay-android`: hold a DAT iOS session, listen
 to the relay over WS, render peek + expand cards on the HUD, route chip taps
 back to the agent.
 
-Implements the protocol in [`../phone-shared/PROTOCOL.md`](../phone-shared/PROTOCOL.md).
+Implements the protocol in [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md).
 
 ## Project layout
 
-Swift sources live in `FaceChat/Sources/`. They're intentionally Xcode-agnostic
+Swift sources live in `AmbientLink/Sources/`. They're intentionally Xcode-agnostic
 so you can drop them into either a SwiftUI App target or a Swift Package.
 
 ```
-FaceChat/
+AmbientLink/
 ├── Sources/
-│   ├── FaceChatApp.swift     ← @main SwiftUI app entry
+│   ├── AmbientLinkApp.swift     ← @main SwiftUI app entry
 │   ├── MainView.swift        ← settings + status UI (one screen)
 │   ├── RelayClient.swift     ← URLSessionWebSocketTask wrapper + reconnect
 │   ├── HudPresenter.swift    ← DAT session lifecycle + peek/expand renders
@@ -28,16 +28,16 @@ FaceChat/
 ## Setting up the Xcode project
 
 1. Open Xcode → **File** → **New** → **Project** → **iOS** → **App**
-   - Product name: `FaceChat`
+   - Product name: `AmbientLink`
    - Interface: SwiftUI
    - Language: Swift
-2. Delete the auto-generated `ContentView.swift` and `FaceChatApp.swift`.
-3. Drag the contents of `FaceChat/Sources/` into the new target (uncheck
+2. Delete the auto-generated `ContentView.swift` and `AmbientLinkApp.swift`.
+3. Drag the contents of `AmbientLink/Sources/` into the new target (uncheck
    "Copy items if needed", check "Create groups"). Same for
-   `FaceChat/Resources/Info.plist` → replace the auto-generated one.
+   `AmbientLink/Resources/Info.plist` → replace the auto-generated one.
 4. **File** → **Add Package Dependencies…** → enter
    `https://github.com/facebook/meta-wearables-dat-ios`, pin to 0.7.0, add
-   both `MWDATCore` and `MWDATDisplay` products to the FaceChat target.
+   both `MWDATCore` and `MWDATDisplay` products to the AmbientLink target.
 5. In target settings:
    - **Signing & Capabilities** → add **Background Modes** →
      check **Background processing** (so the WS stays alive while the user

@@ -68,7 +68,7 @@
     dim('--- notify (page) ---');
     if (Notification.permission !== 'granted') return bad('permission=' + Notification.permission);
     try {
-      var n = new Notification('fc test (page)', { body: 'fired from page Notification ctor' });
+      var n = new Notification('ambient test (page)', { body: 'fired from page Notification ctor' });
       n.onshow  = function () { ok('Notification.onshow'); };
       n.onerror = function (e) { bad('Notification.onerror'); };
       n.onclick = function () { ok('Notification.onclick'); };
@@ -88,7 +88,7 @@
     });
     navigator.serviceWorker.controller.postMessage({
       type: 'show',
-      title: 'fc test (sw)',
+      title: 'ambient test (sw)',
       body: 'fired from sw.registration.showNotification',
     });
     log('postMessage(show) sent to SW');
@@ -107,7 +107,7 @@
       // exercises whether Stella's runtime can reach a push service at all.
       var VAPID_PUB = 'BHWaJI9hY1ZqQYJOC0o5HpVxR4QnaWlcTzqrvvB-pAW5KQzPmtZBKqBxr1z5DT7XQCpO7VlhPe1RyrJV5n1aJxw';
       try {
-        var v = await fetch('/face-chat/push/vapid');
+        var v = await fetch('/ambient-link/push/vapid');
         if (v.ok) { VAPID_PUB = (await v.json()).publicKey; log('vapid: live key from relay'); }
         else { warn('vapid: relay returned ' + v.status + ' — using placeholder'); }
       } catch (e) { warn('vapid: no relay (' + e.message + ') — using placeholder'); }
@@ -125,7 +125,7 @@
       });
       ok('subscribed: ' + sub.endpoint);
       log('keys: ' + JSON.stringify(sub.toJSON().keys));
-      // POST to relay so server can push to this endpoint later. /face-chat/push-test/sub
+      // POST to relay so server can push to this endpoint later. /ambient-link/push-test/sub
       // is fine to 404 right now — we only care about whether subscribe succeeded.
       try {
         var resp = await fetch('./sub', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(sub) });
@@ -139,7 +139,7 @@
     dim('--- request server push ---');
     try {
       var resp = await fetch('./push', { method: 'POST', headers: {'content-type':'application/json'},
-        body: JSON.stringify({ title: 'fc push (server)', body: 'arrived via Web Push' }) });
+        body: JSON.stringify({ title: 'ambient push (server)', body: 'arrived via Web Push' }) });
       log('POST ./push → ' + resp.status + ' ' + await resp.text());
     } catch (e) { bad('./push request failed: ' + e.message); }
   };

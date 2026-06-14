@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # DEPRECATED: optional tmux helper only. Host correlates live claude/codex PIDs via
-# proc watcher — you do not need fc-claude/fc-codex for observation or delivery.
+# proc watcher — you do not need ambient-claude/ambient-codex for observation or delivery.
 # Start tmux agent sessions (claude / codex).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -16,7 +16,7 @@ fi
 adb install -r -g "$APK" >/dev/null
 TEST_APK="$ROOT/relay-android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 adb install -r -g -t "$TEST_APK" >/dev/null
-adb shell pm grant com.lowkey.facechat android.permission.RECORD_AUDIO 2>/dev/null || true
+adb shell pm grant com.lowkey.ambientlink android.permission.RECORD_AUDIO 2>/dev/null || true
 
-adb shell am instrument -w -r -e class com.lowkey.facechat.soda.SodaSmokeTest \
-  com.lowkey.facechat.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -r -e class com.lowkey.ambientlink.soda.SodaSmokeTest \
+  com.lowkey.ambientlink.test/androidx.test.runner.AndroidJUnitRunner

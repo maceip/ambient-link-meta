@@ -1,6 +1,6 @@
 {
-  "name": "fc push test",
-  "short_name": "fc-push",
+  "name": "ambient push test",
+  "short_name": "ambient-push",
   "description": "Probe whether Stella's web-app runtime surfaces PWA notifications on the HUD.",
   "start_url": "./",
   "scope": "./",
