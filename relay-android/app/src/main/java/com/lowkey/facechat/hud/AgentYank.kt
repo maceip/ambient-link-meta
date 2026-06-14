@@ -25,9 +25,9 @@ data class AgentYank(
 
   val metaLine: String
     get() = when (awaiting) {
-      Awaiting.PERMISSION -> "$label · needs approval"
-      Awaiting.QUESTION   -> "$label · question"
-      Awaiting.DONE       -> "$label · done"
+      Awaiting.PERMISSION -> "$label - needs approval"
+      Awaiting.QUESTION   -> "$label - question"
+      Awaiting.DONE       -> "$label - done"
       else                -> label
     }
 }

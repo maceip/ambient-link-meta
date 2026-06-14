@@ -15,6 +15,7 @@ import kotlin.concurrent.thread
 /** 16 kHz mono PCM16 — prefers glasses/headset HFP when routed via Bluetooth SCO. */
 class MicCapture(
   private val context: Context,
+  private val useBluetoothSco: Boolean = false,
   private val onPcmFrame: (ByteArray, Int) -> Unit,
 ) {
   companion object {
@@ -38,15 +39,26 @@ class MicCapture(
 
     val am = context.getSystemService(AudioManager::class.java)
     audioManager = am
-    am.mode = AudioManager.MODE_IN_COMMUNICATION
-    if (am.isBluetoothScoAvailableOffCall) {
-      am.startBluetoothSco()
-      am.isBluetoothScoOn = true
+    if (useBluetoothSco && am.isBluetoothScoAvailableOffCall) {
+      am.mode = AudioManager.MODE_IN_COMMUNICATION
+      runCatching {
+        if (am.isBluetoothScoOn) {
+          am.stopBluetoothSco()
+          am.isBluetoothScoOn = false
+          Thread.sleep(300)
+        }
+        am.startBluetoothSco()
+        am.isBluetoothScoOn = true
+      }
+      var waited = 0
+      while (!am.isBluetoothScoOn && waited < 60) {
+        Thread.sleep(50)
+        waited++
+      }
     }
-    val source = if (am.isBluetoothScoOn) {
-      MediaRecorder.AudioSource.VOICE_COMMUNICATION
-    } else {
-      MediaRecorder.AudioSource.VOICE_RECOGNITION
+    val source = when {
+      useBluetoothSco && am.isBluetoothScoOn -> MediaRecorder.AudioSource.VOICE_COMMUNICATION
+      else -> MediaRecorder.AudioSource.VOICE_RECOGNITION
     }
 
     val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE_HZ, CHANNEL, ENCODING)
@@ -86,8 +98,10 @@ class MicCapture(
     running.set(false)
     audioManager?.let { am ->
       runCatching {
-        am.stopBluetoothSco()
-        am.isBluetoothScoOn = false
+        if (useBluetoothSco) {
+          am.stopBluetoothSco()
+          am.isBluetoothScoOn = false
+        }
         am.mode = AudioManager.MODE_NORMAL
       }
     }

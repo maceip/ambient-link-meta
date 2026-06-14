@@ -18,20 +18,21 @@ ambient (glasses on)
    │
    │ thread_idle event off the wire
    ▼
-PEEK CARD on HUD     thread label · last message · [ open ] [ snooze ] [ dismiss ]
+HUD CARD            thread label · last message · chips by awaiting:
+                    done:       [ continue ] [ dictate ] [ dismiss ]
+                    question:   [ dictate ] [ dismiss ]
+                    permission: [ approve ] [ deny ]
    │
-   │ user temple-taps "open" (or band-pinches)
+   │ user picks a chip (or hardware back = dismiss)
    ▼
-EXPANDED CARD        full message · context-aware chips ([yes][no][more] | [approve][deny] | [continue][looks good][follow-up])
-   │
-   │ user picks a chip
-   ▼
-reply posted back through the relay → agent → cycle ends, glasses ambient again
+reply posted back through the relay → host inject → agent continues
 ```
 
-The user never has to touch their phone in the normal round-trip. Phone is
-a background daemon that holds the DAT session; the glasses are the only
-UI surface in the active loop.
+Phone relay discovers the Mac host on LAN via mDNS (`_ambientlink._tcp`) when
+no relay URL is configured. HUD replies go through the host inject path into
+live CLI agents (cursor-agent, claude, codex) via tmux or TTY.
+
+Integration gate: `scripts/check.sh` (host + protocol + APK SODA + phone logcat).
 
 ## What's in here
 

@@ -19,8 +19,12 @@ internal object SodaConfigBuilder {
   private const val MAX_CACHED_AUDIO_MS = 60_000
   private const val PLATFORM_ID_ANDROID = "android"
 
-  fun coreConfig(context: Context, languagePackDirectory: File): SodaCoreConfigProto.SodaCoreConfig {
-    val cacheDir = File(context.filesDir, "soda").apply { mkdirs() }
+  fun coreConfig(
+    context: Context,
+    languagePackDirectory: File,
+    sessionCacheId: String,
+  ): SodaCoreConfigProto.SodaCoreConfig {
+    val cacheDir = File(context.filesDir, "soda/sessions/$sessionCacheId").apply { mkdirs() }
     val micsFormat = AudioProto.RawAudioFormat.newBuilder()
       .setSampleFormat(AudioProto.RawAudioFormat.SampleFormat.INT16)
       .setSampleRate(SAMPLE_RATE_HZ)

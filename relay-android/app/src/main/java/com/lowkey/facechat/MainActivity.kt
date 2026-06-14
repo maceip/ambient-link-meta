@@ -1,6 +1,7 @@
 package com.lowkey.facechat
 
 import android.Manifest
+import android.content.Intent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -22,7 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.lowkey.facechat.hud.DatDisplaySession
+import com.lowkey.facechat.hud.GlassesDisplay
 import com.lowkey.facechat.relay.RelayService
 import com.lowkey.facechat.wearables.WearablesRepository
 import com.lowkey.facechat.wearables.WearablesRuntime
@@ -46,7 +47,6 @@ class MainActivity : ComponentActivity() {
       if (btOk) {
         WearablesRuntime.initialize(this)
         RelayService.start(this, null)
-        maybeAutoPairGlasses()
       } else {
         Toast.makeText(this, "Bluetooth permissions are required for glasses HUD", Toast.LENGTH_LONG).show()
       }
@@ -81,19 +81,15 @@ class MainActivity : ComponentActivity() {
       maybeRequestNotificationPermission()
       maybeRequestMicPermission()
       RelayService.start(this, null)
-      maybeAutoPairGlasses()
     } else {
       permissionsLauncher.launch(WearablesRuntime.PERMISSIONS)
     }
   }
 
-  /** Opens Meta's pairing flow automatically — required once before HUD cards work. */
-  private fun maybeAutoPairGlasses() {
-    val reg = wearablesRepo.registrationState.value
-    if (reg != RegistrationState.REGISTERED) {
-      Log.i("MainActivity", "auto-starting glasses registration (state=$reg)")
-      wearablesRepo.startRegistration(this)
-    }
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    Log.i("MainActivity", "onNewIntent ${intent.data}")
   }
 
   private fun maybeRequestMicPermission() {
@@ -129,6 +125,9 @@ private fun SettingsScreen(activity: ComponentActivity, wearablesRepo: Wearables
     mutableStateOf(ctx.getSharedPreferences("face-chat-final", Context.MODE_PRIVATE)
       .getString("relay_url", BuildConfig.DEFAULT_RELAY_URL) ?: BuildConfig.DEFAULT_RELAY_URL)
   }
+  LaunchedEffect(svcStatus.url) {
+    if (svcStatus.url.isNotBlank()) url = svcStatus.url
+  }
 
   Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Text("face·chat", color = Color.White, fontSize = 22.sp)
@@ -155,12 +154,21 @@ private fun SettingsScreen(activity: ComponentActivity, wearablesRepo: Wearables
       Button(onClick = { wearablesRepo.startRegistration(activity) }) { Text("pair glasses") }
     }
 
-    StatusRow("relay", if (svcStatus.connected) "connected" else "disconnected",
-      if (svcStatus.connected) Color(0xFF00FF88) else Color(0xFFFF4466))
+    StatusRow("relay", relayLabel(svcStatus), relayColor(svcStatus))
+    if (svcStatus.url.isNotBlank()) {
+      Text(svcStatus.url, color = Color(0xFFA0A0B0), fontSize = 11.sp)
+    }
+    Text(
+      if (svcStatus.running) "daemon running" else "daemon stopped",
+      color = if (svcStatus.running) Color(0xFF00FF88) else Color(0xFFA0A0B0),
+      fontSize = 11.sp,
+    )
     if (svcStatus.threads.isNotEmpty()) {
       Text("threads: " + svcStatus.threads.joinToString(", "), color = Color(0xFFA0A0B0), fontSize = 12.sp)
     }
-    svcStatus.lastError?.let { Text("last error: $it", color = Color(0xFFFF4466), fontSize = 11.sp) }
+    if (!svcStatus.running && svcStatus.lastError != null) {
+      Text("relay error: ${svcStatus.lastError}", color = Color(0xFFFF4466), fontSize = 11.sp)
+    }
 
     OutlinedTextField(
       value = url, onValueChange = { url = it },
@@ -168,16 +176,59 @@ private fun SettingsScreen(activity: ComponentActivity, wearablesRepo: Wearables
       keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Uri),
       modifier = Modifier.fillMaxWidth(),
     )
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       Button(
-        onClick = { RelayService.start(ctx, url) },
-        enabled = sdkReady,
-      ) { Text("start daemon") }
-      OutlinedButton(onClick = { RelayService.stop(ctx) }) { Text("stop") }
+        onClick = {
+          busy = true
+          scope.launch {
+            var target = url.trim()
+            if (!isUsableRelayUrl(target)) {
+              Toast.makeText(ctx, "discovering host…", Toast.LENGTH_SHORT).show()
+              target = RelayService.discoverUrl(ctx) ?: ""
+            }
+            if (!isUsableRelayUrl(target)) {
+              Toast.makeText(ctx, "no host found — start ambient-link on your Mac", Toast.LENGTH_LONG).show()
+              busy = false
+              return@launch
+            }
+            url = target
+            RelayService.start(ctx, target)
+            Toast.makeText(ctx, "connecting to $target", Toast.LENGTH_SHORT).show()
+            busy = false
+          }
+        },
+        enabled = !busy,
+      ) { Text(if (busy) "starting…" else "start daemon") }
+      OutlinedButton(
+        onClick = {
+          RelayService.stop(ctx)
+          Toast.makeText(ctx, "daemon stopped", Toast.LENGTH_SHORT).show()
+        },
+        enabled = svcStatus.running && !busy,
+      ) { Text("stop") }
+      OutlinedButton(
+        onClick = {
+          busy = true
+          scope.launch {
+            Toast.makeText(ctx, "discovering…", Toast.LENGTH_SHORT).show()
+            val found = RelayService.discoverUrl(ctx)
+            if (found != null) {
+              url = found
+              RelayService.start(ctx, found, force = true)
+              Toast.makeText(ctx, "connecting to $found", Toast.LENGTH_SHORT).show()
+            } else {
+              Toast.makeText(ctx, "no host on LAN", Toast.LENGTH_SHORT).show()
+            }
+            busy = false
+          }
+        },
+        enabled = !busy,
+      ) { Text("discover") }
     }
 
-    val scope = rememberCoroutineScope()
-    val debugSession = remember { DatDisplaySession(CoroutineScope(SupervisorJob() + Dispatchers.Main)) }
+    val debugSession = GlassesDisplay.session
     val canDebug = sdkReady && displayDevice != null && displayDevice.linkState == LinkState.CONNECTED
 
     Spacer(Modifier.height(8.dp))
@@ -200,10 +251,10 @@ private fun SettingsScreen(activity: ComponentActivity, wearablesRepo: Wearables
   }
 }
 
-private suspend fun debugFireWidget(session: DatDisplaySession, deviceId: com.meta.wearable.dat.core.types.DeviceIdentifier) {
+private suspend fun debugFireWidget(session: com.lowkey.facechat.hud.DatDisplaySession, deviceId: com.meta.wearable.dat.core.types.DeviceIdentifier) {
   val TAG = "fc.debug"
   Log.i(TAG, "prepareDisplay id=$deviceId")
-  session.prepareDisplay(deviceId) { d ->
+  session.prepareDisplay(deviceId, onReady = { d ->
     kotlinx.coroutines.GlobalScope.launch {
       d.sendContent {
         flexBox(gap = 8, padding = 16) {
@@ -220,7 +271,22 @@ private suspend fun debugFireWidget(session: DatDisplaySession, deviceId: com.me
         onFailure = { e, _ -> Log.e(TAG, "sendContent FAIL: ${e.description}") },
       )
     }
-  }
+  })
+}
+
+private fun isUsableRelayUrl(url: String) =
+  url.isNotBlank() && !url.contains("example.com")
+
+private fun relayLabel(s: RelayService.Status): String = when {
+  !s.running -> "stopped"
+  s.connected -> "connected"
+  else -> "reconnecting"
+}
+
+private fun relayColor(s: RelayService.Status): Color = when {
+  !s.running -> Color(0xFFA0A0B0)
+  s.connected -> Color(0xFF00FF88)
+  else -> Color(0xFFFFAA00)
 }
 
 @Composable

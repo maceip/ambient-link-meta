@@ -6,6 +6,7 @@ import java.time.Instant
 fun interface SodaTranscriptCallback {
   fun onTranscript(text: String, isFinal: Boolean)
   fun onDirectednessTrigger(at: Instant) = Unit
+  fun onSessionEnded() = Unit
 }
 
 sealed class SodaPrepareResult {

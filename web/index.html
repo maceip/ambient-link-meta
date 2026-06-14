@@ -1,12 +1,51 @@
-  <!-- SESSION COMPOSE (laptop / phone browser — type long prompts here) -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no">
+  <meta name="description" content="Ambient Link — agent sessions on Meta Display glasses.">
+  <meta name="mrbd-web-app-capable" content="yes">
+  <meta name="theme-color" content="#000000">
+  <title>ambient link</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="companion.css">
+  <link rel="manifest" href="manifest.json">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
+    }
+  </script>
+</head>
+<body>
+<div id="app">
+
+  <!-- THREAD LIST -->
+  <section id="view-threads" class="view">
+    <header class="hdr">
+      <button type="button" id="status" class="pill off focusable" title="connection — tap for host info" aria-label="connection status"></button>
+      <span class="title">sessions</span>
+      <span id="relay-badge" class="relay-badge hidden" title="relay debug — auto cards suppressed">debug</span>
+      <button type="button" id="btn-refresh" class="iconbtn focusable" title="refresh sessions" aria-label="refresh">↻</button>
+      <button type="button" id="btn-new" class="iconbtn focusable" title="new session" aria-label="new session">+</button>
+    </header>
+    <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
+    <p id="empty-hint" class="empty-hint">no live sessions — tap + to start one</p>
+    <ul id="threads" class="thread-list" role="list"></ul>
+  </section>
+
+  <!-- SESSION COMPOSE -->
   <section id="view-thread" class="view hidden">
     <header class="hdr">
       <button type="button" id="back" class="iconbtn focusable" aria-label="back">‹</button>
       <span id="t-title" class="title hdr-title">session</span>
+      <button type="button" id="btn-pull" class="iconbtn focusable" title="pull latest card from host" aria-label="pull card">⤓</button>
     </header>
     <div class="compose-wrap">
       <p id="w-meta" class="widget-meta"></p>
-      <div id="w-card" class="widget-card"></div>
+      <div id="w-card" class="widget-card hud-card"></div>
+      <div id="w-chips" class="widget-chips" role="group" aria-label="quick actions"></div>
     </div>
     <form id="composer" class="composer">
       <button type="button" id="dictate" class="dictate-btn focusable" title="dictate" aria-label="dictate">🎙</button>
@@ -14,3 +53,31 @@
       <button type="submit" id="send" class="send-btn focusable" title="send">↑</button>
     </form>
   </section>
+
+  <!-- NEW SESSION -->
+  <section id="view-new" class="view hidden">
+    <header class="hdr">
+      <button type="button" id="new-back" class="iconbtn focusable" aria-label="back">‹</button>
+      <span class="title">new session</span>
+    </header>
+    <div class="new-body">
+      <label class="field-label">agent</label>
+      <div id="agent-pick" class="agent-pick">
+        <button type="button" class="agent-opt primary focusable" data-agent="cursor">cursor</button>
+        <button type="button" class="agent-opt focusable" data-agent="claude">claude</button>
+        <button type="button" class="agent-opt focusable" data-agent="codex">codex</button>
+      </div>
+      <label class="field-label">working directory <span class="muted">(optional)</span></label>
+      <input id="new-cwd" class="text-input focusable" type="text" placeholder="/path/to/project">
+      <label class="field-label">first message</label>
+      <textarea id="new-prompt" class="text-input focusable" rows="4" placeholder="what should the agent do?"></textarea>
+      <button type="button" id="new-start" class="nav-item primary focusable">start session</button>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+<script src="chipset.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

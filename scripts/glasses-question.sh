@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# Pop a question on glasses HUD (needs face·chat relay on phone) + speak instructions.
+# Push a real agent question to glasses HUD. Message is required — no fake defaults.
 set -euo pipefail
 HOST="${AMBIENT_HOST:-http://127.0.0.1:5181}"
-MSG="${1:-What would you like me to do? Tap dictate on your glasses and speak.}"
+THREAD="${AMBIENT_THREAD:-cursor-ambient-link-meta}"
+
+if [[ $# -lt 1 ]] || [[ -z "${1:-}" ]]; then
+  echo "usage: $0 \"exact question text from the agent\"" >&2
+  exit 1
+fi
+MSG="$1"
 
 json_escape() {
   printf '%s' "$1" | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); if(NR>1) printf "\\n"; printf "%s",$0}'
@@ -11,7 +17,6 @@ mj=$(json_escape "$MSG")
 
 curl -sf -X POST "$HOST/face-chat/debug/yank" \
   -H 'Content-Type: application/json' \
-  -d "{\"thread\":\"cursor-5df30d48c2\",\"awaiting\":\"question\",\"lastAssistant\":\"$mj\"}" \
+  -d "{\"thread\":\"$THREAD\",\"label\":\"cursor\",\"agent\":\"cursor\",\"awaiting\":\"question\",\"lastAssistant\":\"$mj\"}" \
   >/dev/null
-
-say -v Samantha "Check your glasses. Tap dictate, speak, then tap send." 2>/dev/null || true
+echo "sent — glasses should show: dictate | dismiss"

@@ -15,7 +15,7 @@
   var titleEl    = document.getElementById('t-title');
   var wMeta      = document.getElementById('w-meta');
   var wCard      = document.getElementById('w-card');
-  var composer   = document.getElementById('composer');
+  var wChips     = document.getElementById('w-chips');
   var promptEl   = document.getElementById('prompt');
   var dictateBtn = document.getElementById('dictate');
   var btnNew     = document.getElementById('btn-new');
@@ -25,6 +25,10 @@
   var newPrompt  = document.getElementById('new-prompt');
   var newStart   = document.getElementById('new-start');
   var toastEl    = document.getElementById('toast');
+  var hostPanel  = document.getElementById('host-panel');
+  var relayBadge = document.getElementById('relay-badge');
+  var btnRefresh = document.getElementById('btn-refresh');
+  var btnPull    = document.getElementById('btn-pull');
 
   var threads = {};
   var threadOrder = [];
@@ -35,6 +39,8 @@
   var toastTimer;
   var dictRec = null;
   var pendingDeepLink = null;
+  var hostInfo = { relayDebug: false, journal: 0, delivery: {} };
+  var hostPanelOpen = false;
 
   function parseDeepLink() {
     var p = new URLSearchParams(location.search);
@@ -85,7 +91,48 @@
     row.ended = false;
   }
 
-  function setStatus(state) { statusEl.className = 'pill ' + state; }
+  function setStatus(state) {
+    statusEl.className = 'pill focusable ' + state;
+    statusEl.setAttribute('aria-label', 'connection ' + state);
+  }
+
+  function sessionDeliverable(sessionId) {
+    return !!(sessionId && hostInfo.delivery[sessionId]);
+  }
+
+  function renderHostPanel() {
+    if (!hostPanelOpen) {
+      hostPanel.classList.add('hidden');
+      return;
+    }
+    var lines = [
+      'relay_debug: ' + (hostInfo.relayDebug ? 'on' : 'off'),
+      'journal: ' + (hostInfo.journal || 0),
+      'delivery: ' + Object.keys(hostInfo.delivery).length,
+      'live threads: ' + liveThreads().length,
+    ];
+    Object.keys(hostInfo.delivery).forEach(function (sid) {
+      var d = hostInfo.delivery[sid];
+      lines.push('  ' + sid.slice(0, 8) + '… pid=' + d.PID + ' tty=' + (d.TTY || '?'));
+    });
+    hostPanel.textContent = lines.join('\n');
+    hostPanel.classList.remove('hidden');
+  }
+
+  function toggleHostPanel() {
+    hostPanelOpen = !hostPanelOpen;
+    renderHostPanel();
+  }
+
+  function pullCard(thread) {
+    if (!thread) return;
+    if (!ws || ws.readyState !== 1) {
+      showToast('not connected', 'error');
+      return;
+    }
+    ws.send(JSON.stringify({ type: 'hud_yank', thread: thread }));
+    showToast('pulling card…', 'success');
+  }
 
   function showToast(msg, kind) {
     toastEl.textContent = msg;
@@ -147,6 +194,13 @@
         t.yank.awaiting === CS.Awaiting.QUESTION ? 'question' : 'done'
       ) : 'live');
       name.appendChild(badge);
+      if (t.deliverable) {
+        var del = document.createElement('span');
+        del.className = 'status-tag delivery';
+        del.textContent = 'inject';
+        del.title = 'host can deliver messages to agent terminal';
+        name.appendChild(del);
+      }
       var preview = document.createElement('div');
       preview.className = 'preview body-preview';
       preview.textContent = previewText(t);
@@ -159,6 +213,51 @@
     });
   }
 
+  function renderChips(yank, agent) {
+    wChips.innerHTML = '';
+    if (!yank) return;
+    CS.forYank(yank).forEach(function (c) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chip focusable chip-' + CS.chipStyle(c.kind);
+      btn.textContent = c.label;
+      btn.addEventListener('click', function () {
+        if (!activeThread) return;
+        if (c.kind === 'dictate') { startDictate(); return; }
+        if (c.kind === 'dismiss') { closeThreadView(); return; }
+        if (c.kind === 'modify') {
+          showToast('use composer below to modify', 'success');
+          promptEl.focus();
+          return;
+        }
+        if (c.text) sendPrompt(activeThread, c.text);
+      });
+      wChips.appendChild(btn);
+    });
+    if (yank.awaiting === CS.Awaiting.DONE) {
+      var extras = CS.followUpChips(agent);
+      if (extras.length) {
+        var wrap = document.createElement('div');
+        wrap.className = 'followup-chips';
+        var lbl = document.createElement('div');
+        lbl.className = 'followup-label';
+        lbl.textContent = 'follow up';
+        wrap.appendChild(lbl);
+        extras.forEach(function (c) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'chip focusable chip-outline';
+          btn.textContent = c.label;
+          btn.addEventListener('click', function () {
+            if (c.text && activeThread) sendPrompt(activeThread, c.text);
+          });
+          wrap.appendChild(btn);
+        });
+        wChips.appendChild(wrap);
+      }
+    }
+  }
+
   function renderCompose() {
     var t = activeThread ? threads[activeThread] : null;
     if (!t) return;
@@ -166,15 +265,18 @@
     if (t.busy) {
       wMeta.textContent = 'thinking…';
       wCard.textContent = 'agent is working — you can still queue a message below.';
+      renderChips(null, t.agent);
       return;
     }
     if (!t.yank) {
-      wMeta.textContent = t.label + ' · online';
-      wCard.textContent = 'no pause card yet — type a message to steer the agent.';
+      wMeta.textContent = t.label + ' · online' + (t.deliverable ? ' · inject ready' : '');
+      wCard.textContent = 'no pause card yet — pull from host or type a message below.';
+      renderChips(null, t.agent);
       return;
     }
     wMeta.textContent = CS.metaLine(t.yank);
     wCard.textContent = CS.bodyText(t.yank);
+    renderChips(t.yank, t.agent);
   }
 
   function startDictate() {
@@ -305,7 +407,6 @@
     var text = (newPrompt.value || '').trim();
     if (!text) { showToast('enter a first message', 'error'); return; }
     if (!ws || ws.readyState !== 1) { showToast('not connected', 'error'); return; }
-    var cwd = (newCwd.value || '').trim();
     var existing = findThreadForAgent(pickedAgent);
     if (existing) {
       sendPrompt(existing.id, text);
@@ -313,33 +414,28 @@
       openThread(existing.id, true);
       return;
     }
-    if (pickedAgent === 'cursor') {
-      threadIdFor('cursor', cwd).then(function (sessionId) {
-        var base = { session_id: sessionId, agent: 'cursor', cwd: cwd || '.' };
-        ingest(Object.assign({}, base, { event_type: 'session_start' }))
-          .then(function () {
-            return ingest(Object.assign({}, base, {
-              event_type: 'user_prompt',
-              payload: { message: text },
-            }));
-          })
-          .then(function () {
-            var row = threadRow(sessionId);
-            row.label = cwd ? ('cursor: ' + cwd.split('/').pop()) : sessionId;
-            row.agent = 'cursor';
-            newPrompt.value = '';
-            newCwd.value = '';
-            renderThreadList();
-            openThread(sessionId, true);
-          })
-          .catch(function () { showToast('ingest failed', 'error'); });
-      });
-      return;
-    }
-    ws.send(JSON.stringify({ type: 'new_thread', agent: pickedAgent, cwd: cwd || undefined, text: text }));
-    newPrompt.value = '';
-    newCwd.value = '';
-    showView('list');
+    showToast('no live ' + pickedAgent + ' session — start the agent in a terminal on this Mac', 'error');
+  }
+
+  function startIngestSession(agent, sessionId, cwd, text) {
+    var base = { source: 'virtual', session_id: sessionId, agent: agent, cwd: cwd || '.' };
+    ingest(Object.assign({}, base, { event_type: 'session_start' }))
+      .then(function () {
+        return ingest(Object.assign({}, base, {
+          event_type: 'user_prompt',
+          payload: { message: text },
+        }));
+      })
+      .then(function () {
+        var row = threadRow(sessionId);
+        row.label = cwd ? (agent + ': ' + cwd.split('/').pop()) : sessionId;
+        row.agent = agent;
+        newPrompt.value = '';
+        newCwd.value = '';
+        renderThreadList();
+        openThread(sessionId, true);
+      })
+      .catch(function () { showToast('ingest failed', 'error'); });
   }
 
   function sendInput(thread, text, enter) {
@@ -357,6 +453,38 @@
     row.yank = yank;
   }
 
+  function syncFromHost() {
+    fetch('/face-chat/status')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        hostInfo.relayDebug = !!data.relay_debug;
+        hostInfo.journal = data.journal || 0;
+        hostInfo.delivery = {};
+        (data.delivery || []).forEach(function (d) {
+          if (d.SessionID) hostInfo.delivery[d.SessionID] = d;
+        });
+        relayBadge.classList.toggle('hidden', !hostInfo.relayDebug);
+        renderHostPanel();
+        if (!data.sessions) return;
+        data.sessions.forEach(function (s) {
+          var id = s.thread_id || s.session_id;
+          if (!id) return;
+          var row = threadRow(id);
+          if (s.label) row.label = s.label;
+          else if (s.agent && s.cwd) row.label = s.agent + ': ' + (s.cwd.split('/').pop() || s.cwd);
+          if (s.agent) row.agent = s.agent;
+          row.sessionId = s.session_id || row.sessionId;
+          row.deliverable = sessionDeliverable(s.session_id);
+          row.busy = s.state === 'BUSY' || s.state === 'STARTING';
+          row.ended = s.state === 'DEAD';
+        });
+        renderThreadList();
+        if (activeThread) renderCompose();
+      })
+      .catch(function () {});
+  }
+
   function connect() {
     setStatus('warn');
     try { ws = new WebSocket(WS_URL); }
@@ -366,6 +494,7 @@
       backoff = 500;
       setStatus('on');
       ws.send(JSON.stringify({ type: 'subscribe', since: {} }));
+      syncFromHost();
       tryPendingDeepLink();
     };
 
@@ -375,6 +504,11 @@
 
       if (msg.type === 'hello') {
         (msg.threads || []).forEach(upsertHelloRow);
+        if (msg.relay_debug) {
+          hostInfo.relayDebug = true;
+          relayBadge.classList.remove('hidden');
+          showToast('relay debug — explicit cards only', 'success');
+        }
         renderThreadList();
         tryPendingDeepLink();
         if (activeThread) renderCompose();
@@ -420,8 +554,18 @@
     backoff = Math.min(backoff * 2, 10000);
   }
 
+  setInterval(syncFromHost, 15000);
+
   backBtn.addEventListener('click', closeThreadView);
   btnNew.addEventListener('click', openNew);
+  btnRefresh.addEventListener('click', function () {
+    syncFromHost();
+    showToast('refreshed', 'success');
+  });
+  btnPull.addEventListener('click', function () {
+    if (activeThread) pullCard(activeThread);
+  });
+  statusEl.addEventListener('click', toggleHostPanel);
   newBack.addEventListener('click', function () { showView('list'); });
   newStart.addEventListener('click', startNewThread);
   agentPick.addEventListener('click', function (e) {

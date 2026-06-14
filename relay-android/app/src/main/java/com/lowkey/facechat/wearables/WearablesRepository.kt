@@ -53,7 +53,7 @@ class WearablesRepository(
     }
     scope.launch(monitoringExceptionHandler) {
       Wearables.registrationErrorStream.collect { error ->
-        Log.e(TAG, error.getLocalizedDescription(applicationContext))
+        Log.e(TAG, "registrationError=$error")
       }
     }
     scope.launch(monitoringExceptionHandler) {

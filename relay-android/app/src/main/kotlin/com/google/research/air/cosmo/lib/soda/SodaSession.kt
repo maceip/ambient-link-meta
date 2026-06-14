@@ -23,13 +23,14 @@ class SodaSession(
 ) {
   private val lock = Any()
   private var soda: Soda? = null
+  private val sessionCacheId = java.util.UUID.randomUUID().toString().replace("-", "")
 
   fun start(callback: SodaTranscriptCallback): SodaStartResult = synchronized(lock) {
     if (soda != null) return@synchronized SodaStartResult.Started
     return@synchronized runCatching {
       val sodaCallback = TranscriptingSodaCallback(callback, clock)
       val instance = Soda(context, sodaCallback)
-      val configResult = instance.initSoda(SodaConfigBuilder.coreConfig(context, packDir))
+      val configResult = instance.initSoda(SodaConfigBuilder.coreConfig(context, packDir, sessionCacheId))
       val status = configResult.configStatus
       if (status != StatusProto.ConfigStatus.NO_ERROR) {
         instance.delete()
@@ -78,6 +79,7 @@ internal class TranscriptingSodaCallback(
 
   override fun handleStop(reason: SodaStopReason) {
     Log.i(TAG, "SODA event: stop reason=$reason")
+    callback.onSessionEnded()
   }
 
   override fun handleShutdown() {

@@ -11,7 +11,10 @@ import com.meta.wearable.dat.display.Display
 import com.meta.wearable.dat.display.addDisplay
 import com.meta.wearable.dat.display.types.DisplayState
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -29,11 +32,17 @@ class DatDisplaySession(private val scope: CoroutineScope) {
   private var displayStateJob: Job? = null
   private var pendingDeviceId: DeviceIdentifier? = null
   private var onDisplayReady: ((Display) -> Unit)? = null
+  private var onDisplayFailed: (() -> Unit)? = null
 
   val activeDisplay: Display? get() = display
 
-  fun prepareDisplay(deviceId: DeviceIdentifier, onReady: (Display) -> Unit) {
+  fun prepareDisplay(
+    deviceId: DeviceIdentifier,
+    onReady: (Display) -> Unit,
+    onFailed: (() -> Unit)? = null,
+  ) {
     onDisplayReady = onReady
+    onDisplayFailed = onFailed
     val currentDisplay = synchronized(lock) { display }
     val currentSession = synchronized(lock) { session }
     val selectedId = synchronized(lock) { pendingDeviceId }
@@ -61,8 +70,9 @@ class DatDisplaySession(private val scope: CoroutineScope) {
     }
   }
 
-  private fun startSession(deviceId: DeviceIdentifier) {
-    Log.i(TAG, "createSession id=$deviceId")
+  private fun startSession(deviceId: DeviceIdentifier, attempt: Int = 0) {
+    releaseSession()
+    Log.i(TAG, "createSession id=$deviceId attempt=$attempt")
     Wearables.createSession(SpecificDeviceSelector(deviceId)).fold(
       onSuccess = { newSession ->
         synchronized(lock) { session = newSession }
@@ -93,7 +103,19 @@ class DatDisplaySession(private val scope: CoroutineScope) {
       },
       onFailure = { error, _ ->
         Log.e(TAG, "createSession FAIL: ${error.description}")
+        val alreadyExists = error.description.contains("already exists", ignoreCase = true)
+        if (alreadyExists && attempt < 2) {
+          scope.launch {
+            releaseSession()
+            delay(500L * (attempt + 1))
+            synchronized(lock) { pendingDeviceId = deviceId }
+            startSession(deviceId, attempt + 1)
+          }
+          return@fold
+        }
         synchronized(lock) { pendingDeviceId = null }
+        onDisplayFailed?.invoke()
+        onDisplayFailed = null
       },
     )
   }
@@ -126,6 +148,9 @@ class DatDisplaySession(private val scope: CoroutineScope) {
 
   private fun handleSessionError(error: DeviceSessionError) {
     Log.e(TAG, "session error: ${error.description}")
+    if (error.description.contains("update", ignoreCase = true)) {
+      Log.w(TAG, "glasses DAT app update required — open Meta AI App Connections")
+    }
     synchronized(lock) { pendingDeviceId = null }
     stop()
   }
@@ -148,7 +173,12 @@ class DatDisplaySession(private val scope: CoroutineScope) {
 
   fun stop() {
     onDisplayReady = null
+    onDisplayFailed = null
     synchronized(lock) { pendingDeviceId = null }
+    releaseSession()
+  }
+
+  private fun releaseSession() {
     sessionStateJob?.cancel()
     sessionStateJob = null
     sessionErrorJob?.cancel()
@@ -157,4 +187,10 @@ class DatDisplaySession(private val scope: CoroutineScope) {
     val s = synchronized(lock) { session.also { session = null } }
     try { s?.stop() } catch (_: Throwable) {}
   }
+}
+
+/** One glasses DAT session for the whole app — Meta SDK allows only one per device. */
+object GlassesDisplay {
+  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+  val session: DatDisplaySession = DatDisplaySession(scope)
 }

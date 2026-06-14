@@ -1,36 +1,27 @@
 #!/usr/bin/env bash
-# Install face·chat on MIUI/Xiaomi — auto-taps the "Install via USB" dialog.
+# Install face·chat on device. Uses adb install -r so MIUI remembers the signing key.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APK="$ROOT/relay-android/app/build/outputs/apk/debug/app-debug.apk"
 PKG=com.lowkey.facechat
-REMOTE=/data/local/tmp/facechat.apk
+PACK="$ROOT/relay-android/app/src/main/assets/soda/lp_cpu.zip"
 
-if [[ ! -f "$APK" ]]; then
-  (cd "$ROOT/relay-android" && ./gradlew :app:assembleDebug -q)
+if [[ ! -f "$PACK" ]]; then
+  echo "SODA pack missing — provisioning from ~/neural"
+  "$ROOT/scripts/provision-soda-from-neural.sh"
 fi
+
+(cd "$ROOT/relay-android" && ./gradlew :app:assembleDebug -q)
+"$ROOT/scripts/verify-relay-apk.sh" "$APK"
 
 adb devices | awk 'NR>1 && $2=="device"{ok=1} END{exit !ok}' || { echo "no device" >&2; exit 1; }
 
-adb push "$APK" "$REMOTE" >/dev/null
-
-# MIUI shows AdbInstallActivity — tap "Remember" + "Install" while pm install runs.
-adb shell pm install -r -g -t "$REMOTE" >/tmp/facechat-install.log 2>&1 &
-pid=$!
-for _ in $(seq 1 12); do
-  sleep 0.35
-  adb shell input tap 640 2375 2>/dev/null || true  # Remember my choice
-  adb shell input tap 375 2525 2>/dev/null || true  # Install
-done
-wait "$pid" || true
-cat /tmp/facechat-install.log
-
-if ! adb shell pm path "$PKG" >/dev/null 2>&1; then
-  echo "install failed — enable Developer options → Install via USB on phone" >&2
-  exit 1
-fi
+echo "signing cert:" $(apksigner verify --print-certs "$APK" 2>&1 | grep 'SHA-256 digest' | awk '{print $NF}')
+adb install -r -g "$APK"
 
 adb shell pm grant "$PKG" android.permission.RECORD_AUDIO 2>/dev/null || true
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+adb shell appops set "$PKG" RECORD_AUDIO allow 2>/dev/null || true
+adb shell am start -n "$PKG/.MainActivity"
 echo "installed $PKG"

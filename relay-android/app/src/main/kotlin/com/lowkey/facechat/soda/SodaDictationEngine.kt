@@ -25,13 +25,16 @@ class SodaDictationEngine(
   private val onFinal: (String) -> Unit,
   private val onError: (String) -> Unit,
   private val onStatus: (String) -> Unit,
+  private val onSessionEndedListener: () -> Unit = {},
 ) {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
   private var session: SodaSession? = null
   private var mic: MicCapture? = null
   @Volatile private var lastPartial = ""
 
-  fun start() {
+  fun lastPartialText(): String = lastPartial
+
+  fun start(useBluetoothSco: Boolean = false) {
     scope.launch {
       onStatus("preparing on-device speech…")
       if (!SodaRuntime.isAvailable(context)) {
@@ -52,17 +55,23 @@ class SodaDictationEngine(
           if (text.isBlank()) return
           if (isFinal) {
             lastPartial = ""
+            Log.i(TAG, "onFinal: $text")
             onFinal(text.trim())
           } else {
             lastPartial = text.trim()
+            Log.i(TAG, "onPartial: $lastPartial")
             onPartial(lastPartial)
           }
+        }
+        override fun onSessionEnded() {
+          Log.i(TAG, "SODA session ended")
+          onSessionEndedListener()
         }
       }
       when (val started = withContext(Dispatchers.IO) { sodaSession.start(callback) }) {
         is SodaStartResult.Started -> {
           session = sodaSession
-          val capture = MicCapture(context) { pcm, n ->
+          val capture = MicCapture(context, useBluetoothSco = useBluetoothSco) { pcm, n ->
             val direct = ByteBuffer.allocateDirect(n).order(ByteOrder.nativeOrder())
             direct.put(pcm, 0, n)
             direct.position(0)

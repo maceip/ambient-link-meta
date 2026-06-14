@@ -41,6 +41,8 @@ android {
     ndk {
       abiFilters += setOf("arm64-v8a")
     }
+
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
   buildTypes {
@@ -71,10 +73,12 @@ dependencies {
   implementation(libs.mwdat.display)
   implementation(libs.okhttp)
   implementation("com.getkeepsafe.relinker:relinker:1.4.5")
+  implementation("com.google.guava:guava:33.6.0-android")
   implementation("com.google.protobuf:protobuf-javalite:4.34.1")
   implementation(files("libs/recovered-soda.jar"))
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
   androidTestImplementation("androidx.test.ext:junit:1.2.1")
   androidTestImplementation("androidx.test:runner:1.6.2")
+  androidTestImplementation("junit:junit:4.13.2")
 }

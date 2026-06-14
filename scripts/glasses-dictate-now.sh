@@ -23,21 +23,16 @@ if ! adb install -r "$ROOT/relay-android/app/build/outputs/apk/debug/app-debug.a
   exit 1
 fi
 
-log "starting relay daemon"
-adb shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1 || true
-sleep 2
-
-log "pushing test question to glasses HUD"
+log "pushing question to glasses HUD (daemon must already be running)"
+PROMPT="${1:?usage: $0 \"exact question text\"}"
 adb shell am broadcast -a com.lowkey.facechat.DEBUG_HUD_YANK \
-  --es prompt "Speak your reply. Secondary chip is dictate — primary is yes." \
+  --es prompt "$PROMPT" \
   --es thread cursor \
   -p "$PKG"
 
 echo
 echo "ON YOUR GLASSES:"
-echo "  1. You should see a card with yes | dictate"
-echo "  2. Focus dictate (secondary) and tap the temple control"
-echo "  3. Speak — words appear on the glasses as you talk"
-echo "  4. Tap send on glasses when finished (or pause — SODA may auto-finalize)"
+echo "  1. Card shows dictate | dismiss (not yes)"
+echo "  2. Tap dictate, speak, tap send when done"
 echo
 echo "Phone stays in pocket. Host must be running at ws://YOUR_LAN_IP:5181/face-chat/ws"

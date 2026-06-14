@@ -74,13 +74,21 @@ final class RelayClient {
 
   private func parseYank(_ obj: [String: Any]) -> AgentYank {
     let id = obj["thread"] as? String ?? ""
-    let awaiting: Awaiting = (obj["awaiting"] as? String) == "permission" ? .permission : .reply
+    let awaitingRaw = obj["awaiting"] as? String ?? "done"
+    let awaiting: Awaiting = {
+      switch awaitingRaw {
+      case "permission": return .permission
+      case "question":   return .question
+      default:           return .done
+      }
+    }()
     let perm = (obj["permissionPrompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
     return AgentYank(
       thread: id,
       label: (obj["label"] as? String) ?? labels[id] ?? id,
       agent: (obj["agent"] as? String) ?? agents[id] ?? "generic",
       lastAssistant: obj["lastAssistant"] as? String ?? "",
+      lastUserInput: obj["lastUserInput"] as? String ?? "",
       awaiting: awaiting,
       permissionPrompt: (perm?.isEmpty == false) ? perm : nil
     )
@@ -108,6 +116,17 @@ final class RelayClient {
     case "thread_busy": cont.yield(.threadBusy(thread: obj["thread"] as? String ?? ""))
     default: break
     }
+  }
+
+  func sendDictateBegin(thread: String) { sendDictate(type: "dictate_begin", thread: thread, text: nil) }
+  func sendDictatePartial(thread: String, text: String) { sendDictate(type: "dictate_partial", thread: thread, text: text) }
+  func sendDictateCommit(thread: String, text: String) { sendDictate(type: "dictate_commit", thread: thread, text: text) }
+  func sendDictateAbort(thread: String) { sendDictate(type: "dictate_abort", thread: thread, text: nil) }
+
+  private func sendDictate(type: String, thread: String, text: String?) {
+    var o: [String: Any] = ["type": type, "thread": thread, "source": "phone"]
+    if let text { o["text"] = text }
+    sendJSON(o)
   }
 
   func sendInput(thread: String, text: String, enter: Bool = true) {

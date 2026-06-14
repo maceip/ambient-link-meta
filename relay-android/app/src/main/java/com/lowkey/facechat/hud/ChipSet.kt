@@ -3,10 +3,9 @@ package com.lowkey.facechat.hud
 // Pattern-classify agent output to pick HUD chip sets. Host sets awaiting=question|done.
 
 data class Chip(val label: String, val text: String?, val enter: Boolean = true, val kind: ChipKind = ChipKind.SEND)
-enum class ChipKind { SEND, DICTATE, MODIFY, DISMISS, SNOOZE }
+enum class ChipKind { SEND, DICTATE, MODIFY, SNOOZE }
 
 object ChipSet {
-  private val SEND_YES    = Chip("yes",          "yes")
   private val SEND_CONT   = Chip("continue",     "continue")
   private val SEND_VERIFY = Chip("verify",       "please verify the tasks are completed")
   private val SEND_APPRV  = Chip("approve",      "y")
@@ -16,9 +15,9 @@ object ChipSet {
 
   fun forYank(yank: AgentYank): List<Chip> = when (yank.awaiting) {
     Awaiting.PERMISSION -> listOf(SEND_APPRV, SEND_DENY)
-    Awaiting.QUESTION   -> listOf(SEND_YES, DICTATE)
-    Awaiting.DONE       -> listOf(SEND_CONT, MODIFY)
-    else                -> listOf(SEND_CONT, MODIFY)
+    Awaiting.QUESTION   -> listOf(DICTATE)
+    Awaiting.DONE       -> listOf(SEND_CONT, DICTATE)
+    else                -> listOf(SEND_CONT, DICTATE)
   }
 
   fun followUpChips(agent: String): List<Chip> {

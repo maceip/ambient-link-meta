@@ -22,6 +22,10 @@
   <string>1</string>
   <key>LSRequiresIPhoneOS</key>
   <true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>face·chat uses the microphone for dictate replies on your glasses.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>face·chat transcribes your speech into agent replies.</string>
   <key>NSBluetoothAlwaysUsageDescription</key>
   <string>face·chat uses Bluetooth to talk to your Meta Display glasses.</string>
   <key>UIApplicationSceneManifest</key>

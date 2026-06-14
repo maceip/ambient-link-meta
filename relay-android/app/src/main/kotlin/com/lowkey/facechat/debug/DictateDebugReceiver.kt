@@ -23,8 +23,11 @@ class DictateDebugReceiver : BroadcastReceiver() {
         SodaFixtureRunner(context.applicationContext).run(path, expect) { _, _ -> }
       }
       ACTION_YANK -> {
-        val prompt = intent.getStringExtra(EXTRA_PROMPT)
-          ?: "Tap dictate and speak. Send when done."
+        val prompt = intent.getStringExtra(EXTRA_PROMPT)?.takeIf { it.isNotBlank() }
+          ?: run {
+            Log.w(TAG, "DEBUG_HUD_YANK missing prompt extra")
+            return
+          }
         val thread = intent.getStringExtra(EXTRA_THREAD) ?: "cursor"
         Log.i(TAG, "debug yank thread=$thread")
         RelayService.debugYank(

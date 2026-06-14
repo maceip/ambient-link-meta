@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>face·chat · changed code (swipe-scroll HUD)</title>
+<style>
+  :root{
+    --bg:#08090b; --card:#16181c; --row:#1d2025; --row-focus:#23272e;
+    --stroke:#2e323a; --white:#f3f5f8; --second:#8c939e;
+    --blue:#1c84ff; --green:#3dc97a; --red:#f0566e; --track:#262a31;
+    --r:24px; --rr:14px;
+    font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(120% 120% at 70% 0%,#1b2230 0%,#0a0c10 60%,#000 100%);
+       display:grid;place-items:center;color:var(--white);-webkit-font-smoothing:antialiased}
+
+  .hud{width:600px;max-width:94vw;background:var(--card);border:1px solid var(--stroke);
+       border-radius:var(--r);padding:22px 22px 18px;box-shadow:0 24px 70px rgba(0,0,0,.6)}
+  .head{display:flex;align-items:center;gap:12px;margin:2px 2px 12px}
+  .glyph{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;
+         background:rgba(28,132,255,.16);color:var(--blue);font-weight:800;font-size:17px}
+  .title{font-size:27px;font-weight:800;letter-spacing:.2px;line-height:1}
+  .sub{font-size:15px;color:var(--second);margin-top:5px}
+  .spacer{flex:1}
+  .legend{font-size:12px;color:var(--second);text-align:right;line-height:1.65}
+  kbd{background:var(--row);border:1px solid var(--stroke);border-radius:6px;padding:1px 6px;
+      font-size:11px;color:var(--white)}
+
+  .list{position:relative;height:300px;overflow:auto;padding:2px;scrollbar-width:none;
+        display:flex;flex-direction:column;gap:8px;
+        mask-image:linear-gradient(to bottom,transparent,#000 7%,#000 93%,transparent)}
+  .list::-webkit-scrollbar{display:none}
+  .file{background:var(--row);border:1px solid transparent;border-radius:var(--rr);
+        padding:12px 14px;transition:transform .12s ease,box-shadow .12s ease,
+        background .12s ease,border-color .12s ease}
+  .file.focus{background:var(--row-focus);border-color:rgba(28,132,255,.55);
+        transform:translateY(-2px) scale(1.012);
+        box-shadow:0 10px 26px rgba(0,0,0,.45),0 0 0 1px rgba(28,132,255,.35),
+                   inset 0 1px 0 rgba(255,255,255,.05)}
+  .frow{display:flex;align-items:center;gap:10px}
+  .name{font-size:21px;font-weight:600}
+  .chip{font-size:13px;color:var(--second);background:#000;border:1px solid var(--stroke);
+        border-radius:7px;padding:1px 8px}
+  .churn{margin-left:auto;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+  .add{color:var(--green)} .del{color:var(--red);margin-left:10px}
+  .bar{height:9px;border-radius:5px;background:var(--track);margin-top:10px;overflow:hidden;display:flex}
+  .bar .g{background:var(--green);height:100%} .bar .r{background:var(--red);height:100%}
+
+  /* position rail */
+  .rail{height:3px;background:var(--track);border-radius:2px;margin:10px 2px 12px}
+  .rail .fill{height:100%;width:0;background:var(--blue);border-radius:2px;transition:width .18s ease}
+
+  .foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .btn{border-radius:24px;padding:11px 20px;font-size:17px;font-weight:600;border:1px solid transparent;cursor:pointer}
+  .btn.primary{background:var(--blue);color:#fff}
+  .btn.ghost{background:transparent;border-color:var(--stroke);color:var(--second)}
+  .demo{margin-left:auto;display:flex;gap:8px}
+  .demo button{font-size:13px;color:var(--white);background:var(--row);border:1px solid var(--stroke);
+       border-radius:20px;padding:8px 13px;cursor:pointer}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--row);
+       border:1px solid var(--stroke);border-radius:12px;padding:10px 16px;font-size:14px;
+       opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+  <div class="hud" id="hud">
+    <div class="head">
+      <div class="glyph">&lt;/&gt;</div>
+      <div>
+        <div class="title">Changed files</div>
+        <div class="sub">code only · <span id="count">15</span></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="legend">
+        swipe <kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> scroll down<br>
+        swipe <kbd>←</kbd> scroll up · pinch <kbd>⏎</kbd> open
+      </div>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="rail"><div class="fill" id="fill"></div></div>
+    <div class="foot">
+      <button class="btn primary" data-action="open">Open in editor</button>
+      <button class="btn ghost" data-action="dismiss">Dismiss</button>
+      <div class="demo">
+        <button id="d-down">swipe ▾</button>
+        <button id="d-up">swipe ▴</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+<script>
+/* ===========================================================================
+   SWIPE-SCROLL — the simple Neural Band model.
+
+   What a Meta Web App actually receives (and we map onto):
+     - thumb-swipe d-pad up / down / right  → scroll DOWN one
+     - thumb-swipe d-pad left               → scroll UP one
+     - index-finger pinch = enter           → open the focused row
+   Back (middle-pinch) is left ALONE — it keeps its normal system behaviour.
+   (The OS pinch+twist volume dial is not delivered to apps, so it's unused.)
+=========================================================================== */
+
+const FILES = [
+  ["HudPresenter.swift","swift",91,24],["app.js","js",51,28],
+  ["ChipSet.swift","swift",12,31],["HudPresenter.kt","kt",24,15],
+  ["HudWidgets.kt","kt",30,8],["RelayService.kt","kt",22,6],
+  ["AgentYank.swift","swift",20,7],["RelayClient.swift","swift",20,1],
+  ["RelayClient.kt","kt",10,2],["MainActivity.kt","kt",7,6],
+  ["chipset.js","js",4,5],["DictateDebugReceiver.kt","kt",5,2],
+  ["AgentYank.kt","kt",3,3],["DaemonState.swift","swift",2,2],
+  ["DatDisplaySession.kt","kt",3,0],
+].map(([name,lang,add,del])=>({name,lang,add,del}));
+const MAX = Math.max(...FILES.map(f=>f.add+f.del));
+
+const listEl=document.getElementById("list");
+const fill=document.getElementById("fill");
+document.getElementById("count").textContent=FILES.length;
+FILES.forEach(f=>{
+  const total=f.add+f.del, seg=100*total/MAX, gp=seg*f.add/total;
+  const el=document.createElement("div");
+  el.className="file"; el.tabIndex=-1;
+  el.innerHTML=`<div class="frow"><span class="name">${f.name}</span>
+    <span class="chip">${f.lang}</span>
+    <span class="churn"><span class="add">+${f.add}</span><span class="del">-${f.del}</span></span></div>
+    <div class="bar"><span class="g" style="width:${gp}%"></span><span class="r" style="width:${seg-gp}%"></span></div>`;
+  listEl.appendChild(el);
+});
+const rows=[...document.querySelectorAll(".file")];
+
+// ---- two verbs: scroll(±1) and open ----------------------------------------
+let idx=0;
+function render(){
+  rows.forEach((el,i)=>el.classList.toggle("focus",i===idx));
+  rows[idx].scrollIntoView({block:"center",behavior:"smooth"});
+  fill.style.width = (rows.length<2?100:(idx/(rows.length-1))*100)+"%";
+}
+function scroll(dir){ idx = Math.max(0, Math.min(rows.length-1, idx+dir)); render(); }  // dir +1 down / -1 up
+function open(){ toast("▶ open "+FILES[idx].name); }
+function dismiss(){ toast("✕ dismissed"); }
+render();
+
+// ---- real Neural Band hook (Meta Web App) ----------------------------------
+function onGesture(type){
+  if(type==="swipe_left") scroll(-1);                       // left  → up
+  else if(type==="swipe_up"||type==="swipe_down"||type==="swipe_right") scroll(1); // rest → down
+  else if(type==="pinch_index") open();
+  // pinch_middle (back) intentionally NOT handled → system default
+}
+// window.metaWearables?.neuralBand?.addEventListener("gesture", e=>onGesture(e.type));
+
+// ---- browser fallbacks so it's demoable now --------------------------------
+addEventListener("keydown",e=>{
+  if(e.key==="ArrowLeft"){ scroll(-1); e.preventDefault(); }
+  else if(["ArrowUp","ArrowDown","ArrowRight"," "].includes(e.key)){ scroll(1); e.preventDefault(); }
+  else if(e.key==="Enter"){ open(); }
+});
+// flick on the card: left flick → up, any other flick → down
+let p0=null;
+listEl.addEventListener("pointerdown",e=>p0=[e.clientX,e.clientY]);
+addEventListener("pointerup",e=>{
+  if(!p0)return; const dx=e.clientX-p0[0],dy=e.clientY-p0[1];
+  if(Math.hypot(dx,dy)>28) scroll(dx<-20 && Math.abs(dx)>Math.abs(dy) ? -1 : 1);
+  p0=null;
+});
+addEventListener("wheel",e=>scroll(e.deltaY<0?-1:1),{passive:true});
+document.getElementById("d-down").addEventListener("click",()=>scroll(1));
+document.getElementById("d-up").addEventListener("click",()=>scroll(-1));
+document.querySelectorAll(".btn").forEach(b=>b.addEventListener("click",()=>b.dataset.action==="open"?open():dismiss()));
+rows.forEach((el,i)=>el.addEventListener("click",()=>{idx=i;render();open();}));
+
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");
+  clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove("show"),1100);}
+</script>
+</body>
+</html>

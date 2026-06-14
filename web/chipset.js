@@ -44,15 +44,15 @@
 
   var SEND_CONT   = { label: 'continue', text: 'continue', kind: 'send' };
   var MODIFY      = { label: 'modify', text: null, kind: 'modify' };
-  var SEND_YES    = { label: 'yes', text: 'yes', kind: 'send' };
   var SEND_APPRV  = { label: 'approve', text: 'y', kind: 'send' };
   var SEND_DENY   = { label: 'deny', text: 'n', kind: 'send' };
   var DICTATE     = { label: 'dictate', text: null, kind: 'dictate' };
+  var DISMISS     = { label: 'dismiss', text: null, kind: 'dismiss' };
 
   function forYank(yank) {
     if (yank.awaiting === Awaiting.PERMISSION) return [SEND_APPRV, SEND_DENY];
-    if (yank.awaiting === Awaiting.QUESTION) return [SEND_YES, DICTATE];
-    return [SEND_CONT, MODIFY];
+    if (yank.awaiting === Awaiting.QUESTION) return [DICTATE, DISMISS];
+    return [SEND_CONT, DICTATE, DISMISS];
   }
 
   function followUpChips(agent) {
@@ -72,8 +72,7 @@
   }
 
   function chipStyle(kind) {
-    if (kind === 'send') return 'primary';
-    if (kind === 'dictate') return 'secondary';
+    if (kind === 'dictate' || kind === 'send') return 'primary';
     return 'outline';
   }
 

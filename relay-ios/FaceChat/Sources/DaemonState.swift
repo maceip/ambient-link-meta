@@ -35,7 +35,7 @@ final class DaemonState {
         case .connected:                            self.connected = true;  self.lastError = nil
         case .disconnected:                         self.connected = false
         case .hello(let threads):                   self.threads = threads.map { $0.label }
-        case .threadIdle(let yank): p.yank(yank)
+        case .threadIdle(let yank): p.onIdle(yank)
         case .hudYank(let yank):    p.yank(yank)
         case .threadBusy(let t):                    p.cancelIfFor(thread: t)
         case .error(let m):                         self.lastError = m
