@@ -1,7 +1,9 @@
 package com.lowkey.ambientlink.hud
 
 import com.meta.wearable.dat.display.Display
+import com.meta.wearable.dat.display.views.Alignment
 import com.meta.wearable.dat.display.views.ButtonStyle
+import com.meta.wearable.dat.display.views.Direction
 import com.meta.wearable.dat.display.views.FlexBoxBackground
 import com.meta.wearable.dat.display.views.TextColor
 import com.meta.wearable.dat.display.views.TextStyle
@@ -11,7 +13,16 @@ import kotlinx.coroutines.launch
 
 // DAT display cards — up to three action chips on one row (primary first for focus ring).
 object HudWidgets {
+  private const val ROOT_GAP = 10
+  private const val ROOT_PADDING = 16
+  private const val CARD_PADDING = 14
+  private const val ACTION_GAP = 12
+  private const val MAX_ACTIONS = 3
+
   private var dictateJob: Job? = null
+
+  private fun actionStyle(index: Int): ButtonStyle =
+    if (index == 0) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE
 
   fun sendPeek(
     scope: CoroutineScope,
@@ -22,15 +33,20 @@ object HudWidgets {
   ) {
     scope.launch {
       display.sendContent {
-        flexBox(gap = 8, padding = 16) {
+        flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text(yank.metaLine, style = TextStyle.META, color = TextColor.SECONDARY)
-          flexBox(padding = 12, background = FlexBoxBackground.CARD) {
+          flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text(yank.bodyText.take(220), style = TextStyle.BODY)
           }
-          flexBox(gap = 6, padding = 0, background = FlexBoxBackground.NONE) {
-            chips.take(3).forEachIndexed { i, c ->
-              val style = if (i == 0) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY
-              button(c.label, style = style, onClick = { onChip(c) })
+          flexBox(
+            direction = Direction.ROW,
+            gap = ACTION_GAP,
+            padding = 0,
+            crossAlignment = Alignment.CENTER,
+            background = FlexBoxBackground.NONE,
+          ) {
+            chips.take(MAX_ACTIONS).forEachIndexed { i, c ->
+              button(c.label, style = actionStyle(i), onClick = { onChip(c) })
             }
           }
         }
@@ -57,13 +73,19 @@ object HudWidgets {
     dictateJob = scope.launch {
       val line = partial.trim().ifBlank { "listening…" }
       display.sendContent {
-        flexBox(gap = 8, padding = 16) {
+        flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text("dictating", style = TextStyle.META, color = TextColor.SECONDARY)
-          flexBox(padding = 12, background = FlexBoxBackground.CARD) {
+          flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text(line.take(220), style = TextStyle.BODY)
           }
-          flexBox(gap = 6, padding = 0, background = FlexBoxBackground.NONE) {
-            button("cancel", style = ButtonStyle.SECONDARY, onClick = onCancel)
+          flexBox(
+            direction = Direction.ROW,
+            gap = ACTION_GAP,
+            padding = 0,
+            crossAlignment = Alignment.CENTER,
+            background = FlexBoxBackground.NONE,
+          ) {
+            button("cancel", style = ButtonStyle.OUTLINE, onClick = onCancel)
           }
         }
       }
@@ -79,9 +101,9 @@ object HudWidgets {
     dictateJob?.cancel()
     dictateJob = scope.launch {
       display.sendContent {
-        flexBox(gap = 8, padding = 16) {
+        flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text("sent", style = TextStyle.META, color = TextColor.SECONDARY)
-          flexBox(padding = 12, background = FlexBoxBackground.CARD) {
+          flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text(text.take(220), style = TextStyle.BODY)
           }
         }
@@ -98,15 +120,20 @@ object HudWidgets {
   ) {
     scope.launch {
       display.sendContent {
-        flexBox(gap = 8, padding = 16) {
+        flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text(yank.metaLine, style = TextStyle.META, color = TextColor.SECONDARY)
-          flexBox(padding = 12, background = FlexBoxBackground.CARD) {
+          flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text(yank.bodyText, style = TextStyle.BODY)
           }
-          flexBox(gap = 6, padding = 0, background = FlexBoxBackground.NONE) {
-            chips.take(3).forEachIndexed { i, c ->
-              val style = if (i == 0) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY
-              button(c.label, style = style, onClick = { onChip(c) })
+          flexBox(
+            direction = Direction.ROW,
+            gap = ACTION_GAP,
+            padding = 0,
+            crossAlignment = Alignment.CENTER,
+            background = FlexBoxBackground.NONE,
+          ) {
+            chips.take(MAX_ACTIONS).forEachIndexed { i, c ->
+              button(c.label, style = actionStyle(i), onClick = { onChip(c) })
             }
           }
         }
@@ -122,9 +149,9 @@ object HudWidgets {
   ) {
     scope.launch {
       display.sendContent {
-        flexBox(gap = 8, padding = 16) {
+        flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text("dictate error", style = TextStyle.META, color = TextColor.SECONDARY)
-          flexBox(padding = 12, background = FlexBoxBackground.CARD) {
+          flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text(message.take(220), style = TextStyle.BODY)
           }
         }
@@ -141,14 +168,20 @@ object HudWidgets {
   ) {
     scope.launch {
       display.sendContent {
-        flexBox(gap = 8, padding = 16) {
+        flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text("${yank.label} · modify", style = TextStyle.META, color = TextColor.SECONDARY)
-          flexBox(padding = 12, background = FlexBoxBackground.CARD) {
+          flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text("pick a change to send", style = TextStyle.BODY)
           }
-          flexBox(gap = 6, padding = 0, background = FlexBoxBackground.NONE) {
-            chips.forEach { c ->
-              button(c.label, style = ButtonStyle.PRIMARY, onClick = { onChip(c) })
+          flexBox(
+            direction = Direction.ROW,
+            gap = ACTION_GAP,
+            padding = 0,
+            crossAlignment = Alignment.CENTER,
+            background = FlexBoxBackground.NONE,
+          ) {
+            chips.take(MAX_ACTIONS).forEachIndexed { i, c ->
+              button(c.label, style = actionStyle(i), onClick = { onChip(c) })
             }
           }
         }

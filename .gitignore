@@ -25,6 +25,10 @@ push-test/node_modules/
 .env.*
 *.log
 
+# Local research artifacts (decompiled APKs, review screenshots, run logs) —
+# scratch only, never tracked (the dex-check dump alone is ~79 MB).
+artifacts/
+
 # OS
 .DS_Store
 Thumbs.db

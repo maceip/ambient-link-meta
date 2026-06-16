@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="description" content="Ambient Link — agent sessions on Meta Display glasses.">
   <meta name="mrbd-web-app-capable" content="yes">
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="companion.css">
   <link rel="manifest" href="manifest.json">
@@ -31,8 +32,8 @@
       <button type="button" id="btn-new" class="iconbtn focusable" title="new session" aria-label="new session">+</button>
     </header>
     <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
-    <p id="empty-hint" class="empty-hint">no live sessions — tap + to start one</p>
-    <ul id="threads" class="thread-list" role="list"></ul>
+    <p id="empty-hint" class="empty-hint">no sessions</p>
+    <div id="threads" class="thread-list" role="list"></div>
   </section>
 
   <!-- SESSION COMPOSE -->
@@ -48,9 +49,9 @@
       <div id="w-chips" class="widget-chips" role="group" aria-label="quick actions"></div>
     </div>
     <form id="composer" class="composer">
-      <button type="button" id="dictate" class="dictate-btn focusable" title="dictate" aria-label="dictate">🎙</button>
+      <button type="button" id="dictate" class="dictate-btn focusable" title="dictate" aria-label="dictate"></button>
       <input id="prompt" type="text" placeholder="type your message…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" class="focusable">
-      <button type="submit" id="send" class="send-btn focusable" title="send">↑</button>
+      <button type="submit" id="send" class="send-btn focusable" title="send" aria-label="send">↑</button>
     </form>
   </section>
 

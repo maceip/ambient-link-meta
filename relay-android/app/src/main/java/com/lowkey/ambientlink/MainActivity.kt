@@ -27,9 +27,11 @@ import com.lowkey.ambientlink.hud.GlassesDisplay
 import com.lowkey.ambientlink.relay.RelayService
 import com.lowkey.ambientlink.wearables.WearablesRepository
 import com.lowkey.ambientlink.wearables.WearablesRuntime
+import com.meta.wearable.dat.display.views.Alignment
 import com.meta.wearable.dat.core.types.LinkState
 import com.meta.wearable.dat.core.types.RegistrationState
 import com.meta.wearable.dat.display.views.ButtonStyle
+import com.meta.wearable.dat.display.views.Direction
 import com.meta.wearable.dat.display.views.FlexBoxBackground
 import com.meta.wearable.dat.display.views.TextColor
 import com.meta.wearable.dat.display.views.TextStyle
@@ -257,12 +259,18 @@ private suspend fun debugFireWidget(session: com.lowkey.ambientlink.hud.DatDispl
   session.prepareDisplay(deviceId, onReady = { d ->
     kotlinx.coroutines.GlobalScope.launch {
       d.sendContent {
-        flexBox(gap = 8, padding = 16) {
+        flexBox(gap = 10, padding = 16) {
           text("debug", style = TextStyle.META, color = TextColor.SECONDARY)
-          flexBox(padding = 12, background = FlexBoxBackground.CARD) {
+          flexBox(padding = 14, background = FlexBoxBackground.CARD) {
             text("Hello from ambient link debug.", style = TextStyle.BODY)
           }
-          flexBox(gap = 6, padding = 0, background = FlexBoxBackground.NONE) {
+          flexBox(
+            direction = Direction.ROW,
+            gap = 12,
+            padding = 0,
+            crossAlignment = Alignment.CENTER,
+            background = FlexBoxBackground.NONE,
+          ) {
             button("ok", style = ButtonStyle.PRIMARY, onClick = { Log.i(TAG, "button tapped") })
           }
         }

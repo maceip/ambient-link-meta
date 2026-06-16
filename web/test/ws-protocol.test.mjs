@@ -67,6 +67,7 @@ describe('host HTTP', () => {
     assert.ok('relay_debug' in data);
     assert.ok(Array.isArray(data.sessions));
     assert.ok(Array.isArray(data.delivery));
+    assert.ok(Array.isArray(data.outbox));
   });
 
   it('root redirects to ambient-link app base', async () => {
@@ -138,15 +139,18 @@ describe('WS protocol', () => {
     ws.close();
   });
 
-  it('input frame is accepted without closing socket', async () => {
-    const sess = (status.sessions || []).find((s) => s.state !== 'DEAD');
-    const thread = sess ? sess.thread_id : 'web-input-test';
+  it('input frame returns quiet status without closing socket', async () => {
+    const thread = 'web-input-test-' + Date.now();
+    const id = 'client-' + Date.now();
     const ws = new WebSocket(WS);
     await once(ws, 'open');
     ws.send(JSON.stringify({ type: 'subscribe', since: { journal: status.journal || 0 } }));
     await once(ws, 'message');
-    ws.send(JSON.stringify({ type: 'input', thread, text: 'web-protocol-ping', enter: true }));
-    await new Promise((r) => setTimeout(r, 300));
+    const statusP = waitForType(ws, 'input_status', 8000);
+    ws.send(JSON.stringify({ type: 'input', thread, text: 'web-protocol-ping', enter: true, client_id: id }));
+    const inputStatus = await statusP;
+    assert.equal(inputStatus.id, id);
+    assert.equal(inputStatus.status, 'failed');
     assert.equal(ws.readyState, WebSocket.OPEN);
     ws.close();
   });

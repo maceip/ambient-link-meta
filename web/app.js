@@ -16,8 +16,10 @@
   var wMeta      = document.getElementById('w-meta');
   var wCard      = document.getElementById('w-card');
   var wChips     = document.getElementById('w-chips');
+  var composer   = document.getElementById('composer');
   var promptEl   = document.getElementById('prompt');
   var dictateBtn = document.getElementById('dictate');
+  var sendBtn     = document.getElementById('send');
   var btnNew     = document.getElementById('btn-new');
   var newBack    = document.getElementById('new-back');
   var agentPick  = document.getElementById('agent-pick');
@@ -39,8 +41,10 @@
   var toastTimer;
   var dictRec = null;
   var pendingDeepLink = null;
-  var hostInfo = { relayDebug: false, journal: 0, delivery: {} };
+  var hostInfo = { relayDebug: false, journal: 0, now: 0, delivery: {} };
   var hostPanelOpen = false;
+  var pendingInputs = loadPendingInputs();
+  var deliveryStates = loadDeliveryStates();
 
   function parseDeepLink() {
     var p = new URLSearchParams(location.search);
@@ -78,7 +82,16 @@
 
   function threadRow(id) {
     if (!threads[id]) {
-      threads[id] = { id: id, label: id, agent: 'generic', busy: false, ended: false, yank: null };
+      threads[id] = {
+        id: id,
+        label: id,
+        agent: 'generic',
+        busy: false,
+        ended: false,
+        yank: null,
+        lastEventAt: 0,
+        deliverable: false,
+      };
       threadOrder.push(id);
     }
     return threads[id];
@@ -89,6 +102,7 @@
     row.label = t.label || t.id;
     row.agent = t.agent || row.agent || 'generic';
     row.ended = false;
+    row.lastEventAt = row.lastEventAt || clockNow();
   }
 
   function setStatus(state) {
@@ -108,13 +122,8 @@
     var lines = [
       'relay_debug: ' + (hostInfo.relayDebug ? 'on' : 'off'),
       'journal: ' + (hostInfo.journal || 0),
-      'delivery: ' + Object.keys(hostInfo.delivery).length,
-      'live threads: ' + liveThreads().length,
+      'live threads: ' + liveThreadCount(),
     ];
-    Object.keys(hostInfo.delivery).forEach(function (sid) {
-      var d = hostInfo.delivery[sid];
-      lines.push('  ' + sid.slice(0, 8) + '… pid=' + d.PID + ' tty=' + (d.TTY || '?'));
-    });
     hostPanel.textContent = lines.join('\n');
     hostPanel.classList.remove('hidden');
   }
@@ -151,13 +160,50 @@
     return threadOrder.map(function (id) { return threads[id]; }).filter(function (t) { return t && !t.ended; });
   }
 
+  function visibleThreads() {
+    return threadOrder
+      .map(function (id) { return threads[id]; })
+      .filter(function (t) { return !!t; })
+      .sort(function (a, b) { return (b.lastEventAt || 0) - (a.lastEventAt || 0); });
+  }
+
+  function liveThreadCount() {
+    return visibleThreads().filter(function (t) { return !t.ended; }).length;
+  }
+
+  function displayLabel(t) {
+    var label = ((t && t.label) || '').trim();
+    if (!label || /:\s*$/.test(label)) label = ((t && t.agent) || 'session').trim();
+    return label || 'session';
+  }
+
+  function relativeTime(ms) {
+    if (!ms) return '';
+    var now = clockNow();
+    var delta = Math.max(0, now - ms);
+    if (delta > 30 * 24 * 60 * 60 * 1000) return '';
+    var sec = Math.floor(delta / 1000);
+    if (sec < 45) return 'now';
+    var min = Math.floor(sec / 60);
+    if (min < 60) return min + 'm';
+    var hr = Math.floor(min / 60);
+    if (hr < 24) return hr + 'h';
+    return Math.floor(hr / 24) + 'd';
+  }
+
+  function clockNow() {
+    return hostInfo.now || Date.now();
+  }
+
   function previewText(t) {
+    if (t.ended) return 'ended';
     if (t.busy) return 'thinking…';
     if (t.yank) return truncate(CS.bodyText(t.yank), 100);
-    return 'waiting for agent…';
+    return '';
   }
 
   function statusBadge(t) {
+    if (t.ended) return 'ended';
     if (t.busy) return 'busy';
     if (t.yank && t.yank.awaiting === CS.Awaiting.PERMISSION) return 'permission';
     if (t.yank && t.yank.awaiting === CS.Awaiting.QUESTION) return 'question';
@@ -172,43 +218,55 @@
   }
 
   function renderThreadList() {
-    var live = liveThreads();
+    var live = visibleThreads();
     threadsUl.innerHTML = '';
     emptyHint.classList.toggle('hidden', live.length > 0);
     live.forEach(function (t) {
-      var li = document.createElement('li');
-      li.className = 'thread-row list-item focusable';
-      li.tabIndex = 0;
+      var li = document.createElement('button');
+      li.type = 'button';
+      li.className = 'thread-row list-item focusable ' + statusBadge(t);
+      li.setAttribute('role', 'listitem');
+      li.setAttribute('aria-label', displayLabel(t) + ', ' + (t.agent || 'agent') + ', ' + statusBadge(t));
       var av = document.createElement('div');
       av.className = 'avatar ' + statusBadge(t);
-      av.textContent = (t.label || t.id || '?').charAt(0).toUpperCase();
+      av.textContent = displayLabel(t).charAt(0).toUpperCase();
       var body = document.createElement('div');
       body.className = 'thread-body';
       var name = document.createElement('div');
       name.className = 'name';
-      name.textContent = t.label || t.id;
+      var label = document.createElement('span');
+      label.className = 'thread-label';
+      label.textContent = displayLabel(t);
+      name.appendChild(label);
       var badge = document.createElement('span');
       badge.className = 'status-tag ' + statusBadge(t);
-      badge.textContent = t.busy ? 'busy' : (t.yank ? (
+      badge.textContent = t.ended ? 'ended' : (t.busy ? 'busy' : (t.yank ? (
         t.yank.awaiting === CS.Awaiting.PERMISSION ? 'approval' :
         t.yank.awaiting === CS.Awaiting.QUESTION ? 'question' : 'done'
-      ) : 'live');
+      ) : 'live'));
       name.appendChild(badge);
-      if (t.deliverable) {
-        var del = document.createElement('span');
-        del.className = 'status-tag delivery';
-        del.textContent = 'inject';
-        del.title = 'host can deliver messages to agent terminal';
-        name.appendChild(del);
-      }
+      var meta = document.createElement('div');
+      meta.className = 'thread-meta';
+      meta.textContent = t.agent || 'agent';
       var preview = document.createElement('div');
       preview.className = 'preview body-preview';
       preview.textContent = previewText(t);
       body.appendChild(name);
-      body.appendChild(preview);
+      body.appendChild(meta);
+      if (preview.textContent) body.appendChild(preview);
+      var time = document.createElement('div');
+      time.className = 'thread-time';
+      time.textContent = relativeTime(t.lastEventAt);
       li.appendChild(av);
       li.appendChild(body);
+      li.appendChild(time);
       li.addEventListener('click', function () { openThread(t.id, true); });
+      li.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openThread(t.id, true);
+        }
+      });
       threadsUl.appendChild(li);
     });
   }
@@ -261,22 +319,35 @@
   function renderCompose() {
     var t = activeThread ? threads[activeThread] : null;
     if (!t) return;
-    titleEl.textContent = t.label || t.id;
+    titleEl.textContent = displayLabel(t);
+    setComposerEnabled(!t.ended);
+    if (t.ended) {
+      wMeta.textContent = displayLabel(t) + ' · ended';
+      wCard.textContent = t.yank ? CS.bodyText(t.yank) : 'session ended';
+      renderChips(null, t.agent);
+      return;
+    }
     if (t.busy) {
       wMeta.textContent = 'thinking…';
-      wCard.textContent = 'agent is working — you can still queue a message below.';
+      wCard.textContent = 'agent is working';
       renderChips(null, t.agent);
       return;
     }
     if (!t.yank) {
-      wMeta.textContent = t.label + ' · online' + (t.deliverable ? ' · inject ready' : '');
-      wCard.textContent = 'no pause card yet — pull from host or type a message below.';
+      wMeta.textContent = displayLabel(t) + ' · online';
+      wCard.textContent = 'ready for a message';
       renderChips(null, t.agent);
       return;
     }
-    wMeta.textContent = CS.metaLine(t.yank);
+    wMeta.textContent = CS.metaLine(Object.assign({}, t.yank, { label: displayLabel(t) }));
     wCard.textContent = CS.bodyText(t.yank);
     renderChips(t.yank, t.agent);
+  }
+
+  function setComposerEnabled(on) {
+    promptEl.disabled = !on;
+    dictateBtn.disabled = !on;
+    sendBtn.disabled = !on;
   }
 
   function startDictate() {
@@ -332,9 +403,21 @@
   }
 
   function sendPrompt(thread, text) {
-    sendInput(thread, text, true);
     var row = threads[thread];
+    if (row && row.ended) {
+      showToast('session ended', 'error');
+      return;
+    }
+    var item = buildInput(thread, text, true);
+    var sent = sendInputItem(item);
+    if (!sent) {
+      queueInput(item);
+    }
     if (row && row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: text });
+    if (row) {
+      row.lastEventAt = clockNow();
+      row.busy = true;
+    }
     promptEl.value = '';
     showToast('sent', 'success');
     renderCompose();
@@ -377,10 +460,13 @@
     }
   }
 
-  function findThreadForAgent(agent) {
+  function findThreadForAgent(agent, cwd) {
     var live = liveThreads();
+    var wantCwd = (cwd || '').trim();
     for (var i = 0; i < live.length; i++) {
-      if ((live[i].agent || '').toLowerCase() === agent.toLowerCase()) return live[i];
+      if ((live[i].agent || '').toLowerCase() !== agent.toLowerCase()) continue;
+      if (wantCwd && (live[i].cwd || '') !== wantCwd) continue;
+      return live[i];
     }
     return null;
   }
@@ -395,52 +481,244 @@
     });
   }
 
-  function ingest(ev) {
-    return fetch('/ambient-link/ingest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(ev),
-    });
-  }
-
   function startNewThread() {
     var text = (newPrompt.value || '').trim();
+    var cwd = (newCwd.value || '').trim();
     if (!text) { showToast('enter a first message', 'error'); return; }
     if (!ws || ws.readyState !== 1) { showToast('not connected', 'error'); return; }
-    var existing = findThreadForAgent(pickedAgent);
+    var existing = findThreadForAgent(pickedAgent, cwd);
     if (existing) {
       sendPrompt(existing.id, text);
       newPrompt.value = '';
       openThread(existing.id, true);
       return;
     }
-    showToast('no live ' + pickedAgent + ' session — start the agent in a terminal on this Mac', 'error');
+    createHostSession(pickedAgent, cwd, text);
   }
 
-  function startIngestSession(agent, sessionId, cwd, text) {
-    var base = { source: 'virtual', session_id: sessionId, agent: agent, cwd: cwd || '.' };
-    ingest(Object.assign({}, base, { event_type: 'session_start' }))
-      .then(function () {
-        return ingest(Object.assign({}, base, {
-          event_type: 'user_prompt',
-          payload: { message: text },
-        }));
+  function createHostSession(agent, cwd, text) {
+    fetch('/ambient-link/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: agent, cwd: cwd, prompt: text }),
+    })
+      .then(function (r) {
+        var ct = r.headers.get('content-type') || '';
+        if (!r.ok || ct.indexOf('application/json') < 0) {
+          return r.text().then(function (body) {
+            throw new Error(body || 'session create unavailable');
+          });
+        }
+        return r.json();
       })
-      .then(function () {
-        var row = threadRow(sessionId);
-        row.label = cwd ? (agent + ': ' + cwd.split('/').pop()) : sessionId;
+      .then(function (data) {
+        var id = data.thread_id || data.thread || data.session_id;
+        if (!id) return threadIdFor(agent, cwd || '.').then(function (fallback) {
+          return Object.assign({}, data, { thread_id: fallback });
+        });
+        return data;
+      })
+      .then(function (data) {
+        var id = data.thread_id || data.thread || data.session_id;
+        var row = threadRow(id);
+        row.label = data.label || (cwd ? (agent + ': ' + shortName(cwd)) : agent);
         row.agent = agent;
+        row.busy = true;
+        row.ended = false;
+        row.lastEventAt = clockNow();
         newPrompt.value = '';
         newCwd.value = '';
+        showToast('starting ' + agent, 'success');
         renderThreadList();
-        openThread(sessionId, true);
+        openThread(id, true);
       })
-      .catch(function () { showToast('ingest failed', 'error'); });
+      .catch(function () {
+        showToast('start ' + agent + ' in a terminal first', 'error');
+      });
   }
 
-  function sendInput(thread, text, enter) {
-    if (!ws || ws.readyState !== 1) return;
-    ws.send(JSON.stringify({ type: 'input', thread: thread, text: text, enter: enter !== false }));
+  function shortName(path) {
+    var trimmed = (path || '').replace(/[\\\/]+$/, '');
+    if (!trimmed) return '';
+    var parts = trimmed.split(/[\\\/]/);
+    return parts[parts.length - 1] || trimmed;
+  }
+
+  function sendInput(thread, text, enter, clientId) {
+    return sendInputItem(buildInput(thread, text, enter, clientId));
+  }
+
+  function sendInputItem(item) {
+    if (!ws || ws.readyState !== 1 || !item || !item.thread || !item.text) return false;
+    try {
+      ws.send(JSON.stringify({
+        type: 'input',
+        thread: item.thread,
+        text: item.text,
+        enter: item.enter !== false,
+        client_id: item.id,
+      }));
+      trackDelivery(item.id, {
+        thread: item.thread,
+        status: 'sent',
+        at: item.at || clockNow(),
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function buildInput(thread, text, enter, clientId) {
+    return {
+      id: clientId || newInputId(),
+      thread: thread,
+      text: text,
+      enter: enter !== false,
+      at: clockNow(),
+    };
+  }
+
+  function newInputId() {
+    return 'web-' + String(clockNow()) + '-' + Math.random().toString(36).slice(2);
+  }
+
+  function pendingKey() {
+    return 'ambient-link:pending-inputs';
+  }
+
+  function loadPendingInputs() {
+    try {
+      var raw = localStorage.getItem(pendingKey());
+      var rows = raw ? JSON.parse(raw) : [];
+      return Array.isArray(rows) ? rows.filter(function (x) {
+        return x && x.thread && x.text;
+      }) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function savePendingInputs() {
+    try {
+      localStorage.setItem(pendingKey(), JSON.stringify(pendingInputs.slice(-20)));
+    } catch (e) {}
+  }
+
+  function queueInput(item) {
+    pendingInputs.push(item);
+    trackDelivery(item.id, {
+      thread: item.thread,
+      status: 'local_pending',
+      at: item.at,
+    });
+    savePendingInputs();
+    renderHostPanel();
+  }
+
+  function flushPendingInputs() {
+    if (!pendingInputs.length || !ws || ws.readyState !== 1) return;
+    var remaining = [];
+    var sent = 0;
+    pendingInputs.forEach(function (item) {
+      if (sendInputItem(item)) {
+        sent++;
+      } else {
+        remaining.push(item);
+      }
+    });
+    if (sent) {
+      pendingInputs = remaining;
+      savePendingInputs();
+      renderThreadList();
+      if (activeThread) renderCompose();
+      renderHostPanel();
+    }
+  }
+
+  function pendingCountForThread(thread) {
+    var n = 0;
+    pendingInputs.forEach(function (item) {
+      if (item.thread === thread) n++;
+    });
+    return n;
+  }
+
+  function lastPendingText(thread) {
+    for (var i = pendingInputs.length - 1; i >= 0; i--) {
+      if (pendingInputs[i].thread === thread) return truncate(pendingInputs[i].text, 80);
+    }
+    return '';
+  }
+
+  function deliveryKey() {
+    return 'ambient-link:delivery-states';
+  }
+
+  function loadDeliveryStates() {
+    try {
+      var raw = localStorage.getItem(deliveryKey());
+      var rows = raw ? JSON.parse(raw) : {};
+      return rows && typeof rows === 'object' ? rows : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveDeliveryStates() {
+    try {
+      var keys = Object.keys(deliveryStates).sort(function (a, b) {
+        return (deliveryStates[b].updatedAt || 0) - (deliveryStates[a].updatedAt || 0);
+      });
+      var compact = {};
+      keys.slice(0, 100).forEach(function (k) { compact[k] = deliveryStates[k]; });
+      deliveryStates = compact;
+      localStorage.setItem(deliveryKey(), JSON.stringify(deliveryStates));
+    } catch (e) {}
+  }
+
+  function trackDelivery(id, fields) {
+    if (!id) return;
+    deliveryStates[id] = Object.assign({}, deliveryStates[id] || {}, fields || {}, {
+      updatedAt: clockNow(),
+    });
+    saveDeliveryStates();
+  }
+
+  function applyInputStatus(msg) {
+    if (!msg || !msg.id) return;
+    trackDelivery(msg.id, {
+      thread: msg.thread,
+      sessionId: msg.session_id,
+      status: msg.status || 'unknown',
+      error: msg.error || '',
+      pendingCount: msg.pending_count || 0,
+      relayAt: msg.at || 0,
+    });
+  }
+
+  function applyOutboxStatus(outbox) {
+    var pending = {};
+    (outbox || []).forEach(function (session) {
+      (session.messages || []).forEach(function (msg) {
+        if (!msg.id) return;
+        pending[msg.id] = true;
+        trackDelivery(msg.id, {
+          thread: msg.thread,
+          sessionId: msg.session_id,
+          status: 'queued',
+          attempts: msg.attempts || 0,
+          error: msg.last_error || '',
+          relayAt: msg.at || 0,
+        });
+      });
+    });
+    Object.keys(deliveryStates).forEach(function (id) {
+      var row = deliveryStates[id];
+      if (row && row.status === 'queued' && !pending[id]) {
+        trackDelivery(id, { status: 'delivered', error: '' });
+      }
+    });
   }
 
   function applyYank(msg) {
@@ -451,6 +729,7 @@
     row.busy = false;
     row.ended = false;
     row.yank = yank;
+    row.lastEventAt = msg.at || clockNow();
   }
 
   function syncFromHost() {
@@ -460,10 +739,12 @@
         if (!data) return;
         hostInfo.relayDebug = !!data.relay_debug;
         hostInfo.journal = data.journal || 0;
+        hostInfo.now = data.now || Date.now();
         hostInfo.delivery = {};
         (data.delivery || []).forEach(function (d) {
           if (d.SessionID) hostInfo.delivery[d.SessionID] = d;
         });
+        applyOutboxStatus(data.outbox || []);
         relayBadge.classList.toggle('hidden', !hostInfo.relayDebug);
         renderHostPanel();
         if (!data.sessions) return;
@@ -474,15 +755,23 @@
           if (s.label) row.label = s.label;
           else if (s.agent && s.cwd) row.label = s.agent + ': ' + (s.cwd.split('/').pop() || s.cwd);
           if (s.agent) row.agent = s.agent;
+          row.cwd = s.cwd || row.cwd || '';
           row.sessionId = s.session_id || row.sessionId;
           row.deliverable = sessionDeliverable(s.session_id);
           row.busy = s.state === 'BUSY' || s.state === 'STARTING';
           row.ended = s.state === 'DEAD';
+          row.lastEventAt = s.last_event_at || row.lastEventAt || clockNow();
         });
         renderThreadList();
         if (activeThread) renderCompose();
       })
       .catch(function () {});
+  }
+
+  function subscribeFromCursor(cursor) {
+    if (!ws || ws.readyState !== 1) return;
+    var since = cursor && typeof cursor === 'object' ? cursor : {};
+    ws.send(JSON.stringify({ type: 'subscribe', since: since }));
   }
 
   function connect() {
@@ -493,9 +782,6 @@
     ws.onopen = function () {
       backoff = 500;
       setStatus('on');
-      ws.send(JSON.stringify({ type: 'subscribe', since: {} }));
-      syncFromHost();
-      tryPendingDeepLink();
     };
 
     ws.onmessage = function (ev) {
@@ -503,12 +789,15 @@
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
 
       if (msg.type === 'hello') {
+        subscribeFromCursor(msg.cursor);
         (msg.threads || []).forEach(upsertHelloRow);
         if (msg.relay_debug) {
           hostInfo.relayDebug = true;
           relayBadge.classList.remove('hidden');
           showToast('relay debug — explicit cards only', 'success');
         }
+        syncFromHost();
+        flushPendingInputs();
         renderThreadList();
         tryPendingDeepLink();
         if (activeThread) renderCompose();
@@ -519,14 +808,21 @@
         var started = threadRow(msg.thread);
         if (msg.label) started.label = msg.label;
         if (msg.agent) started.agent = msg.agent;
+        if (msg.cwd) started.cwd = msg.cwd;
         started.busy = true;
+        started.ended = false;
+        started.lastEventAt = msg.at || clockNow();
       } else if (msg.type === 'thread_ended') {
         var ended = threadRow(msg.thread);
         ended.ended = true;
         ended.busy = false;
         ended.yank = null;
+        ended.lastEventAt = msg.at || clockNow();
       } else if (msg.type === 'thread_busy') {
-        threadRow(msg.thread).busy = true;
+        var busy = threadRow(msg.thread);
+        busy.busy = true;
+        busy.ended = false;
+        busy.lastEventAt = msg.at || clockNow();
       } else if (msg.type === 'thread_idle' || msg.type === 'hud_yank') {
         applyYank(msg);
       } else if (msg.type === 'dictate_partial' && activeThread === msg.thread && msg.text) {
@@ -537,6 +833,9 @@
           var row = threads[msg.thread];
           if (row && row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: msg.text });
         }
+      } else if (msg.type === 'input_status') {
+        applyInputStatus(msg);
+        return;
       } else {
         return;
       }
@@ -584,5 +883,26 @@
   pickAgent('cursor');
   renderThreadList();
   setStatus('off');
-  connect();
+  if (window.__AMBIENT_TEST__) {
+    window.__AmbientWebTest = {
+      threadRow: threadRow,
+      sendPrompt: sendPrompt,
+      sendInput: sendInput,
+      flushPendingInputs: flushPendingInputs,
+      pendingInputs: function () { return pendingInputs.slice(); },
+      deliveryStates: function () { return Object.assign({}, deliveryStates); },
+      applyInputStatus: applyInputStatus,
+      setSocket: function (fake) { ws = fake; },
+      setHostNow: function (ms) { hostInfo.now = ms; },
+      state: function () {
+        return {
+          activeThread: activeThread,
+          threads: threads,
+          threadOrder: threadOrder.slice(),
+        };
+      },
+    };
+  } else {
+    connect();
+  }
 })();
