@@ -11,6 +11,17 @@ takes already-normalized session events off the wire (per
 [ambient-link-core/protocol/PROTOCOL.md](https://github.com/maceip/ambient-link-core/blob/main/protocol/PROTOCOL.md))
 and renders them.
 
+## Companion-link contract
+
+Capture (camera/audio) follows the vendor-neutral
+[`GlassLink`](https://github.com/maceip/ambient-link-core/blob/main/contracts/GlassLink.kt)
+contract — see the routing/perf plan in
+[ambient-link-core/ROUTING.md](https://github.com/maceip/ambient-link-core/blob/main/ROUTING.md),
+extracted from the recovered Cosmo teardown. Meta implements it over DAT:
+`relay-android/.../link/GlassLink.kt` and `relay-ios/.../GlassLink.swift` (display
+side stays in `hud/`). Perf rules to honor: idempotent bind, 1-frame/10s throttle,
+TTL ephemeral buffer, capture in a typed foreground service.
+
 ## The UX, in one diagram
 
 ```
