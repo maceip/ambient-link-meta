@@ -64,6 +64,10 @@ android {
 }
 
 dependencies {
+  // Shared vendor-neutral contract + primitives (GlassLink/EphemeralBuffer/Throttle/
+  // Session/RelayClient/WearPaths). Requires core-android on mavenLocal (see settings).
+  implementation("com.ambientlink:core-android:0.1.0")
+
   implementation(libs.androidx.activity.compose)
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.material3)
