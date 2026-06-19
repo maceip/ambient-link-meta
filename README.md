@@ -20,12 +20,13 @@ alongside `EphemeralBuffer`, `Throttle`, `Session`, `RelayClient`, and `WearPath
 see the routing/perf plan in
 [ambient-link-core/ROUTING.md](https://github.com/maceip/ambient-link-core/blob/main/ROUTING.md),
 extracted from the recovered Cosmo teardown. `relay-android` consumes the library
-from mavenLocal (AGP here is 8.6 vs core-android's 8.7, so a composite build isn't
-viable — run `./gradlew publishToMavenLocal` in `core-android` once). Meta's DAT
-`GlassLink` impl uses `com.ambientlink.core.GlassLink`; the display side stays in
-`hud/` (`relay-ios/.../GlassLink.swift` still carries the Swift copy until
-`core-apple` lands). Perf rules to honor: idempotent bind, 1-frame/10s throttle,
-TTL ephemeral buffer, capture in a typed foreground service.
+via a **Gradle composite build** (`includeBuild("../../ambient-link-core/core-android")`,
+the same mechanism as `ambient-link-google`; aligned on AGP 8.7 / Kotlin 2.1.20 /
+Gradle 8.14.1, so no publish step). `SodaDictationEngine` implements the shared
+`com.ambientlink.core.SttEngine`; a DAT `GlassLink` impl would use
+`com.ambientlink.core.GlassLink` with the display side in `hud/`. Perf rules to
+honor: idempotent bind, 1-frame/10s throttle, TTL ephemeral buffer, capture in a
+typed foreground service.
 
 ## The UX, in one diagram
 

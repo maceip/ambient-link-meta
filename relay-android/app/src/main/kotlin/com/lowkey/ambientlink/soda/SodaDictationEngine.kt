@@ -2,6 +2,7 @@ package com.lowkey.ambientlink.soda
 
 import android.content.Context
 import android.util.Log
+import com.ambientlink.core.SttEngine
 import com.google.research.air.cosmo.lib.soda.SodaPrepareResult
 import com.google.research.air.cosmo.lib.soda.SodaSession
 import com.google.research.air.cosmo.lib.soda.SodaStartResult
@@ -26,13 +27,19 @@ class SodaDictationEngine(
   private val onError: (String) -> Unit,
   private val onStatus: (String) -> Unit,
   private val onSessionEndedListener: () -> Unit = {},
-) {
+) : SttEngine {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
   private var session: SodaSession? = null
   private var mic: MicCapture? = null
   @Volatile private var lastPartial = ""
 
-  fun lastPartialText(): String = lastPartial
+  override fun lastPartialText(): String = lastPartial
+
+  /** [SttEngine.start] — uses the phone mic; call [start] directly for SCO/Bluetooth. */
+  override fun start() = start(useBluetoothSco = false)
+
+  /** [SttEngine.stop] — stops and commits any trailing partial. */
+  override fun stop() = stop(commitPartial = true)
 
   fun start(useBluetoothSco: Boolean = false) {
     scope.launch {

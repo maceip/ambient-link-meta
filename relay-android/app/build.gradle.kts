@@ -64,8 +64,9 @@ android {
 }
 
 dependencies {
-  // Shared vendor-neutral contract + primitives (GlassLink/EphemeralBuffer/Throttle/
-  // Session/RelayClient/WearPaths). Requires core-android on mavenLocal (see settings).
+  // Shared vendor-neutral contract + primitives (SttEngine implemented by
+  // SodaDictationEngine; also GlassLink/EphemeralBuffer/Throttle/Session/RelayClient/
+  // WearPaths). Resolved via the composite build wired in settings.gradle.kts.
   implementation("com.ambientlink:core-android:0.1.0")
 
   implementation(libs.androidx.activity.compose)

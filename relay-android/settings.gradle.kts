@@ -22,11 +22,6 @@ val localProperties = Properties().apply {
 dependencyResolutionManagement {
   repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
   repositories {
-    // Shared vendor-neutral lib (com.ambientlink:core-android). AGP here (8.6) skews
-    // from core-android's (8.7), so this is consumed as a published AAR, not a
-    // composite build. One-time: run `./gradlew publishToMavenLocal` in
-    // ../../ambient-link-core/core-android (or resolve from GitHub Packages in CI).
-    mavenLocal()
     google()
     mavenCentral()
     // Meta DAT SDK — private GitHub Packages registry. Set github_token in local.properties.
@@ -41,6 +36,12 @@ dependencyResolutionManagement {
     }
   }
 }
+
+// Shared vendor-neutral lib (com.ambientlink:core-android), consumed as a Gradle
+// composite build — same mechanism as ambient-link-google. Aligned on AGP 8.7 /
+// Kotlin 2.1.20 / Gradle 8.14.1 so no published artifact / publish step is needed.
+// Requires ambient-link-core checked out as a sibling of ambient-link-meta.
+includeBuild("../../ambient-link-core/core-android")
 
 rootProject.name = "AmbientLinkFinal"
 include(":app")

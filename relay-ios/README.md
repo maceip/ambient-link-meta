@@ -38,6 +38,10 @@ AmbientLink/
 4. **File** → **Add Package Dependencies…** → enter
    `https://github.com/facebook/meta-wearables-dat-ios`, pin to 0.7.0, add
    both `MWDATCore` and `MWDATDisplay` products to the AmbientLink target.
+   Also add the shared core via **Add Local…** → `../../ambient-link-core/core-apple`
+   and link `AmbientLinkCore` (this is where the `GlassLink`/`Session` contract now
+   lives — the in-repo copy was removed). `RelayClient.swift` here stays the
+   vendor-specific WS client.
 5. In target settings:
    - **Signing & Capabilities** → add **Background Modes** →
      check **Background processing** (so the WS stays alive while the user
