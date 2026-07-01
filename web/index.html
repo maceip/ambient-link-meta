@@ -8,15 +8,32 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="companion.css">
+  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="companion.css?v=16">
   <link rel="manifest" href="manifest.json">
   <script>
-    if ('serviceWorker' in navigator) {
+    (function () {
+      var BUILD = 'v16';
+      if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js').catch(function () {});
+        // Self-heal: earlier installs left a stale service worker caching an old
+        // shell. Drop any cache that isn't this build before (re)registering.
+        try {
+          if (window.caches && caches.keys) {
+            caches.keys().then(function (keys) {
+              keys.forEach(function (k) {
+                if (k.indexOf('ambient-link-meta-') === 0 && k !== 'ambient-link-meta-' + BUILD) {
+                  caches.delete(k);
+                }
+              });
+            });
+          }
+        } catch (e) {}
+        navigator.serviceWorker.register('sw.js').then(function (reg) {
+          reg.update();
+        }).catch(function () {});
       });
-    }
+    })();
   </script>
 </head>
 <body>
@@ -24,16 +41,24 @@
 
   <!-- THREAD LIST -->
   <section id="view-threads" class="view">
-    <header class="hdr">
-      <button type="button" id="status" class="pill off focusable" title="connection — tap for host info" aria-label="connection status"></button>
-      <span class="title">sessions</span>
-      <span id="relay-badge" class="relay-badge hidden" title="relay debug — auto cards suppressed">debug</span>
-      <button type="button" id="btn-refresh" class="iconbtn focusable" title="refresh sessions" aria-label="refresh">↻</button>
-      <button type="button" id="btn-new" class="iconbtn focusable" title="new session" aria-label="new session">+</button>
-    </header>
+    <span id="relay-badge" class="relay-badge hidden" title="relay debug — auto cards suppressed">debug</span>
     <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
     <p id="empty-hint" class="empty-hint">no sessions</p>
     <div id="threads" class="thread-list" role="list"></div>
+    <nav id="shelf" class="shelf" role="toolbar" aria-label="sessions">
+      <button type="button" id="shelf-all" class="rbtn focusable off active" data-filter="all" title="all sessions" aria-label="all sessions">
+        <span class="rbtn-pill"><span class="rbtn-icon">✳</span><span class="rbtn-label">All</span></span>
+      </button>
+      <button type="button" class="rbtn focusable" data-filter="cursor" title="cursor sessions" aria-label="cursor sessions">
+        <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="cursor"></span><span class="rbtn-label">Cursor</span></span>
+      </button>
+      <button type="button" class="rbtn focusable" data-filter="codex" title="codex sessions" aria-label="codex sessions">
+        <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="codex"></span><span class="rbtn-label">Codex</span></span>
+      </button>
+      <button type="button" id="btn-new" class="rbtn focusable" title="new session" aria-label="new session">
+        <span class="rbtn-pill"><span class="rbtn-icon">+</span><span class="rbtn-label">New</span></span>
+      </button>
+    </nav>
   </section>
 
   <!-- SESSION COMPOSE -->
@@ -59,26 +84,23 @@
   <section id="view-new" class="view hidden">
     <header class="hdr">
       <button type="button" id="new-back" class="iconbtn focusable" aria-label="back">‹</button>
-      <span class="title">new session</span>
+      <span id="new-title" class="title hdr-title">create session</span>
+      <button type="button" id="new-start" class="start-btn focusable" aria-label="start session">START</button>
     </header>
     <div class="new-body">
-      <label class="field-label">agent</label>
-      <div id="agent-pick" class="agent-pick">
-        <button type="button" class="agent-opt primary focusable" data-agent="cursor">cursor</button>
-        <button type="button" class="agent-opt focusable" data-agent="claude">claude</button>
-        <button type="button" class="agent-opt focusable" data-agent="codex">codex</button>
-      </div>
-      <label class="field-label">working directory <span class="muted">(optional)</span></label>
+      <label class="field-label">working directory</label>
       <input id="new-cwd" class="text-input focusable" type="text" placeholder="/path/to/project">
-      <label class="field-label">first message</label>
-      <textarea id="new-prompt" class="text-input focusable" rows="4" placeholder="what should the agent do?"></textarea>
-      <button type="button" id="new-start" class="nav-item primary focusable">start session</button>
+      <label class="field-label">prompt</label>
+      <div class="prompt-field">
+        <textarea id="new-prompt" class="text-input focusable" rows="5" placeholder="what should the agent do?"></textarea>
+        <button type="button" id="new-dictate" class="dictate-btn focusable prompt-dictate" title="dictate" aria-label="dictate"></button>
+      </div>
     </div>
   </section>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="chipset.js"></script>
-<script src="app.js"></script>
+<script src="chipset.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

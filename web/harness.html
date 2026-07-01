@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUD harness</title>
+<link rel="stylesheet" href="styles.css?v=13">
+<link rel="stylesheet" href="companion.css?v=13">
+<style>
+  body { margin: 0; background: #000; color: #fff; }
+  .stage { padding: 24px; display: flex; flex-direction: column; gap: 10px; }
+  .cap { font: 12px/1.4 var(--font-sans, sans-serif); opacity: .55; letter-spacing: .04em; text-transform: uppercase; }
+  .card { background: var(--hud-glass); box-shadow: inset 0 0 0 1px var(--hud-row-edge);
+          -webkit-backdrop-filter: var(--hud-blur); backdrop-filter: var(--hud-blur);
+          border-radius: var(--radius-lg, 18px); padding: 14px 16px; max-width: 420px;
+          text-shadow: var(--hud-text-shadow); }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="cap">card</div>
+    <div class="card">
+      <div style="opacity:.7;font-size:13px;margin-bottom:4px">Mom Cell · SUN 11:18 PM</div>
+      <div style="font-size:17px;line-height:1.35">I got abruptly yanked off that call, the time ran out super quick — great to chat with you guys, love you everybody.</div>
+      <div style="opacity:.6;font-size:12px;margin-top:6px;text-align:right">Sent</div>
+    </div>
+
+    <div class="cap">button row — at rest (all icons, no movement)</div>
+    <div class="button-row">
+      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">↻</span><span class="rbtn-label">Refresh</span></span></button>
+      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">+</span><span class="rbtn-label">New</span></span></button>
+      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">⤓</span><span class="rbtn-label">Yank</span></span></button>
+      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">⌫</span><span class="rbtn-label">Dismiss</span></span></button>
+    </div>
+
+    <div class="cap">button row — first selected (icon anchored, expands right, others fixed)</div>
+    <div class="button-row">
+      <button type="button" class="rbtn selected"><span class="rbtn-pill"><span class="rbtn-icon">↻</span><span class="rbtn-label">Refresh</span></span></button>
+      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">+</span><span class="rbtn-label">New</span></span></button>
+      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">⤓</span><span class="rbtn-label">Yank</span></span></button>
+      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">⌫</span><span class="rbtn-label">Dismiss</span></span></button>
+    </div>
+
+    <div class="cap">button row — third selected (neighbors unchanged)</div>
+    <div class="button-row">
+      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">↻</span><span class="rbtn-label">Refresh</span></span></button>
+      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">+</span><span class="rbtn-label">New</span></span></button>
+      <button type="button" class="rbtn selected"><span class="rbtn-pill"><span class="rbtn-icon">⤓</span><span class="rbtn-label">Yank</span></span></button>
+      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">⌫</span><span class="rbtn-label">Dismiss</span></span></button>
+    </div>
+  </div>
+</body>
+</html>

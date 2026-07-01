@@ -45,8 +45,12 @@ object HudWidgets {
             crossAlignment = Alignment.CENTER,
             background = FlexBoxBackground.NONE,
           ) {
-            chips.take(MAX_ACTIONS).forEachIndexed { i, c ->
-              button(c.label, style = actionStyle(i), onClick = { onChip(c) })
+            chips.take(MAX_ACTIONS).forEach { c ->
+              button(
+                if (c.primary) c.label else c.glyph.ifBlank { c.label },
+                style = if (c.primary) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE,
+                onClick = { onChip(c) },
+              )
             }
           }
         }
@@ -132,8 +136,12 @@ object HudWidgets {
             crossAlignment = Alignment.CENTER,
             background = FlexBoxBackground.NONE,
           ) {
-            chips.take(MAX_ACTIONS).forEachIndexed { i, c ->
-              button(c.label, style = actionStyle(i), onClick = { onChip(c) })
+            chips.take(MAX_ACTIONS).forEach { c ->
+              button(
+                if (c.primary) c.label else c.glyph.ifBlank { c.label },
+                style = if (c.primary) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE,
+                onClick = { onChip(c) },
+              )
             }
           }
         }
@@ -183,6 +191,67 @@ object HudWidgets {
             chips.take(MAX_ACTIONS).forEachIndexed { i, c ->
               button(c.label, style = actionStyle(i), onClick = { onChip(c) })
             }
+          }
+        }
+      }
+    }
+  }
+
+  // Native session browser — a scrollable list of session rows (newest at the
+  // bottom) plus a bottom shelf of filter glyphs. Rows and glyphs are DAT buttons.
+  data class HudSession(val thread: String, val label: String, val agent: String, val status: String)
+
+  private fun agentGlyph(agent: String): String {
+    val a = agent.lowercase()
+    return when {
+      a.contains("cursor") -> "▣"
+      a.contains("claude") -> "✳"
+      a.contains("codex") || a.contains("openai") -> "❖"
+      else -> "•"
+    }
+  }
+
+  private fun statusGlyph(status: String): String = when (status) {
+    "permission" -> "⚠"
+    "question" -> "?"
+    "busy" -> "…"
+    "done" -> "✓"
+    else -> "•"
+  }
+
+  fun sendSessionList(
+    scope: CoroutineScope,
+    display: Display,
+    rows: List<HudSession>,
+    filter: String?,
+    onRow: (String) -> Unit,
+    onFilter: (String) -> Unit,
+    onBack: () -> Unit,
+  ) {
+    scope.launch {
+      display.sendContent {
+        flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
+          text(if (filter == null) "sessions" else "$filter sessions", style = TextStyle.META, color = TextColor.SECONDARY)
+          if (rows.isEmpty()) {
+            flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
+              text("no sessions yet", style = TextStyle.BODY)
+            }
+          } else {
+            rows.takeLast(8).forEach { r ->
+              button("${agentGlyph(r.agent)}  ${r.label}   ${statusGlyph(r.status)}", style = ButtonStyle.OUTLINE, onClick = { onRow(r.thread) })
+            }
+          }
+          flexBox(
+            direction = Direction.ROW,
+            gap = ACTION_GAP,
+            padding = 0,
+            crossAlignment = Alignment.CENTER,
+            background = FlexBoxBackground.NONE,
+          ) {
+            button("‹", style = ButtonStyle.OUTLINE, onClick = { onBack() })
+            button(if (filter == null) "✳ All" else "✳", style = if (filter == null) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("all") })
+            button(if (filter == "cursor") "▣ Cursor" else "▣", style = if (filter == "cursor") ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("cursor") })
+            button(if (filter == "codex") "❖ Codex" else "❖", style = if (filter == "codex") ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("codex") })
           }
         }
       }

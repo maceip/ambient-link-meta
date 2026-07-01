@@ -1,6 +1,7 @@
-// Minimal service worker — required for Meta Display web-app install. Cache-first
-// for app shell, network for ws.
-const CACHE = 'ambient-link-meta-v2';
+// Minimal service worker — required for Meta Display web-app install.
+// Network-first for the shell (so a new deploy is never masked by a stale cache),
+// cache as offline fallback. Relay paths are never intercepted.
+const CACHE = 'ambient-link-meta-v16';
 const SHELL = [
   './',
   './index.html',
@@ -23,11 +24,15 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (/^\/ambient-link\/(ws|status|pair|sessions|ingest|hooks\/|debug\/)/.test(url.pathname)) return;
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(resp => {
-    if (e.request.method === 'GET' && resp.ok) {
-      const copy = resp.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
-    }
-    return resp;
-  }).catch(() => caches.match('./index.html'))));
+  if (e.request.method !== 'GET') return;
+  // Network-first: always try the live shell/assets, fall back to cache offline.
+  e.respondWith(
+    fetch(e.request).then(resp => {
+      if (resp && resp.ok) {
+        const copy = resp.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+      }
+      return resp;
+    }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
+  );
 });

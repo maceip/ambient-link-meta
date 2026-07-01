@@ -2,22 +2,31 @@ package com.lowkey.ambientlink.hud
 
 // Pattern-classify agent output to pick HUD chip sets. Host sets awaiting=question|done.
 
-data class Chip(val label: String, val text: String?, val enter: Boolean = true, val kind: ChipKind = ChipKind.SEND)
-enum class ChipKind { SEND, DICTATE, MODIFY, SNOOZE }
+// One-label rule: the primary chip renders its word label; the rest render their
+// glyph only (see HudWidgets). Permission keeps both approve/deny labeled for safety.
+data class Chip(
+  val label: String,
+  val text: String?,
+  val enter: Boolean = true,
+  val kind: ChipKind = ChipKind.SEND,
+  val glyph: String = "",
+  val primary: Boolean = false,
+)
+enum class ChipKind { SEND, DICTATE, MODIFY, SNOOZE, BROWSE }
 
 object ChipSet {
-  private val SEND_CONT   = Chip("continue",     "continue")
-  private val SEND_VERIFY = Chip("verify",       "please verify the tasks are completed")
-  private val SEND_APPRV  = Chip("approve",      "y")
-  private val SEND_DENY   = Chip("deny",         "n")
-  private val DICTATE     = Chip("dictate",      null, kind = ChipKind.DICTATE)
-  private val MODIFY      = Chip("modify",       null, kind = ChipKind.MODIFY)
+  private val CONTINUE = Chip("Continue", "continue", kind = ChipKind.SEND, glyph = "▶", primary = true)
+  private val APPROVE  = Chip("Approve", "y", kind = ChipKind.SEND, glyph = "✓", primary = true)
+  private val DENY     = Chip("Deny", "n", kind = ChipKind.SEND, glyph = "✕", primary = true)
+  private val DICTATE_GLYPH   = Chip("Dictate", null, kind = ChipKind.DICTATE, glyph = "🎙")
+  private val DICTATE_PRIMARY = Chip("Dictate", null, kind = ChipKind.DICTATE, glyph = "🎙", primary = true)
+  private val BROWSE   = Chip("Browse", null, kind = ChipKind.BROWSE, glyph = "▤")
 
   fun forYank(yank: AgentYank): List<Chip> = when (yank.awaiting) {
-    Awaiting.PERMISSION -> listOf(SEND_APPRV, SEND_DENY)
-    Awaiting.QUESTION   -> listOf(DICTATE)
-    Awaiting.DONE       -> listOf(SEND_CONT, DICTATE)
-    else                -> listOf(SEND_CONT, DICTATE)
+    Awaiting.PERMISSION -> listOf(APPROVE, DENY, BROWSE)
+    Awaiting.QUESTION   -> listOf(DICTATE_PRIMARY, BROWSE)
+    Awaiting.DONE       -> listOf(CONTINUE, DICTATE_GLYPH, BROWSE)
+    else                -> listOf(CONTINUE, DICTATE_GLYPH, BROWSE)
   }
 
   fun followUpChips(agent: String): List<Chip> {

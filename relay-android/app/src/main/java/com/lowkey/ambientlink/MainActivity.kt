@@ -27,7 +27,7 @@ import com.lowkey.ambientlink.hud.GlassesDisplay
 import com.lowkey.ambientlink.relay.RelayService
 import com.lowkey.ambientlink.wearables.WearablesRepository
 import com.lowkey.ambientlink.wearables.WearablesRuntime
-import com.meta.wearable.dat.display.views.Alignment
+import com.meta.wearable.dat.display.views.Alignment as HudAlignment
 import com.meta.wearable.dat.core.types.LinkState
 import com.meta.wearable.dat.core.types.RegistrationState
 import com.meta.wearable.dat.display.views.ButtonStyle
@@ -39,6 +39,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class MainActivity : ComponentActivity() {
   private val wearablesRepo by lazy { WearablesRepository.getInstance(applicationContext) }
@@ -230,6 +233,29 @@ private fun SettingsScreen(activity: ComponentActivity, wearablesRepo: Wearables
       ) { Text("discover") }
     }
 
+    Spacer(Modifier.height(8.dp))
+    Text("new-session default", color = Color(0xFFA0A0B0), fontSize = 11.sp)
+    var cwd by remember {
+      mutableStateOf(
+        ctx.getSharedPreferences("ambient-link-meta", Context.MODE_PRIVATE)
+          .getString("default_cwd", "") ?: "",
+      )
+    }
+    OutlinedTextField(
+      value = cwd, onValueChange = { cwd = it },
+      label = { Text("default working directory") }, singleLine = true,
+      modifier = Modifier.fillMaxWidth(),
+    )
+    Button(onClick = {
+      val v = cwd.trim()
+      ctx.getSharedPreferences("ambient-link-meta", Context.MODE_PRIVATE)
+        .edit().putString("default_cwd", v).apply()
+      scope.launch {
+        val ok = pushDefaultCwd(url, v)
+        Toast.makeText(ctx, if (ok) "default dir saved" else "saved locally (host offline)", Toast.LENGTH_SHORT).show()
+      }
+    }) { Text("save default dir") }
+
     val debugSession = GlassesDisplay.session
     val canDebug = sdkReady && displayDevice != null && displayDevice.linkState == LinkState.CONNECTED
 
@@ -268,7 +294,7 @@ private suspend fun debugFireWidget(session: com.lowkey.ambientlink.hud.DatDispl
             direction = Direction.ROW,
             gap = 12,
             padding = 0,
-            crossAlignment = Alignment.CENTER,
+            crossAlignment = HudAlignment.CENTER,
             background = FlexBoxBackground.NONE,
           ) {
             button("ok", style = ButtonStyle.PRIMARY, onClick = { Log.i(TAG, "button tapped") })
@@ -284,6 +310,28 @@ private suspend fun debugFireWidget(session: com.lowkey.ambientlink.hud.DatDispl
 
 private fun isUsableRelayUrl(url: String) =
   url.isNotBlank() && !url.contains("example.com")
+
+// POST the default working directory to the running host so the glasses web app
+// prefills it for a new session. Best-effort; local SharedPreferences stays the
+// source of truth on the phone.
+private suspend fun pushDefaultCwd(relayUrl: String, cwd: String): Boolean = withContext(Dispatchers.IO) {
+  try {
+    var base = relayUrl.replaceFirst("wss://", "https://").replaceFirst("ws://", "http://")
+    val cut = base.indexOf("/ambient-link").let { if (it >= 0) it else base.indexOf("/face-chat") }
+    if (cut >= 0) base = base.substring(0, cut)
+    base = base.trimEnd('/')
+    if (base.isBlank()) return@withContext false
+    val payload = "{\"default_cwd\":${org.json.JSONObject.quote(cwd)}}"
+    val req = okhttp3.Request.Builder()
+      .url("$base/ambient-link/config")
+      .post(payload.toRequestBody("application/json".toMediaType()))
+      .build()
+    okhttp3.OkHttpClient().newCall(req).execute().use { it.isSuccessful }
+  } catch (e: Exception) {
+    Log.w("ambient.config", "pushDefaultCwd failed: ${e.message}")
+    false
+  }
+}
 
 private fun relayLabel(s: RelayService.Status): String = when {
   !s.running -> "stopped"

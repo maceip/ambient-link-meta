@@ -49,7 +49,11 @@ class RelayService : Service() {
     super.onCreate()
     state = this
     _status.update { it.copy(running = true) }
-    startForeground(NOTIF_ID, buildNotification("starting…"))
+    // Start as DATA_SYNC only. The 2-arg startForeground() applies the union of
+    // the manifest's declared types (dataSync|microphone), so Android 14+ would
+    // enforce the microphone FGS rules (RECORD_AUDIO + eligible state) at cold
+    // start and crash. Microphone is promoted later via setMicrophoneForeground.
+    applyForeground("starting…")
   }
 
   /** Promote FGS to microphone while glasses dictate runs (Android 14+ requires this for real audio). */
@@ -66,11 +70,17 @@ class RelayService : Service() {
 
   private fun foregroundServiceType(): Int {
     var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-    if (microphoneForeground && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+    if (microphoneForeground && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && hasRecordAudio()) {
       type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
     }
     return type
   }
+
+  // Never request the microphone FGS type without the runtime permission, or
+  // Android 14+ throws SecurityException. Dictation degrades instead of crashing.
+  private fun hasRecordAudio(): Boolean =
+    checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+      android.content.pm.PackageManager.PERMISSION_GRANTED
 
   private fun applyForeground(text: String) {
     val notification = buildNotification(text)
@@ -104,8 +114,12 @@ class RelayService : Service() {
     if (!u.startsWith("ws://") && !u.startsWith("wss://")) {
       u = if (u.startsWith("/")) "ws:/$u" else "ws://$u"
     }
-    if (!u.contains("/ambient-link/ws")) {
-      u = u.trimEnd('/') + "/ambient-link/ws"
+    u = u.trimEnd('/')
+    // Accept a bare host:port, the canonical …/ambient-link/ws, or the legacy
+    // …/face-chat/ws. Only append the default path when no /ws endpoint present,
+    // so a configured endpoint isn't double-stacked (…/face-chat/ws/ambient-link/ws).
+    if (!u.endsWith("/ws")) {
+      u += "/ambient-link/ws"
     }
     return u
   }
@@ -141,7 +155,10 @@ class RelayService : Service() {
             _status.update { s -> s.copy(connected = false) }
             setNotif("reconnecting…")
           }
-          is RelayClient.Event.Hello        -> _status.update { it.copy(threads = ev.threads.map { t -> t.label }, lastError = null) }
+          is RelayClient.Event.Hello        -> {
+            _status.update { it.copy(threads = ev.threads.map { t -> t.label }, lastError = null) }
+            p.hello(ev.threads)
+          }
           is RelayClient.Event.ThreadIdle   -> p.onIdle(ev.yank)
           is RelayClient.Event.HudYank      -> p.yank(ev.yank)
           is RelayClient.Event.ThreadBusy   -> p.cancelIfFor(ev.thread)

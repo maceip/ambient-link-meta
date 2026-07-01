@@ -15,21 +15,22 @@
 .view.hidden { display: none; }
 
 .hdr {
-  height: 64px;
+  height: 72px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  background: var(--bg-secondary);
+  gap: 10px;
+  padding: 20px 22px 8px;
+  background: #000;
   flex-shrink: 0;
 }
 .hdr .title {
   flex: 1;
   min-width: 0;
-  color: var(--text-primary);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0;
+  color: #fff;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-shadow: var(--hud-text-shadow);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -68,24 +69,20 @@
   position: relative;
   color: transparent;
   font-size: 0;
-  width: 44px;
+  width: 36px;
+  min-width: 36px;
   padding: 8px;
 }
 .pill::after {
   content: "";
-  width: 12px;
-  height: 12px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--danger);
+  background: transparent;
 }
-.pill.on::after {
-  background: var(--success);
-  box-shadow: 0 0 10px rgba(49, 209, 121, 0.76);
-}
-.pill.warn::after {
-  background: var(--warning);
-  box-shadow: 0 0 10px rgba(255, 178, 74, 0.72);
-}
+/* Healthy connection shows no badge — Meta launcher has no status chrome. */
+.pill.on::after { background: transparent; }
+.pill.warn::after { background: var(--warning); }
 .pill.off::after { background: var(--danger); }
 
 .relay-badge {
@@ -123,6 +120,7 @@
   font-size: 17px;
   font-weight: 560;
   text-align: center;
+  text-shadow: var(--hud-text-shadow);
 }
 .empty-hint.hidden { display: none; }
 
@@ -133,9 +131,9 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
   margin: 0;
-  padding: 16px 20px;
+  padding: 22px 22px 10px;
   scrollbar-width: none;
 }
 .thread-list::-webkit-scrollbar,
@@ -147,65 +145,199 @@
 .thread-row {
   appearance: none;
   font: inherit;
+  position: relative;
   width: 100%;
-  min-height: 88px;
+  min-height: 76px;
   display: grid;
-  grid-template-columns: 36px 1fr auto;
+  grid-template-columns: var(--avatar-size) 1fr auto;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 2px solid transparent;
-  border-radius: var(--radius-md);
-  background: var(--bg-tertiary);
+  column-gap: 16px;
+  padding: 12px 18px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-pill);
+  /* Solid, raised list card (matches hud-design-lab/modal.html .file). */
+  background: linear-gradient(180deg, #202329 0%, #191c21 100%);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
   cursor: pointer;
   font-size: 15px;
   text-align: left;
+  /* SDK guideline motion: container reacts on the focus curve, color on its own. */
+  transition: background var(--dur-color-in) var(--ease-color-in),
+              box-shadow var(--dur-color-in) var(--ease-color-in),
+              transform var(--dur-focus-in) var(--ease-focus-in);
 }
+/* SDK guideline: idle content sits at 80%, targeted content lifts to 100%. */
+.thread-row .name,
+.thread-row .preview,
+.thread-row .time {
+  opacity: 0.95;
+  transition: opacity var(--dur-color-in) var(--ease-color-in);
+}
+/* Focus = a bright, fully-rounded frosted capsule (the lit "Telekom" row).
+   plus-lighter makes the capsule add light over the scene (true additive HUD). */
 .thread-row:focus,
 .thread-row:focus-visible {
   outline: none;
-  border-color: var(--focus-ring);
-  box-shadow: none;
-  background: var(--bg-card);
+  background: linear-gradient(180deg, #262b33 0%, #20242b 100%);
+  border-color: rgba(28, 132, 255, 0.55);
+  transform: translateY(-2px) scale(1.012);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5),
+              0 0 0 1px rgba(28, 132, 255, 0.4),
+              inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .thread-row.ended {
-  opacity: 0.72;
+  opacity: 0.55;
 }
 
 .avatar {
-  width: 36px;
-  height: auto;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-primary);
-  font-size: 24px;
-  font-weight: 600;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
   text-align: center;
   flex-shrink: 0;
+  border-radius: 50%;
+  text-shadow: var(--hud-text-shadow);
+  /* Default circular gradient app-icon (Meta blue→violet) */
+  background: linear-gradient(135deg, #4f8cff 0%, #9a5cff 100%);
 }
-.avatar.busy { color: var(--warning); }
+/* Status-tinted gradients mirror the per-app icon gradients in the launcher. */
+.avatar.busy { background: linear-gradient(135deg, #ffb34a 0%, #ff7a59 100%); }
 .avatar.idle,
-.avatar.done { color: var(--success); }
-.avatar.question { color: var(--info); }
-.avatar.permission { color: var(--warning); }
-.avatar.ended { color: var(--text-muted); }
+.avatar.done { background: linear-gradient(135deg, #3dc97a 0%, #2aa9a0 100%); }
+.avatar.question { background: linear-gradient(135deg, #53bdeb 0%, #4f8cff 100%); }
+.avatar.permission { background: linear-gradient(135deg, #ffb34a 0%, #ff7a59 100%); }
+.avatar.ended { background: linear-gradient(135deg, #4a4d55 0%, #34363c 100%); color: #c4c8cf; }
+
+/* Brand glyph (Lobe Icons) inside the circular badge. */
+.avatar svg {
+  width: 56%;
+  height: 56%;
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* Per-agent app-icon colors (distinct per agent). */
+.avatar.agent-cursor  { background: linear-gradient(135deg, #5b8cff 0%, #9a5cff 100%); }
+.avatar.agent-claude  { background: linear-gradient(135deg, #e2876a 0%, #c2410c 100%); }
+.avatar.agent-codex   { background: linear-gradient(135deg, #19c37d 0%, #0b8f6a 100%); }
+.avatar.agent-generic { background: linear-gradient(135deg, #6b7280 0%, #3f4654 100%); }
+
+/* Rows are clean, directly-clickable list items (cards) — NOT buttons.
+   The brand glyph is a small leading indicator; selecting a row swells it slightly. */
+.thread-row:focus .avatar svg,
+.thread-row:focus-visible .avatar svg { transform: scale(1.1); }
+
+/* Targeted content lifts to full brightness (SDK interaction state spec). */
+.thread-row:focus .name, .thread-row:focus .preview, .thread-row:focus .time,
+.thread-row:focus-visible .name, .thread-row:focus-visible .preview, .thread-row:focus-visible .time {
+  opacity: 1;
+}
+
+/* Ended sessions read muted. */
+.thread-row.ended .avatar { filter: grayscale(0.7) brightness(0.7); }
+
+/* ── Button row ────────────────────────────────────────────────────────────
+   The ONLY place round buttons appear. Floats over the list/cards. Each button
+   is icon-only at rest and expands to reveal its text label when selected. */
+.button-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 18px 14px;
+}
+/* The button is a left-anchored pill. At rest it's exactly a 46px circle (icon
+   box only). When selected it grows ONLY to the right (the label's max-width
+   drives the width), so the icon never drifts and buttons to its right make
+   room instead of being covered. The pill wrapper is display:contents so the
+   <button> itself is the flex pill (keeps id/focus on the real control). */
+.rbtn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: 46px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, #23272e 0%, #191c21 100%);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: padding-right var(--dur-focus-in) var(--ease-focus-in),
+              background var(--dur-color-in) var(--ease-color-in),
+              box-shadow var(--dur-color-in) var(--ease-color-in);
+}
+.rbtn:focus { outline: none; }
+.rbtn .rbtn-pill { display: contents; }
+/* Anchored icon: a fixed 46px square pinned at the left — it never moves. */
+.rbtn .rbtn-icon {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 21px;
+  line-height: 1;
+  text-shadow: var(--hud-text-shadow);
+}
+.rbtn .rbtn-icon svg { width: 21px; height: 21px; display: block; }
+.rbtn .rbtn-label {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-shadow: var(--hud-text-shadow);
+  transition: max-width var(--dur-focus-in) var(--ease-focus-in), opacity var(--dur-color-in) var(--ease-color-in);
+}
+/* Selected/focused: grow rightward into a bright labeled capsule. */
+.rbtn:hover,
+.rbtn:focus-visible,
+.rbtn.selected {
+  padding-right: 18px;
+  background: linear-gradient(180deg, #2c313a 0%, #23272e 100%);
+  border-color: rgba(28, 132, 255, 0.55);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45),
+              0 0 0 1px rgba(28, 132, 255, 0.35),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.rbtn:hover .rbtn-label,
+.rbtn:focus-visible .rbtn-label,
+.rbtn.selected .rbtn-label {
+  max-width: 180px;
+  opacity: 1;
+}
 
 .thread-body {
+  width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 .thread-row .name {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 7px;
-  color: var(--text-primary);
-  font-size: 15px;
-  font-weight: 500;
+  gap: 8px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-shadow: var(--hud-text-shadow);
 }
 .thread-label {
   min-width: 0;
@@ -213,51 +345,62 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Agent identity is carried by the avatar color; keep rows to the Messages
+   2-line shape (name / preview / time) by collapsing the separate agent line. */
 .thread-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: none;
 }
 .thread-row .preview {
   color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.25;
+  font-size: 14px;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: var(--hud-text-shadow);
 }
 .thread-time {
-  align-self: start;
-  color: var(--text-muted);
-  font-size: 13px;
+  justify-self: end;
+  align-self: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
-  padding-top: 1px;
+  text-shadow: var(--hud-text-shadow);
 }
 
 .status-tag {
   flex: none;
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  background: none !important;
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 500;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: lowercase;
+  color: var(--text-secondary);
 }
-.status-tag.busy { background: rgba(255, 170, 0, 0.2); color: var(--warning); }
-.status-tag.idle,
-.status-tag.done { background: rgba(0, 255, 136, 0.2); color: var(--success); }
-.status-tag.permission { background: rgba(255, 170, 0, 0.2); color: var(--warning); }
-.status-tag.question { background: rgba(0, 180, 216, 0.2); color: var(--info); }
-.status-tag.online { background: rgba(0, 180, 216, 0.2); color: var(--info); }
-.status-tag.ended { background: rgba(255, 68, 102, 0.2); color: var(--danger); }
-.status-tag.delivery { background: rgba(0, 180, 216, 0.2); color: var(--info); }
+/* Status reads as a small colored dot + muted label, not a neon pill. */
+.status-tag::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+/* Label stays muted/monochrome like the launcher; only the dot carries color. */
+.status-tag.busy::before,
+.status-tag.permission::before { background: var(--warning); }
+.status-tag.idle::before,
+.status-tag.done::before { background: var(--success); }
+.status-tag.question::before,
+.status-tag.online::before,
+.status-tag.delivery::before { background: var(--info); }
+.status-tag.ended::before { background: var(--text-muted); }
 
 .compose-wrap {
   flex: 1;
@@ -277,13 +420,17 @@
 .widget-card {
   flex: 1;
   min-height: 120px;
-  padding: 16px;
-  border: 2px solid transparent;
-  border-radius: var(--radius-md);
-  background: var(--bg-card);
-  color: var(--text-primary);
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 22px;
+  /* Solid raised message card (matches modal.html .hud surface). */
+  background: linear-gradient(180deg, #1b1e23 0%, #141619 100%);
+  border: 1px solid var(--stroke);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: #fff;
   font-size: 18px;
   line-height: 1.42;
+  text-shadow: var(--hud-text-shadow);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -302,26 +449,36 @@
   flex: 1;
   min-width: 0;
   min-height: 88px;
-  border: 2px solid transparent;
+  border: 1px solid var(--stroke);
   border-radius: var(--radius-md);
   padding: 14px 16px;
   color: var(--text-primary);
-  background: var(--bg-tertiary);
+  background: linear-gradient(180deg, #23272e 0%, #191c21 100%);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   cursor: pointer;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   text-align: center;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, border-color 0.12s ease;
 }
 .chip:focus,
 .chip:focus-visible {
   outline: none;
   border-color: var(--focus-ring);
-  box-shadow: 0 0 20px var(--focus-glow);
-  background: var(--bg-card);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(28, 132, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, #2a2f37 0%, #20242b 100%);
 }
 .chip-primary {
-  background: var(--accent-primary);
-  color: #0a0a0f;
+  background: linear-gradient(180deg, #3a91ff 0%, #1c84ff 55%, #0d6ef0 100%);
+  border-color: rgba(28, 132, 255, 0.65);
+  box-shadow: 0 6px 18px rgba(28, 132, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+}
+.chip-primary:focus,
+.chip-primary:focus-visible {
+  background: linear-gradient(180deg, #4a9bff 0%, #2b8dff 100%);
+  box-shadow: 0 10px 26px rgba(28, 132, 255, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 .chip-secondary {
   background: var(--bg-tertiary);
@@ -351,20 +508,21 @@
   height: 80px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 12px 20px;
-  background: var(--bg-secondary);
+  background: transparent;
   flex-shrink: 0;
 }
 .composer input {
   min-width: 0;
   flex: 1;
   height: 56px;
-  padding: 14px 16px;
-  border: 2px solid transparent;
-  border-radius: var(--radius-md);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  padding: 14px 20px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, #1b1e23 0%, #141619 100%);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--stroke);
+  color: #fff;
   font-size: 16px;
 }
 .composer input:focus {
@@ -392,8 +550,9 @@
 }
 .dictate-btn {
   position: relative;
-  border: 2px solid transparent;
-  background: var(--bg-tertiary);
+  border: 1px solid var(--stroke);
+  background: linear-gradient(180deg, #23272e 0%, #191c21 100%);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
   font-size: 0;
 }
@@ -417,9 +576,10 @@
   transform: translateY(5px);
 }
 .send-btn {
-  border: 2px solid transparent;
-  background: var(--accent-primary);
-  color: #0a0a0f;
+  border: 1px solid rgba(28, 132, 255, 0.65);
+  background: linear-gradient(180deg, #3a91ff 0%, #1c84ff 55%, #0d6ef0 100%);
+  box-shadow: 0 6px 16px rgba(28, 132, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: #ffffff;
 }
 .dictate-btn:focus,
 .send-btn:focus {
@@ -461,21 +621,27 @@
 .agent-opt,
 .text-input,
 .new-body .nav-item {
-  border: 2px solid transparent;
+  border: 1px solid var(--stroke);
   border-radius: var(--radius-md);
-  background: var(--bg-tertiary);
+  background: linear-gradient(180deg, #20242b 0%, #191c21 100%);
   color: var(--text-primary);
 }
+.agent-opt,
+.new-body .nav-item {
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
 .agent-opt {
-  min-height: 88px;
-  padding: 14px 16px;
+  min-height: 52px;
+  padding: 10px 14px;
   cursor: pointer;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
 }
 .agent-opt.primary {
-  background: var(--accent-primary);
-  color: #0a0a0f;
+  background: linear-gradient(180deg, #3a91ff 0%, #1c84ff 55%, #0d6ef0 100%);
+  border-color: rgba(28, 132, 255, 0.65);
+  box-shadow: 0 6px 18px rgba(28, 132, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: #ffffff;
 }
 .agent-opt:focus,
 .text-input:focus,
@@ -487,7 +653,7 @@
 }
 .agent-opt.primary:focus,
 .new-body .nav-item:focus {
-  background: #33ddff;
+  background: #3d93ff;
 }
 .text-input {
   width: 100%;
@@ -503,13 +669,89 @@ textarea.text-input {
 .new-body .nav-item {
   width: 100%;
   flex: none;
-  min-height: 88px;
+  min-height: 54px;
   margin-top: auto;
   cursor: pointer;
-  background: var(--accent-primary);
-  color: #0a0a0f;
+  background: linear-gradient(180deg, #3a91ff 0%, #1c84ff 55%, #0d6ef0 100%);
+  border-color: rgba(28, 132, 255, 0.65);
+  box-shadow: 0 6px 18px rgba(28, 132, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.prompt-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.prompt-field .text-input {
+  padding-right: 58px;
+}
+/* Inline dictate control anchored in the first-message field (reuses .dictate-btn glyph). */
+.prompt-dictate {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+}
+.prompt-dictate.recording {
+  border-color: var(--danger);
+  color: var(--danger);
+  box-shadow: 0 0 16px rgba(240, 86, 110, 0.5);
+}
+
+/* ── Bottom shelf (WhatsApp-style tab bar) ─────────────────────────────────
+   Icon-only buttons at rest; the focused one (and the active agent filter)
+   expands into a labeled capsule via the shared .rbtn behavior. */
+.shelf {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 18px 16px;
+  background: #000;
+}
+.shelf .rbtn { flex: none; }
+.shelf .rbtn .rbtn-icon svg { width: 20px; height: 20px; display: block; }
+/* blob (#shelf-all) carries the connection color on its glyph */
+#shelf-all.off .rbtn-icon { color: var(--danger); }
+#shelf-all.warn .rbtn-icon { color: var(--warning); }
+#shelf-all.on .rbtn-icon { color: var(--success); }
+/* Active agent filter = bright blue labeled capsule (matches the wireframe). */
+.shelf .rbtn.active {
+  padding-right: 18px;
+  background: linear-gradient(180deg, #3a91ff 0%, #1c84ff 55%, #0d6ef0 100%);
+  border-color: rgba(28, 132, 255, 0.65);
+  box-shadow: 0 6px 18px rgba(28, 132, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.shelf .rbtn.active .rbtn-icon { color: #fff; }
+.shelf .rbtn.active .rbtn-label { max-width: 180px; opacity: 1; }
+
+/* START — the single always-labeled primary button in the new-session form. */
+#new-title { text-transform: uppercase; letter-spacing: 0.02em; }
+.start-btn {
+  flex: none;
+  height: 40px;
+  padding: 0 22px;
+  border: 1px solid rgba(28, 132, 255, 0.65);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, #3a91ff 0%, #1c84ff 55%, #0d6ef0 100%);
+  box-shadow: 0 6px 16px rgba(28, 132, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: #fff;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+.start-btn:focus,
+.start-btn:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(28, 132, 255, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .toast {

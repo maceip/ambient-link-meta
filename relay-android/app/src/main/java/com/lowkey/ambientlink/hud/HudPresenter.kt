@@ -13,6 +13,7 @@ import com.lowkey.ambientlink.wearables.WearablesRuntime
 import com.meta.wearable.dat.core.types.DeviceIdentifier
 import com.meta.wearable.dat.core.types.LinkState
 import com.meta.wearable.dat.display.Display
+import com.meta.wearable.dat.display.views.FlexBoxBackground
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,7 +29,7 @@ class HudPresenter(
   private val relay: RelayClient,
   private val wearables: WearablesRepository,
 ) {
-  enum class State { AMBIENT, PEEKING, ENGAGED, FOLLOWUP, DICTATING, SNOOZED }
+  enum class State { AMBIENT, PEEKING, ENGAGED, FOLLOWUP, DICTATING, SNOOZED, BROWSING }
 
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
   private val datSession = GlassesDisplay.session
@@ -43,23 +44,47 @@ class HudPresenter(
   /** True while DAT session is opening — blocks duplicate yanks from clobbering. */
   private var opening = false
 
+  // Native session browser model (mirrors the web home list).
+  private val sessions = LinkedHashMap<String, SessionRow>()
+  private var browseFilter: String? = null
+  data class SessionRow(
+    val thread: String,
+    var label: String,
+    var agent: String,
+    var status: String,
+    var lastEventAt: Long,
+    var yank: AgentYank?,
+  )
+
   private val PEEK_TIMEOUT_MS = 300_000L
   private val DICTATE_TIMEOUT_MS = 300_000L
   private val SNOOZE_MS = 60_000L
   private val LINK_WAIT_MS = 20_000L
   private val RENDER_DEBOUNCE_MS = 200L
+  // Auto-advance: a "done" card left untouched counts down, then fires its
+  // primary action (continue). Permission/question cards never auto-advance.
+  private val AUTO_ADVANCE_SECS = 5
+  private var autoJob: Job? = null
   private var commitJob: Job? = null
   private val COMMIT_SHOW_MS = 2_300L
   private val DICTATE_RENDER_DEBOUNCE_MS = 350L
-  /** Drop host idle refreshes right after the user dictates (avoids a second card). */
+  /** Drop host idle refreshes right after the user responds, so the lingering
+   *  idle for that thread doesn't immediately re-open the card and keep the
+   *  glasses lit while the agent picks up the input. */
   private var suppressIdleThread: String? = null
   private var suppressIdleUntilMs = 0L
+  private val RESPONDED_SUPPRESS_MS = 12_000L
+  // After the user responds, keep the screen dark for a beat so a different
+  // session's idle event doesn't immediately re-open a menu on the glasses.
+  private var quietUntilMs = 0L
+  private val QUIET_AFTER_RESPONSE_MS = 10_000L
 
   fun yank(yank: AgentYank) {
     if (!WearablesRuntime.initialized) {
       Log.w("HudPresenter", "Wearables SDK not initialized (open app and grant BT permissions)")
       return
     }
+    upsertSession(yank)
     if (state == State.DICTATING && current?.thread == yank.thread) {
       Log.i("HudPresenter", "ignore yank while dictating thread=${yank.thread}")
       return
@@ -90,6 +115,11 @@ class HudPresenter(
 
   /** Host `thread_idle` — surfaces agent idle; does not clobber an open card. */
   fun onIdle(yank: AgentYank) {
+    upsertSession(yank)
+    if (System.currentTimeMillis() < quietUntilMs) {
+      Log.i("HudPresenter", "quiet after response — skip idle thread=${yank.thread}")
+      return
+    }
     if (shouldSuppressIdle(yank.thread)) {
       Log.i("HudPresenter", "ignore thread_idle (post-reply) thread=${yank.thread}")
       return
@@ -113,13 +143,58 @@ class HudPresenter(
   private fun shouldSuppressIdle(thread: String): Boolean =
     thread == suppressIdleThread && System.currentTimeMillis() < suppressIdleUntilMs
 
+  /** Mark a thread just-responded-to so the host's still-idle event for it does
+   *  not re-open the card and re-light the display right after we tear down. */
+  private fun markResponded(thread: String) {
+    suppressIdleThread = thread
+    suppressIdleUntilMs = System.currentTimeMillis() + RESPONDED_SUPPRESS_MS
+    quietUntilMs = System.currentTimeMillis() + QUIET_AFTER_RESPONSE_MS
+  }
+
   fun cancelIfFor(thread: String) {
+    sessions[thread]?.let { it.status = "busy"; it.lastEventAt = System.currentTimeMillis() }
     queue.removeAll { it.thread == thread }
     Log.i("HudPresenter", "thread_busy $thread (HUD stays until dismissed)")
   }
 
+  /** Seed the browser's session list from the relay hello (labels + agents). */
+  fun hello(threads: List<RelayClient.ThreadMeta>) {
+    for (t in threads) {
+      val row = sessions.getOrPut(t.id) {
+        SessionRow(t.id, t.label, t.agent, "online", System.currentTimeMillis(), null)
+      }
+      if (t.label.isNotBlank()) row.label = t.label
+      if (t.agent.isNotBlank()) row.agent = t.agent
+    }
+  }
+
+  private fun upsertSession(y: AgentYank) {
+    val row = sessions.getOrPut(y.thread) {
+      SessionRow(y.thread, y.label, y.agent, "online", 0L, null)
+    }
+    if (y.label.isNotBlank()) row.label = y.label
+    if (y.agent.isNotBlank()) row.agent = y.agent
+    row.status = when (y.awaiting) {
+      Awaiting.PERMISSION -> "permission"
+      Awaiting.QUESTION -> "question"
+      else -> "done"
+    }
+    row.yank = y
+    row.lastEventAt = System.currentTimeMillis()
+  }
+
+  private fun agentMatches(agent: String, filter: String): Boolean {
+    val a = agent.lowercase()
+    return when (filter) {
+      "cursor" -> a.contains("cursor")
+      "codex" -> a.contains("codex") || a.contains("openai")
+      else -> true
+    }
+  }
+
   private fun isOccupied(): Boolean =
-    state == State.PEEKING || state == State.ENGAGED || state == State.FOLLOWUP || state == State.DICTATING
+    state == State.PEEKING || state == State.ENGAGED || state == State.FOLLOWUP ||
+      state == State.DICTATING || state == State.BROWSING
 
   private fun enqueue(yank: AgentYank) {
     queue.clear()
@@ -209,8 +284,16 @@ class HudPresenter(
           meta.values.any { isHudDevice(it) && it.linkState == LinkState.CONNECTED }
         }
       } ?: run {
-        Log.w("HudPresenter", "still no connected display device after wait")
+        // No glasses connected in time. Reset to AMBIENT instead of staying
+        // "PEEKING" forever — otherwise every later event is queued/ignored and
+        // nothing renders even once the glasses do connect. The next host event
+        // re-attempts the peek and finds the now-connected display.
+        Log.w("HudPresenter", "still no connected display device after wait — resetting to AMBIENT")
         opening = false
+        current = null
+        queue.clear()
+        lastRenderedKey = null
+        state = State.AMBIENT
         return@launch
       }
       val id = connectedDisplayDevice() ?: return@launch
@@ -248,6 +331,47 @@ class HudPresenter(
       delay(PEEK_TIMEOUT_MS)
       if (state == State.PEEKING) dismissCard()
     }
+    armAutoAdvance()
+  }
+
+  // On a "done" peek the user hasn't touched, tick a visible countdown on the
+  // primary button, then invoke it automatically. Any tap, dictate, dismiss, or
+  // card change cancels it (re-checked each tick). Never armed for permission or
+  // question cards — those always require an explicit human choice.
+  private fun armAutoAdvance() {
+    autoJob?.cancel()
+    val y = current ?: return
+    if (state != State.PEEKING || y.awaiting != Awaiting.DONE) return
+    val primary = ChipSet.forYank(y).firstOrNull { it.kind == ChipKind.SEND } ?: return
+    autoJob = scope.launch {
+      var remaining = AUTO_ADVANCE_SECS
+      while (remaining > 0) {
+        if (state != State.PEEKING || current !== y) return@launch
+        renderPeekCountdown(y, remaining)
+        delay(1_000L)
+        remaining--
+      }
+      if (state != State.PEEKING || current !== y) return@launch
+      autoJob = null
+      onChip(primary)
+    }
+  }
+
+  private fun cancelAutoAdvance() {
+    autoJob?.cancel()
+    autoJob = null
+  }
+
+  // Re-render the peek with the remaining seconds appended to the primary chip's
+  // label (e.g. "continue · 3s"). The chip's action is unchanged, so a manual tap
+  // still fires the real primary action.
+  private fun renderPeekCountdown(y: AgentYank, remaining: Int) {
+    val display = datSession.activeDisplay ?: return
+    val chips = ChipSet.forYank(y).map {
+      if (it.kind == ChipKind.SEND) it.copy(label = "${it.label} (${remaining} sec)") else it
+    }
+    lastRenderedKey = null
+    HudWidgets.sendPeek(scope, display, y, chips, ::onChip)
   }
 
   private fun renderCurrent() {
@@ -332,8 +456,7 @@ class HudPresenter(
     dictatingPartial = text
     lastRenderedKey = null
     queue.clear()
-    suppressIdleThread = y.thread
-    suppressIdleUntilMs = System.currentTimeMillis() + 6_000L
+    markResponded(y.thread)
     Log.i("HudPresenter", "dictate commit thread=${y.thread} text=$text")
     relay.sendDictateCommit(y.thread, text)
     val d = datSession.activeDisplay
@@ -438,6 +561,7 @@ class HudPresenter(
 
   private fun onChip(c: Chip) {
     val y = current ?: return
+    cancelAutoAdvance()
     if (state == State.DICTATING) {
       if (c.label == "cancel") finishDictating(commit = false)
       return
@@ -447,7 +571,11 @@ class HudPresenter(
       ChipKind.SEND -> {
         if (c.text != null) {
           relay.sendInput(y.thread, c.text, c.enter)
-          dismissCard()
+          // Responding ends this card: suppress the thread's lingering idle and
+          // go dark instead of popping the next queued card.
+          markResponded(y.thread)
+          queue.clear()
+          dismissCard(showNext = false)
         }
       }
       ChipKind.DICTATE -> startDictating(y)
@@ -463,7 +591,50 @@ class HudPresenter(
         }
         dismissCard()
       }
+      ChipKind.BROWSE -> enterBrowsing()
       ChipKind.SNOOZE -> onSnooze()
+    }
+  }
+
+  // Native session browser (opened from a card's browse glyph). Renders the
+  // session list on the glasses; a row opens that session, back goes dark.
+  private fun enterBrowsing() {
+    cancelAutoAdvance()
+    peekTimer?.cancel(); peekTimer = null
+    renderJob?.cancel()
+    current = null
+    lastRenderedKey = null
+    state = State.BROWSING
+    renderBrowser()
+  }
+
+  private fun renderBrowser() {
+    val d = datSession.activeDisplay ?: return
+    var rows = sessions.values.sortedBy { it.lastEventAt } // newest at the bottom
+    browseFilter?.let { f -> rows = rows.filter { agentMatches(it.agent, f) } }
+    val views = rows.map { HudWidgets.HudSession(it.thread, it.label, it.agent, it.status) }
+    HudWidgets.sendSessionList(
+      scope, d, views, browseFilter,
+      onRow = { openFromBrowser(it) },
+      onFilter = { setBrowseFilter(it) },
+      onBack = { dismissCard(showNext = false) },
+    )
+  }
+
+  private fun setBrowseFilter(filter: String) {
+    browseFilter = if (filter == "all") null else filter
+    renderBrowser()
+  }
+
+  private fun openFromBrowser(thread: String) {
+    state = State.AMBIENT
+    current = null
+    opening = false
+    val row = sessions[thread]
+    if (row?.yank != null) {
+      yank(row.yank!!)
+    } else {
+      relay.sendHudYank(thread) // pull the real card; HudYank event will peek it
     }
   }
 
@@ -485,6 +656,7 @@ class HudPresenter(
     peekTimer?.cancel(); peekTimer = null
     commitJob?.cancel(); commitJob = null
     renderJob?.cancel(); renderJob = null
+    cancelAutoAdvance()
     if (DictationManager.isActive()) {
       DictationManager.stop(commitPartial = false, notify = false)
     }
@@ -517,9 +689,23 @@ class HudPresenter(
     tearDownDisplay()
   }
 
-  /** Ends the glasses display session — the "call" UI goes away. */
+  /** Turn the glasses screen off. Blank the HUD first so nothing lingers lit on
+   *  the waveguide, then release the session so the glasses can sleep —
+   *  session.stop() alone can leave the last frame on until the glasses' own
+   *  timeout. */
   private fun tearDownDisplay() {
     Log.i("HudPresenter", "tear down display session")
-    datSession.stop()
+    val d = datSession.activeDisplay
+    if (d == null) {
+      datSession.stop()
+      return
+    }
+    scope.launch {
+      try {
+        d.sendContent { flexBox(gap = 0, padding = 0, background = FlexBoxBackground.NONE) {} }
+        delay(120)
+      } catch (_: Throwable) {}
+      datSession.stop()
+    }
   }
 }

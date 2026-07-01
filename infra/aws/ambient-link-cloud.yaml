@@ -1,0 +1,488 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Ambient Link WebRTC fallback - websocket signaling plus coturn.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: ambient-link
+  InstanceType:
+    Type: String
+    Default: t4g.nano
+  UbuntuAmiId:
+    Type: AWS::EC2::Image::Id
+  TurnUser:
+    Type: String
+    Default: ambient
+  TurnPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+  TurnRealm:
+    Type: String
+    Default: ambient-link
+  TurnMinPort:
+    Type: Number
+    Default: 49152
+  TurnMaxPort:
+    Type: Number
+    Default: 49200
+
+Mappings:
+  Network:
+    Defaults:
+      VpcCidr: 10.72.0.0/16
+      PublicSubnetCidr: 10.72.1.0/24
+
+Resources:
+  SignalingTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: room
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: room-index
+          KeySchema:
+            - AttributeName: room
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expires
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  SignalFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ambient-link-signaling
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:DeleteItem
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt SignalingTable.Arn
+                  - !Sub "${SignalingTable.Arn}/index/room-index"
+              - Effect: Allow
+                Action: execute-api:ManageConnections
+                Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/@connections/*"
+
+  SignalFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-signaling"
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt SignalFunctionRole.Arn
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref SignalingTable
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import time
+
+          import boto3
+          from botocore.exceptions import ClientError
+
+          TABLE_NAME = os.environ["TABLE_NAME"]
+          ddb = boto3.resource("dynamodb").Table(TABLE_NAME)
+
+          def response(status_code, body=None):
+              return {"statusCode": status_code, "body": json.dumps(body or {})}
+
+          def api_for(event):
+              rc = event["requestContext"]
+              endpoint = f"https://{rc['domainName']}/{rc['stage']}"
+              return boto3.client("apigatewaymanagementapi", endpoint_url=endpoint)
+
+          def send(api, connection_id, body):
+              try:
+                  api.post_to_connection(
+                      ConnectionId=connection_id,
+                      Data=json.dumps(body).encode("utf-8"),
+                  )
+              except ClientError as err:
+                  if err.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 410:
+                      ddb.delete_item(Key={"pk": f"conn#{connection_id}"})
+                      return
+                  raise
+
+          def peers(room):
+              if not room:
+                  return []
+              result = ddb.query(
+                  IndexName="room-index",
+                  KeyConditionExpression="room = :room",
+                  ExpressionAttributeValues={":room": room},
+              )
+              return result.get("Items", [])
+
+          def handler(event, context):
+              rc = event["requestContext"]
+              connection_id = rc["connectionId"]
+              route = rc["routeKey"]
+              now = int(time.time())
+
+              if route == "$connect":
+                  ddb.put_item(Item={
+                      "pk": f"conn#{connection_id}",
+                      "connectionId": connection_id,
+                      "room": "_lobby",
+                      "expires": now + 86400,
+                  })
+                  return response(200, {"ok": True})
+
+              if route == "$disconnect":
+                  ddb.delete_item(Key={"pk": f"conn#{connection_id}"})
+                  return response(200, {"ok": True})
+
+              try:
+                  msg = json.loads(event.get("body") or "{}")
+              except Exception:
+                  return response(400, {"error": "invalid json"})
+
+              action = msg.get("action") or msg.get("type") or route
+              room = msg.get("room") or msg.get("session") or msg.get("rendezvous") or "_default"
+              api = api_for(event)
+
+              if action == "join":
+                  ddb.update_item(
+                      Key={"pk": f"conn#{connection_id}"},
+                      UpdateExpression="SET room = :room, expires = :expires",
+                      ExpressionAttributeValues={":room": room, ":expires": now + 86400},
+                  )
+                  joined = {"type": "peer_joined", "room": room, "from": connection_id, "at": int(time.time() * 1000)}
+                  for peer in peers(room):
+                      if peer.get("connectionId") != connection_id:
+                          send(api, peer["connectionId"], joined)
+                  return response(200, {"ok": True, "room": room})
+
+              if action not in {"signal", "offer", "answer", "candidate", "leave"}:
+                  return response(400, {"error": "unknown action"})
+
+              outbound = dict(msg)
+              outbound.update({
+                  "type": action,
+                  "action": action,
+                  "room": room,
+                  "from": connection_id,
+                  "at": int(time.time() * 1000),
+              })
+              for peer in peers(room):
+                  if peer.get("connectionId") != connection_id:
+                      send(api, peer["connectionId"], outbound)
+              return response(200, {"ok": True, "room": room})
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  SignalingApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${ProjectName}-signaling"
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+
+  SignalIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SignalingApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub
+        - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations"
+        - FunctionArn: !GetAtt SignalFunction.Arn
+
+  SignalConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SignalingApi
+      RouteKey: "$connect"
+      Target: !Sub "integrations/${SignalIntegration}"
+
+  SignalDisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SignalingApi
+      RouteKey: "$disconnect"
+      Target: !Sub "integrations/${SignalIntegration}"
+
+  SignalDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SignalingApi
+      RouteKey: "$default"
+      Target: !Sub "integrations/${SignalIntegration}"
+
+  SignalJoinRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SignalingApi
+      RouteKey: join
+      Target: !Sub "integrations/${SignalIntegration}"
+
+  SignalRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SignalingApi
+      RouteKey: signal
+      Target: !Sub "integrations/${SignalIntegration}"
+
+  SignalOfferRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SignalingApi
+      RouteKey: offer
+      Target: !Sub "integrations/${SignalIntegration}"
+
+  SignalAnswerRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SignalingApi
+      RouteKey: answer
+      Target: !Sub "integrations/${SignalIntegration}"
+
+  SignalCandidateRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SignalingApi
+      RouteKey: candidate
+      Target: !Sub "integrations/${SignalIntegration}"
+
+  SignalInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SignalFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SignalingApi}/*"
+
+  SignalStage:
+    Type: AWS::ApiGatewayV2::Stage
+    DependsOn:
+      - SignalConnectRoute
+      - SignalDisconnectRoute
+      - SignalDefaultRoute
+      - SignalJoinRoute
+      - SignalRoute
+      - SignalOfferRoute
+      - SignalAnswerRoute
+      - SignalCandidateRoute
+    Properties:
+      ApiId: !Ref SignalingApi
+      StageName: prod
+      AutoDeploy: true
+
+  TurnSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${ProjectName}/turn"
+      SecretString: !Sub |
+        {"username":"${TurnUser}","password":"${TurnPassword}","realm":"${TurnRealm}"}
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [Network, Defaults, VpcCidr]
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc"
+        - Key: Project
+          Value: !Ref ProjectName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-igw"
+        - Key: Project
+          Value: !Ref ProjectName
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !FindInMap [Network, Defaults, PublicSubnetCidr]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-a"
+        - Key: Project
+          Value: !Ref ProjectName
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-rt"
+        - Key: Project
+          Value: !Ref ProjectName
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  TurnSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Ambient Link TURN
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: udp
+          FromPort: 3478
+          ToPort: 3478
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3478
+          ToPort: 3478
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: !Ref TurnMinPort
+          ToPort: !Ref TurnMaxPort
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-turn-sg"
+        - Key: Project
+          Value: !Ref ProjectName
+
+  TurnRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  TurnInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref TurnRole
+
+  TurnInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref UbuntuAmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref TurnInstanceProfile
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !GetAtt TurnSecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-turn"
+        - Key: Project
+          Value: !Ref ProjectName
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          exec > >(tee /var/log/ambient-link-turn-bootstrap.log | logger -t user-data -s 2>/dev/console) 2>&1
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y coturn snapd
+          snap install amazon-ssm-agent --classic || true
+          systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service || true
+          TOKEN="$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')"
+          PUBLIC_IP="$(curl -fsS -H "X-aws-ec2-metadata-token: ${TOKEN}" http://169.254.169.254/latest/meta-data/public-ipv4)"
+          mkdir -p /var/log/turnserver
+          cat >/etc/turnserver.conf <<EOF
+          listening-port=3478
+          listening-ip=0.0.0.0
+          relay-ip=0.0.0.0
+          external-ip=${!PUBLIC_IP}
+          fingerprint
+          lt-cred-mech
+          realm=${TurnRealm}
+          server-name=ambient-link-turn
+          user=${TurnUser}:${TurnPassword}
+          min-port=${TurnMinPort}
+          max-port=${TurnMaxPort}
+          no-cli
+          no-tlsv1
+          no-tlsv1_1
+          simple-log
+          log-file=/var/log/turnserver/turnserver.log
+          EOF
+          echo TURNSERVER_ENABLED=1 >/etc/default/coturn
+          systemctl enable --now coturn
+
+Outputs:
+  SignalingUrl:
+    Description: WebSocket signaling endpoint.
+    Value: !Sub "wss://${SignalingApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  TurnServer:
+    Description: TURN server URI.
+    Value: !Sub "turn:${TurnInstance.PublicIp}:3478?transport=udp"
+  TurnTcpServer:
+    Description: TURN TCP fallback URI.
+    Value: !Sub "turn:${TurnInstance.PublicIp}:3478?transport=tcp"
+  TurnPublicIp:
+    Description: TURN instance public IP.
+    Value: !GetAtt TurnInstance.PublicIp
+  TurnSecretArn:
+    Description: Secret containing TURN username, password, and realm.
+    Value: !Ref TurnSecret
+  TurnInstanceId:
+    Description: EC2 instance hosting coturn.
+    Value: !Ref TurnInstance

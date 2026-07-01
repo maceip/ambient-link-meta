@@ -1,0 +1,137 @@
+// ambient.proto — the SINGLE wire contract for the rebuild.
+//
+// This file is the source of truth. Every client (Go agent, phone substrate,
+// web/native consumer) is GENERATED from this file — nothing hand-writes the
+// wire shape. That is deliberate: drift between hand-written clients is the
+// failure that has to be impossible, not merely discouraged.
+//
+// Language rules baked in:
+//   - "handle" = a stable, location-independent reference to a session. It is
+//     NOT a credential and carries no permission. Never call it "identity".
+//   - "substrate" = the durable always-on node that holds the union of logs
+//     (in the target world: the phone). The runtime sessions live in.
+//
+// Two planes, one contract:
+//   - CONTROL plane (reliable, ordered): everything below except MediaFrame.
+//   - MEDIA plane (datagram, low-latency): MediaFrame — RESERVED for the audio
+//     future so audio is additive, not a redesign. Not implemented in v1.
+
+syntax = "proto3";
+
+package ambient.v1;
+
+option go_package = "ambient/v1;ambientv1";
+
+// PROTOCOL_VERSION. Sent in Hello. Peers MUST refuse a mismatch (no silent
+// best-effort). Bump only on a breaking change to this file.
+enum ProtocolVersion {
+  PROTOCOL_VERSION_UNSPECIFIED = 0;
+  PROTOCOL_VERSION_V1 = 1;
+}
+
+// Which part a connecting node plays. A FORWARD node MUST NOT be able to hold
+// state — that is enforced in code (separate entrypoint), this is just a label.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_AGENT     = 1; // per-machine: observes agents + injects replies
+  ROLE_SUBSTRATE = 2; // durable union of logs (phone)
+  ROLE_FORWARD   = 3; // dumb opaque byte relay; no store, no producers
+  ROLE_CONSUMER  = 4; // glasses / web / native UI
+}
+
+// A session is an append-only, timestamped, bidirectional log, reachable by a
+// stable handle that does NOT encode where it executes.
+message SessionRef {
+  string handle = 1; // stable, location-independent reference (not a credential)
+  string agent  = 2; // "cursor" | "claude" | "codex" | ...
+  string title  = 3; // human label (e.g. last path component of the workdir)
+  string workdir = 4; // carried as DATA, OS-correct. Never used to derive handle.
+}
+
+enum Direction {
+  DIRECTION_UNSPECIFIED = 0;
+  FROM_AGENT = 1; // agent -> human
+  FROM_HUMAN = 2; // human -> agent
+}
+
+enum EventKind {
+  EVENT_KIND_UNSPECIFIED = 0;
+  SESSION_OPEN       = 1; // a session became observable (by some producer)
+  SESSION_CLOSE      = 2; // the underlying process ended
+  AGENT_MESSAGE      = 3; // agent text turn
+  HUMAN_MESSAGE      = 4; // human text turn (a reply)
+  TOOL_ACTIVITY      = 5; // agent is doing work (tool/exec)
+  PERMISSION_REQUEST = 6; // agent is blocked on a yes/no
+}
+
+// One IMMUTABLE entry in a session's log. The log is the only truth; everything
+// else (status, previews, history) is a projection of these.
+message Event {
+  string    session_handle = 1;
+  uint64    seq            = 2; // monotonic per producer (for resumable sync)
+  string    producer       = 3; // which node/location wrote it (location handoff)
+  int64     ts_unix_ms     = 4;
+  Direction direction      = 5;
+  EventKind kind           = 6;
+  string    text           = 7; // message / permission text where applicable
+
+  // For FROM_HUMAN events only: the "landed" property, demoted to one boolean.
+  // Flips true when the agent has demonstrably taken the message in (observed in
+  // the agent's own transcript). Derived, never asserted optimistically.
+  bool consumed = 8;
+}
+
+// Status is a PURE PROJECTION of a session's log (see BUILD-SPEC §Status rule).
+// Any node computes the same status from the same log.
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  WORKING = 1; // tool activity / agent producing, within the idle window
+  WAITING = 2; // awaiting the human (question or permission)
+  DONE    = 3; // idle; last turn was the agent finishing
+  ENDED   = 4; // process gone
+}
+
+message SessionState {
+  SessionRef ref                 = 1;
+  Status     status              = 2;
+  string     preview             = 3; // last glanceable line
+  bool       awaiting_permission = 4;
+  string     permission_text     = 5;
+  int64      last_event_ts       = 6;
+  string     location            = 7; // current producer/location (machine/cloud)
+  bool       replyable           = 8; // a producer here can inject a reply; else observe-only
+}
+
+// ── control-plane setup ────────────────────────────────────────────────────
+
+message Hello {
+  ProtocolVersion protocol_version = 1; // peers refuse on mismatch
+  Role            role             = 2;
+  string          node             = 3; // machine/device name (data, not a credential)
+}
+
+// Resumable log sync: "give me everything after these per-producer cursors".
+message Subscribe {
+  map<string, uint64> since = 1; // producer -> last seq seen
+}
+
+// ── media plane (RESERVED for the audio future; not implemented in v1) ───────
+
+message MediaFrame {
+  string session_handle = 1;
+  uint32 codec          = 2; // e.g. OPUS
+  uint64 seq            = 3;
+  int64  ts_unix_ms     = 4;
+  bytes  payload        = 5;
+}
+
+// The single envelope on the wire.
+message Frame {
+  oneof body {
+    Hello        hello     = 1;
+    Subscribe    subscribe = 2;
+    Event        event     = 3; // a log append (either direction)
+    SessionState state     = 4; // a projected-status push
+    MediaFrame   media     = 5; // RESERVED (audio); ignore in v1
+  }
+}

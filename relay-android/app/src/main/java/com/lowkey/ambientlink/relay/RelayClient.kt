@@ -164,6 +164,10 @@ class RelayClient(val url: String) {
 
   fun companionComposeUrl(thread: String): String = CompanionUrls.composeUrl(url, thread)
 
+  fun sendHudYank(thread: String) {
+    ws?.send(JSONObject().put("type", "hud_yank").put("thread", thread).toString())
+  }
+
   fun sendInput(thread: String, text: String, enter: Boolean = true) {
     ws?.send(JSONObject()
       .put("type", "input").put("thread", thread)
