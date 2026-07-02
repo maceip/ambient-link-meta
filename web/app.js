@@ -411,7 +411,7 @@
     agentBodyBeforeDictate = t.yank ? CS.bodyText(t.yank) : wCard.textContent;
     cancelAutoAdvance();
     BLK.showListeningCard(wCard, agentBodyBeforeDictate, '');
-    showToast('listening on phone — speak toward the phone', 'success');
+    showToast('listening — speak into your glasses mic', 'success');
     promptEl.placeholder = 'listening…';
     if (dictateBtn) dictateBtn.classList.add('recording');
   }

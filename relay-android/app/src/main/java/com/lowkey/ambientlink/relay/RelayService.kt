@@ -274,6 +274,7 @@ class RelayService : Service() {
     private const val TAG = "RelayService"
     private const val PREF_PREWARM_MIC = "prewarm_mic"
     private const val PREF_PRELOAD_SODA = "preload_soda"
+    private const val PREF_BLUETOOTH_SCO = "use_bluetooth_sco"
     const val EXTRA_URL = "relay_url"
     const val EXTRA_FORCE = "relay_force"
     private val _status = MutableStateFlow(Status())
@@ -318,6 +319,17 @@ class RelayService : Service() {
       ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         .edit().putBoolean(PREF_PRELOAD_SODA, on).apply()
       if (on) state?.requestSodaPreload()
+    }
+
+    /** Route web/HUD dictate through glasses HFP (Bluetooth SCO). Default on. */
+    fun isBluetoothScoEnabled(ctx: Context): Boolean =
+      ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getBoolean(PREF_BLUETOOTH_SCO, true)
+
+    fun setBluetoothScoEnabled(ctx: Context, on: Boolean) {
+      state?.webDictation?.setBluetoothScoEnabled(on)
+        ?: ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+          .edit().putBoolean(PREF_BLUETOOTH_SCO, on).apply()
     }
 
     fun onHudDictationStart(thread: String) {

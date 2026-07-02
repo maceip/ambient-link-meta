@@ -535,9 +535,8 @@ class HudPresenter(
           showDictateError(message)
         }
       },
-      // Phone mic — no Bluetooth SCO / call UI (keeps screen recording alive).
-      // Speak toward the phone. Set true to route glasses HFP mic (shows call UI on glasses).
-      useBluetoothSco = false,
+      // Bluetooth SCO routes glasses HFP mic; may flash call-style UI on glasses.
+      useBluetoothSco = RelayService.isBluetoothScoEnabled(appContext),
     )
   }
 
@@ -699,23 +698,18 @@ class HudPresenter(
     endingThread?.let { RelayService.coolMicForThread(it) }
   }
 
-  /** Turn the glasses screen off. Blank the HUD first so nothing lingers lit on
-   *  the waveguide, then release the session so the glasses can sleep —
-   *  session.stop() alone can leave the last frame on until the glasses' own
-   *  timeout. */
+  /** Turn the glasses screen off — blank HUD, then SDK removeDisplay (not session.stop). */
   private fun tearDownDisplay() {
-    Log.i("HudPresenter", "tear down display session")
+    Log.i("HudPresenter", "tear down display (sleep waveguide)")
     val d = datSession.activeDisplay
-    if (d == null) {
-      datSession.stop()
-      return
-    }
     scope.launch {
       try {
-        d.sendContent { flexBox(gap = 0, padding = 0, background = FlexBoxBackground.NONE) {} }
-        delay(120)
+        if (d != null) {
+          d.sendContent { flexBox(gap = 0, padding = 0, background = FlexBoxBackground.NONE) {} }
+          delay(180)
+        }
       } catch (_: Throwable) {}
-      datSession.stop()
+      datSession.sleepDisplay()
     }
   }
 }

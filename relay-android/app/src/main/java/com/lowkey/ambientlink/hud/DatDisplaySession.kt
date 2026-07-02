@@ -9,6 +9,7 @@ import com.meta.wearable.dat.core.types.DeviceIdentifier
 import com.meta.wearable.dat.core.types.DeviceSessionError
 import com.meta.wearable.dat.display.Display
 import com.meta.wearable.dat.display.addDisplay
+import com.meta.wearable.dat.display.removeDisplay
 import com.meta.wearable.dat.display.types.DisplayState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "ambient.session"
 
@@ -45,7 +47,6 @@ class DatDisplaySession(private val scope: CoroutineScope) {
     onDisplayFailed = onFailed
     val currentDisplay = synchronized(lock) { display }
     val currentSession = synchronized(lock) { session }
-    val selectedId = synchronized(lock) { pendingDeviceId }
 
     when {
       currentDisplay != null && currentSession != null -> {
@@ -59,8 +60,9 @@ class DatDisplaySession(private val scope: CoroutineScope) {
           }
         }
       }
-      currentSession != null && selectedId == deviceId -> {
-        Log.i(TAG, "session active, attaching display for $deviceId")
+      currentSession != null -> {
+        Log.i(TAG, "session active (display asleep), re-attaching for $deviceId")
+        synchronized(lock) { pendingDeviceId = deviceId }
         attachDisplay()
       }
       else -> {
@@ -71,53 +73,53 @@ class DatDisplaySession(private val scope: CoroutineScope) {
   }
 
   private fun startSession(deviceId: DeviceIdentifier, attempt: Int = 0) {
-    releaseSession()
-    Log.i(TAG, "createSession id=$deviceId attempt=$attempt")
-    Wearables.createSession(SpecificDeviceSelector(deviceId)).fold(
-      onSuccess = { newSession ->
-        synchronized(lock) { session = newSession }
+    scope.launch {
+      releaseSessionFully()
+      Log.i(TAG, "createSession id=$deviceId attempt=$attempt")
+      Wearables.createSession(SpecificDeviceSelector(deviceId)).fold(
+        onSuccess = { newSession ->
+          synchronized(lock) { session = newSession }
 
-        sessionStateJob?.cancel()
-        sessionStateJob = scope.launch {
-          newSession.state.collect { state ->
-            Log.i(TAG, "session.state -> $state")
-            when (state) {
-              DeviceSessionState.STARTED -> {
-                if (consumePendingDeviceId(deviceId)) attachDisplay()
+          sessionStateJob?.cancel()
+          sessionStateJob = scope.launch {
+            newSession.state.collect { state ->
+              Log.i(TAG, "session.state -> $state")
+              when (state) {
+                DeviceSessionState.STARTED -> {
+                  if (consumePendingDeviceId(deviceId)) attachDisplay()
+                }
+                DeviceSessionState.STOPPED -> {
+                  synchronized(lock) { pendingDeviceId = null }
+                  cleanupDisplay()
+                }
+                else -> {}
               }
-              DeviceSessionState.STOPPED -> {
-                synchronized(lock) { pendingDeviceId = null }
-                cleanupDisplay()
-              }
-              else -> {}
             }
           }
-        }
 
-        sessionErrorJob?.cancel()
-        sessionErrorJob = scope.launch {
-          newSession.errors.collect { error -> handleSessionError(error) }
-        }
+          sessionErrorJob?.cancel()
+          sessionErrorJob = scope.launch {
+            newSession.errors.collect { error -> handleSessionError(error) }
+          }
 
-        newSession.start()
-      },
-      onFailure = { error, _ ->
-        Log.e(TAG, "createSession FAIL: ${error.description}")
-        val alreadyExists = error.description.contains("already exists", ignoreCase = true)
-        if (alreadyExists && attempt < 2) {
-          scope.launch {
-            releaseSession()
+          newSession.start()
+        },
+        onFailure = { error, _ ->
+          Log.e(TAG, "createSession FAIL: ${error.description}")
+          val alreadyExists = error.description.contains("already exists", ignoreCase = true)
+          if (alreadyExists && attempt < 2) {
+            releaseSessionFully()
             delay(500L * (attempt + 1))
             synchronized(lock) { pendingDeviceId = deviceId }
             startSession(deviceId, attempt + 1)
+            return@fold
           }
-          return@fold
-        }
-        synchronized(lock) { pendingDeviceId = null }
-        onDisplayFailed?.invoke()
-        onDisplayFailed = null
-      },
-    )
+          synchronized(lock) { pendingDeviceId = null }
+          onDisplayFailed?.invoke()
+          onDisplayFailed = null
+        },
+      )
+    }
   }
 
   private fun attachDisplay() {
@@ -171,10 +173,46 @@ class DatDisplaySession(private val scope: CoroutineScope) {
     synchronized(lock) { display = null }
   }
 
+  /**
+   * Dismiss the waveguide without killing the DeviceSession — sends the SDK's
+   * DisplayStopRequest via [removeDisplay]. Calling [DeviceSession.stop] alone
+   * often leaves Meta's home shell lit until the glasses' own screen timeout.
+   */
+  suspend fun sleepDisplay() {
+    val d = synchronized(lock) { display }
+    val s = synchronized(lock) { session }
+    if (d == null && s == null) return
+    Log.i(TAG, "sleepDisplay — removeDisplay (keep session=${s != null})")
+    cleanupDisplay()
+    if (d != null) {
+      try { d.stop() } catch (e: Throwable) {
+        Log.w(TAG, "display.stop: ${e.message}")
+      }
+    }
+    if (s != null) {
+      val result = withTimeoutOrNull(4_000) {
+        s.removeDisplay()
+      }
+      if (result == null) {
+        Log.w(TAG, "removeDisplay timed out")
+      } else {
+        result.fold(
+          onSuccess = { Log.i(TAG, "removeDisplay ok") },
+          onFailure = { err, _ -> Log.w(TAG, "removeDisplay fail: ${err.description}") },
+        )
+      }
+    }
+  }
+
   fun stop() {
     onDisplayReady = null
     onDisplayFailed = null
     synchronized(lock) { pendingDeviceId = null }
+    scope.launch { releaseSessionFully() }
+  }
+
+  private suspend fun releaseSessionFully() {
+    sleepDisplay()
     releaseSession()
   }
 

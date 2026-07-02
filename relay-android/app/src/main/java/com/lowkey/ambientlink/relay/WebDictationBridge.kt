@@ -11,8 +11,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Glasses web dictate: warm the phone mic on session focus (optional), then stream
- * partials once [dictate_active] arrives from the relay.
+ * Glasses web dictate: warm the mic on session focus (optional), then stream partials
+ * once [dictate_active] arrives from the relay. Prefers glasses HFP via Bluetooth SCO
+ * when enabled (may show a brief call-style UI on the glasses — intentional tradeoff).
  */
 class WebDictationBridge(
   private val context: Context,
@@ -31,6 +32,13 @@ class WebDictationBridge(
   fun setPreWarmEnabled(on: Boolean) {
     prefs.edit().putBoolean(PREF_PREWARM_MIC, on).apply()
     if (!on) stopStandby()
+  }
+
+  fun isBluetoothScoEnabled(): Boolean =
+    prefs.getBoolean(PREF_BLUETOOTH_SCO, true)
+
+  fun setBluetoothScoEnabled(on: Boolean) {
+    prefs.edit().putBoolean(PREF_BLUETOOTH_SCO, on).apply()
   }
 
   /** User opened a session (web) or HUD is showing a card for this thread. */
@@ -134,7 +142,7 @@ class WebDictationBridge(
           if (live) abortLive() else stopStandby()
         }
       },
-      useBluetoothSco = false,
+      useBluetoothSco = isBluetoothScoEnabled(),
     )
   }
 
@@ -184,6 +192,7 @@ class WebDictationBridge(
   companion object {
     private const val TAG = "WebDictationBridge"
     private const val PREF_PREWARM_MIC = "prewarm_mic"
+    private const val PREF_BLUETOOTH_SCO = "use_bluetooth_sco"
     private const val STANDBY_TIMEOUT_MS = 120_000L
   }
 }

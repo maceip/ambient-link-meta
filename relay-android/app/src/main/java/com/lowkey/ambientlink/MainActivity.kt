@@ -211,6 +211,9 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
   var preloadSoda by remember {
     mutableStateOf(RelayService.isSodaPreloadEnabled(ctx))
   }
+  var bluetoothSco by remember {
+    mutableStateOf(RelayService.isBluetoothScoEnabled(ctx))
+  }
 
   Scaffold(
     modifier = Modifier.fillMaxSize(),
@@ -342,6 +345,28 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
             onCheckedChange = {
               preWarmMic = it
               RelayService.setPreWarmMicEnabled(ctx, it)
+            },
+          )
+        }
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Column(Modifier.weight(1f)) {
+            Text("Glasses Bluetooth mic", style = MaterialTheme.typography.bodyMedium)
+            Text(
+              "Route dictate through glasses HFP (may show call UI on glasses)",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+          Switch(
+            checked = bluetoothSco,
+            onCheckedChange = {
+              bluetoothSco = it
+              RelayService.setBluetoothScoEnabled(ctx, it)
             },
           )
         }

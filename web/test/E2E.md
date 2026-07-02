@@ -44,3 +44,18 @@ bash scripts/run-e2e-new-session.sh
 - `02-session-list-active.png`
 - `03-session-first-prompt.png`
 - `04-session-two-turns.png`
+
+## Phone dictate (interactive)
+
+Tests web → phone SODA bridge with **Bluetooth SCO** (glasses mic). You speak during the run.
+
+```bash
+bash scripts/run-e2e-dictate.sh
+```
+
+- Opens the deployed app in a **headed** browser (override: `AMBIENT_DICTATE_HEADED=0`)
+- Wakes the phone daemon over **adb** (USB required)
+- Clicks **Dictate** and waits **90s** for you to speak (`AMBIENT_DICTATE_WAIT_MS`)
+- Saves `web/test/output/dictate-*.png` and `dictate-logcat.txt` (checks `sco=true` in logcat)
+
+Phone app toggle: **Glasses Bluetooth mic** (default on). Turning it off uses the phone mic and avoids the glasses call UI.
