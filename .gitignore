@@ -19,6 +19,7 @@ relay-ios/*.xcworkspace/xcuserdata/
 # Web
 web/node_modules/
 web/test-results/
+web/test/output/
 push-test/node_modules/
 
 # Local config
