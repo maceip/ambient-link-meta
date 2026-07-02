@@ -18,11 +18,31 @@ object HudWidgets {
   private const val CARD_PADDING = 14
   private const val ACTION_GAP = 12
   private const val MAX_ACTIONS = 3
+  private const val MAX_BODY_CHARS = 220
 
   private var dictateJob: Job? = null
 
-  private fun actionStyle(index: Int): ButtonStyle =
-    if (index == 0) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE
+  private fun truncateBody(text: String): String =
+    if (text.length <= MAX_BODY_CHARS) text else text.take(MAX_BODY_CHARS - 1) + "…"
+
+  /** Original card body plus live dictation under a You: line — keeps the same CARD shell. */
+  private fun dictateCardBody(yank: AgentYank, partial: String): String {
+    val base = yank.bodyText.trim()
+    val userLine = partial.trim().ifBlank { "listening…" }
+    val combined = if (base.isBlank()) "You: $userLine" else "$base\n\nYou: $userLine"
+    return truncateBody(combined)
+  }
+
+  /** Matches web `chipset.js` — send/dictate chips are primary; deny/modify stay secondary. */
+  private fun chipStyle(chip: Chip): ButtonStyle = when {
+    chip.primary -> ButtonStyle.PRIMARY
+    chip.kind == ChipKind.DICTATE -> ButtonStyle.PRIMARY
+    chip.kind == ChipKind.SEND -> ButtonStyle.SECONDARY
+    else -> ButtonStyle.SECONDARY
+  }
+
+  private fun orderedChips(chips: List<Chip>): List<Chip> =
+    chips.sortedByDescending { it.primary }.take(MAX_ACTIONS)
 
   fun sendPeek(
     scope: CoroutineScope,
@@ -36,7 +56,7 @@ object HudWidgets {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text(yank.metaLine, style = TextStyle.META, color = TextColor.SECONDARY)
           flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
-            text(yank.bodyText.take(220), style = TextStyle.BODY)
+            text(truncateBody(yank.bodyText), style = TextStyle.BODY)
           }
           flexBox(
             direction = Direction.ROW,
@@ -45,12 +65,8 @@ object HudWidgets {
             crossAlignment = Alignment.CENTER,
             background = FlexBoxBackground.NONE,
           ) {
-            chips.take(MAX_ACTIONS).forEach { c ->
-              button(
-                c.label,
-                style = if (c.primary) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE,
-                onClick = { onChip(c) },
-              )
+            orderedChips(chips).forEach { c ->
+              button(c.label, style = chipStyle(c), onClick = { onChip(c) })
             }
           }
         }
@@ -61,26 +77,27 @@ object HudWidgets {
   fun sendListening(
     scope: CoroutineScope,
     display: Display,
+    yank: AgentYank,
     onCancel: () -> Unit,
   ) {
-    sendDictating(scope, display, "", onCancel)
+    sendDictating(scope, display, yank, "", onCancel)
   }
 
-  /** Live partial transcript while SODA listens; oneshot final auto-commits (no send tap). */
+  /** Live partial transcript while SODA listens; each sendContent replaces the full layout. */
   fun sendDictating(
     scope: CoroutineScope,
     display: Display,
+    yank: AgentYank,
     partial: String,
     onCancel: () -> Unit,
   ) {
     dictateJob?.cancel()
     dictateJob = scope.launch {
-      val line = partial.trim().ifBlank { "listening…" }
       display.sendContent {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
-          text("dictating", style = TextStyle.META, color = TextColor.SECONDARY)
+          text(yank.metaLine, style = TextStyle.META, color = TextColor.SECONDARY)
           flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
-            text(line.take(220), style = TextStyle.BODY)
+            text(dictateCardBody(yank, partial), style = TextStyle.BODY)
           }
           flexBox(
             direction = Direction.ROW,
@@ -89,7 +106,7 @@ object HudWidgets {
             crossAlignment = Alignment.CENTER,
             background = FlexBoxBackground.NONE,
           ) {
-            button("cancel", style = ButtonStyle.OUTLINE, onClick = onCancel)
+            button("cancel", style = ButtonStyle.SECONDARY, onClick = onCancel)
           }
         }
       }
@@ -108,7 +125,7 @@ object HudWidgets {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text("sent", style = TextStyle.META, color = TextColor.SECONDARY)
           flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
-            text(text.take(220), style = TextStyle.BODY)
+            text(truncateBody(text), style = TextStyle.BODY)
           }
         }
       }
@@ -136,12 +153,8 @@ object HudWidgets {
             crossAlignment = Alignment.CENTER,
             background = FlexBoxBackground.NONE,
           ) {
-            chips.take(MAX_ACTIONS).forEach { c ->
-              button(
-                c.label,
-                style = if (c.primary) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE,
-                onClick = { onChip(c) },
-              )
+            orderedChips(chips).forEach { c ->
+              button(c.label, style = chipStyle(c), onClick = { onChip(c) })
             }
           }
         }
@@ -160,7 +173,7 @@ object HudWidgets {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text("dictate error", style = TextStyle.META, color = TextColor.SECONDARY)
           flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
-            text(message.take(220), style = TextStyle.BODY)
+            text(truncateBody(message), style = TextStyle.BODY)
           }
         }
       }
@@ -188,8 +201,8 @@ object HudWidgets {
             crossAlignment = Alignment.CENTER,
             background = FlexBoxBackground.NONE,
           ) {
-            chips.take(MAX_ACTIONS).forEachIndexed { i, c ->
-              button(c.label, style = actionStyle(i), onClick = { onChip(c) })
+            orderedChips(chips).forEach { c ->
+              button(c.label, style = chipStyle(c), onClick = { onChip(c) })
             }
           }
         }
@@ -245,10 +258,10 @@ object HudWidgets {
             crossAlignment = Alignment.CENTER,
             background = FlexBoxBackground.NONE,
           ) {
-            button("back", style = ButtonStyle.OUTLINE, onClick = { onBack() })
-            button(if (filter == null) "all" else "All", style = if (filter == null) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("all") })
-            button("cursor", style = if (filter == "cursor") ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("cursor") })
-            button("codex", style = if (filter == "codex") ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("codex") })
+            button("back", style = ButtonStyle.SECONDARY, onClick = { onBack() })
+            button(if (filter == null) "all" else "All", style = if (filter == null) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY, onClick = { onFilter("all") })
+            button("cursor", style = if (filter == "cursor") ButtonStyle.PRIMARY else ButtonStyle.SECONDARY, onClick = { onFilter("cursor") })
+            button("codex", style = if (filter == "codex") ButtonStyle.PRIMARY else ButtonStyle.SECONDARY, onClick = { onFilter("codex") })
           }
         }
       }

@@ -7,6 +7,9 @@ BIN="${AMBIENT_LINK_HOST:-/tmp/ambient-link-host}"
 LISTEN="${AMBIENT_LINK_LISTEN:-0.0.0.0:5181}"
 PORT="${LISTEN##*:}"
 LOG="${AMBIENT_LINK_LOG:-$HOME/Library/Logs/ambient-link-host.log}"
+WEB_ROOT="${AMBIENT_LINK_WEB_ROOT:-$ROOT/web}"
+CLOUD="${AMBIENT_LINK_CLOUD:-}"
+RELAY_DEBUG="${AMBIENT_RELAY_DEBUG:-}"
 LABEL="com.maceip.ambient-link"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 
@@ -17,10 +20,21 @@ fi
 
 mkdir -p "$(dirname "$LOG")" "$HOME/Library/LaunchAgents"
 
-RELAY_DEBUG_XML=""
-if [[ "${AMBIENT_RELAY_DEBUG:-}" == "1" ]]; then
-  RELAY_DEBUG_XML='    <string>-relay-debug</string>'
+ENV_XML="  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AMBIENT_LINK_LISTEN</key><string>${LISTEN}</string>
+    <key>AMBIENT_LINK_WEB_ROOT</key><string>${WEB_ROOT}</string>
+    <key>AMBIENT_LINK_LOG</key><string>info</string>"
+if [[ -n "$CLOUD" ]]; then
+  ENV_XML="${ENV_XML}
+    <key>AMBIENT_LINK_CLOUD</key><string>${CLOUD}</string>"
 fi
+if [[ "$RELAY_DEBUG" == "1" ]]; then
+  ENV_XML="${ENV_XML}
+    <key>AMBIENT_LINK_RELAY_DEBUG</key><string>1</string>"
+fi
+ENV_XML="${ENV_XML}
+  </dict>"
 
 cat >"$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -32,14 +46,8 @@ cat >"$PLIST" <<EOF
   <array>
     <string>${BIN}</string>
     <string>serve</string>
-    <string>-listen</string>
-    <string>${LISTEN}</string>
-    <string>-web-root</string>
-    <string>${ROOT}/web</string>
-    <string>-log</string>
-    <string>info</string>
-${RELAY_DEBUG_XML}
   </array>
+${ENV_XML}
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>${LOG}</string>
@@ -56,13 +64,20 @@ if launchctl bootstrap "gui/${UID_NUM}" "$PLIST" 2>/dev/null || launchctl load "
   :
 else
   echo "launchctl failed — falling back to nohup" >&2
-  nohup "$BIN" serve -listen "$LISTEN" -web-root "$ROOT/web" -log info ${AMBIENT_RELAY_DEBUG:+ -relay-debug} >>"$LOG" 2>&1 &
+  nohup env \
+    AMBIENT_LINK_LISTEN="$LISTEN" \
+    AMBIENT_LINK_WEB_ROOT="$WEB_ROOT" \
+    AMBIENT_LINK_LOG=info \
+    ${CLOUD:+AMBIENT_LINK_CLOUD="$CLOUD"} \
+    ${RELAY_DEBUG:+AMBIENT_LINK_RELAY_DEBUG=1} \
+    "$BIN" serve >>"$LOG" 2>&1 &
 fi
 
 for _ in $(seq 1 20); do
   if curl -sf "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
     IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo '?')"
     echo "host up on $LISTEN (LAN: ws://$IP:${PORT}/ambient-link/ws)"
+    [[ -n "$CLOUD" ]] && echo "cloud bridge: $CLOUD"
     echo "logs: $LOG"
     exit 0
   fi

@@ -8,12 +8,13 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=19">
-  <link rel="stylesheet" href="companion.css?v=19">
+  <link rel="stylesheet" href="styles.css?v=22">
+  <link rel="stylesheet" href="blocks/blocks.css?v=22">
+  <link rel="stylesheet" href="companion.css?v=22">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v19';
+      var BUILD = 'v23';
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', function () {
         // Self-heal: earlier installs left a stale service worker caching an old
@@ -39,17 +40,18 @@
 <body>
 <div id="app">
 
-  <!-- THREAD LIST -->
-  <section id="view-threads" class="view">
-    <header class="list-hdr">
-      <span class="list-title">sessions</span>
+  <!-- THREAD LIST — blk-shelf-list_view -->
+  <section id="view-threads" class="view blk-shelf-list-view">
+    <header class="list-hdr blk-shelf-list-view__hdr">
+      <span class="list-title blk-shelf-list-view__title">sessions</span>
       <span id="conn-dot" class="conn-dot off" title="relay connection" aria-label="relay connection"></span>
     </header>
     <span id="relay-badge" class="relay-badge hidden" title="relay debug — auto cards suppressed">debug</span>
     <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
-    <p id="empty-hint" class="empty-hint">no sessions</p>
-    <div id="threads" class="thread-list" role="list"></div>
-    <nav id="shelf" class="shelf" role="toolbar" aria-label="new session">
+    <p id="empty-hint" class="empty-hint blk-shelf-list-view__empty">no sessions</p>
+    <div id="threads" class="thread-list blk-shelf-list-view__list" role="list"></div>
+    <nav id="shelf" class="shelf blk-shelf-list-view__shelf" role="toolbar" aria-label="new session">
+      <div class="rbtn-row blk-rbtn-row">
       <button type="button" class="rbtn focusable agent-launcher" data-agent="cursor" title="new cursor session" aria-label="new cursor session">
         <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="cursor"></span><span class="rbtn-label">Cursor</span></span>
       </button>
@@ -59,6 +61,7 @@
       <button type="button" class="rbtn focusable agent-launcher" data-agent="codex" title="new codex session" aria-label="new codex session">
         <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="codex"></span><span class="rbtn-label">Codex</span></span>
       </button>
+      </div>
     </nav>
   </section>
 
@@ -67,12 +70,12 @@
     <header class="hdr">
       <button type="button" id="back" class="iconbtn focusable" aria-label="back">‹</button>
       <span id="t-title" class="title hdr-title">session</span>
-      <button type="button" id="btn-pull" class="iconbtn focusable" title="pull latest card from host" aria-label="pull card">⤓</button>
+      <button type="button" id="btn-pull" class="iconbtn focusable" title="Refresh agent card from relay" aria-label="Refresh card">↻</button>
     </header>
-    <div class="compose-wrap">
-      <p id="w-meta" class="widget-meta"></p>
-      <div id="w-card" class="widget-card hud-card"></div>
-      <div id="w-chips" class="widget-chips" role="group" aria-label="quick actions"></div>
+    <div class="compose-wrap blk-agent-view">
+      <p id="w-meta" class="widget-meta blk-agent-card__meta"></p>
+      <div id="w-card" class="widget-card hud-card blk-agent-card__body"></div>
+      <div id="w-chips" class="widget-chips blk-agent-card__actions" role="group" aria-label="quick actions"></div>
     </div>
     <form id="composer" class="composer">
       <button type="button" id="dictate" class="dictate-btn focusable" title="dictate" aria-label="dictate"></button>
@@ -81,21 +84,22 @@
     </form>
   </section>
 
-  <!-- NEW SESSION -->
-  <section id="view-new" class="view hidden">
-    <header class="hdr new-hdr">
-      <div class="new-title-wrap">
-        <span id="new-title-icon" class="new-title-icon agent-cursor" data-agent-icon="cursor" aria-hidden="true"></span>
-        <h1 id="new-title" class="new-title-text">createCursor</h1>
+  <!-- NEW SESSION — blk-form -->
+  <section id="view-new" class="view hidden blk-form-view">
+    <header class="hdr new-hdr blk-form-view__hdr">
+      <div class="new-title-wrap blk-form-view__title-wrap">
+        <span id="new-title-icon" class="new-title-icon blk-form-view__icon agent-cursor" data-agent-icon="cursor" aria-hidden="true"></span>
+        <h1 id="new-title" class="new-title-text blk-form-view__title">createCursor</h1>
       </div>
     </header>
-    <div class="new-body">
+    <div class="new-body blk-form-view__body">
       <label class="field-label" for="new-cwd">working directory</label>
       <input id="new-cwd" class="text-input focusable" type="text" placeholder="/path/to/project">
       <label class="field-label" for="new-prompt">prompt</label>
       <textarea id="new-prompt" class="text-input focusable" rows="5" placeholder="what should the agent do?"></textarea>
     </div>
-    <nav class="new-actions" role="toolbar" aria-label="create session">
+    <nav class="new-actions blk-form-view__actions" role="toolbar" aria-label="create session">
+      <div class="rbtn-row blk-rbtn-row">
       <button type="button" id="new-dictate" class="rbtn focusable" title="dictate" aria-label="dictate">
         <span class="rbtn-pill">
           <span class="rbtn-icon" aria-hidden="true">
@@ -110,12 +114,14 @@
           <span class="rbtn-label">Start</span>
         </span>
       </button>
+      </div>
     </nav>
   </section>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="chipset.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="chipset.js?v=22"></script>
+<script src="blocks/blocks.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

@@ -19,8 +19,8 @@ android {
     applicationId = "com.lowkey.ambientlink"
     minSdk = 31
     targetSdk = 35
-    versionCode = 1
-    versionName = "0.1"
+    versionCode = 2
+    versionName = "0.1.1-hud"
 
     manifestPlaceholders["mwdat_application_id"] =
       providers.gradleProperty("mwdat_application_id").orNull
@@ -72,6 +72,9 @@ dependencies {
   implementation(libs.androidx.activity.compose)
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.material3)
+  implementation(libs.androidx.compose.foundation)
+  implementation(libs.haze)
+  implementation(libs.haze.materials)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
   implementation(libs.mwdat.core)

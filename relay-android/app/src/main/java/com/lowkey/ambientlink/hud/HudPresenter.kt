@@ -368,7 +368,11 @@ class HudPresenter(
   private fun renderPeekCountdown(y: AgentYank, remaining: Int) {
     val display = datSession.activeDisplay ?: return
     val chips = ChipSet.forYank(y).map {
-      if (it.kind == ChipKind.SEND) it.copy(label = "${it.label} ${remaining}s") else it
+      if (it.primary && it.kind == ChipKind.SEND) {
+        it.copy(label = "${it.label} · ${remaining}s")
+      } else {
+        it
+      }
     }
     lastRenderedKey = null
     HudWidgets.sendPeek(scope, display, y, chips, ::onChip)
@@ -422,7 +426,7 @@ class HudPresenter(
     if (key == lastRenderedKey) return
     lastRenderedKey = key
     HudWidgets.sendDictating(
-      scope, d, dictatingPartial,
+      scope, d, y, dictatingPartial,
       onCancel = { finishDictating(commit = false) },
     )
   }
@@ -461,14 +465,14 @@ class HudPresenter(
     relay.sendDictateCommit(y.thread, text)
     val d = datSession.activeDisplay
     if (d == null) {
-      dismissCard()
+      dismissCard(showNext = false)
       return
     }
     HudWidgets.sendDictateConfirm(scope, d, text)
     commitJob?.cancel()
     commitJob = scope.launch {
       delay(COMMIT_SHOW_MS)
-      dismissCard()
+      dismissCard(showNext = false)
     }
   }
 

@@ -16,11 +16,11 @@ object ChipSet {
   private val CONTINUE = Chip("continue", "continue", kind = ChipKind.SEND, primary = true)
   private val APPROVE  = Chip("approve", "y", kind = ChipKind.SEND, primary = true)
   private val DENY     = Chip("deny", "n", kind = ChipKind.SEND)
-  private val DICTATE  = Chip("dictate", null, kind = ChipKind.DICTATE)
+  private val DICTATE  = Chip("dictate", null, kind = ChipKind.DICTATE, primary = true)
 
   fun forYank(yank: AgentYank): List<Chip> = when (yank.awaiting) {
     Awaiting.PERMISSION -> listOf(APPROVE, DENY)
-    Awaiting.QUESTION   -> listOf(DICTATE.copy(primary = true))
+    Awaiting.QUESTION   -> listOf(DICTATE)
     Awaiting.DONE       -> listOf(CONTINUE, DICTATE)
     else                -> listOf(CONTINUE, DICTATE)
   }

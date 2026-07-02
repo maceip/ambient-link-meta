@@ -3,6 +3,7 @@
   'use strict';
 
   var CS = window.AmbientChipSet;
+  var BLK = window.AmbientBlocks;
   var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ambient-link/ws';
 
   var connDot    = document.getElementById('conn-dot');
@@ -41,10 +42,19 @@
   var toastTimer;
   var dictRec = null;
   var pendingDeepLink = null;
-  var hostInfo = { relayDebug: false, journal: 0, now: 0, delivery: {}, defaultCwd: '' };
+  var hostInfo = { relayDebug: false, journal: 0, now: 0, delivery: {}, defaultCwd: '', relayConnected: null };
   var hostPanelOpen = false;
   var pendingInputs = loadPendingInputs();
   var deliveryStates = loadDeliveryStates();
+  var cancelChipCountdown = null;
+  var agentBodyBeforeDictate = '';
+
+  function cancelAutoAdvance() {
+    if (cancelChipCountdown) {
+      cancelChipCountdown();
+      cancelChipCountdown = null;
+    }
+  }
 
   function parseDeepLink() {
     var p = new URLSearchParams(location.search);
@@ -139,11 +149,11 @@
   function pullCard(thread) {
     if (!thread) return;
     if (!ws || ws.readyState !== 1) {
-      showToast('not connected', 'error');
+      showToast('not connected to relay', 'error');
       return;
     }
     ws.send(JSON.stringify({ type: 'hud_yank', thread: thread }));
-    showToast('pulling card…', 'success');
+    showToast('refreshing card…', 'success');
   }
 
   function showToast(msg, kind) {
@@ -160,7 +170,9 @@
   }
 
   function liveThreads() {
-    return threadOrder.map(function (id) { return threads[id]; }).filter(function (t) { return t && !t.ended; });
+    return threadOrder
+      .map(function (id) { return threads[id]; })
+      .filter(function (t) { return t && !t.ended; });
   }
 
   function visibleThreads() {
@@ -168,6 +180,21 @@
       .map(function (id) { return threads[id]; })
       .filter(function (t) { return !!t; })
       .sort(function (a, b) { return (b.lastEventAt || 0) - (a.lastEventAt || 0); });
+  }
+
+  /** Drop ended sessions from memory so the list can't fill with ghosts. */
+  function reapDeadThreads() {
+    threadOrder = threadOrder.filter(function (id) {
+      var t = threads[id];
+      return t && !t.ended;
+    });
+    Object.keys(threads).forEach(function (id) {
+      if (threads[id] && threads[id].ended) delete threads[id];
+    });
+  }
+
+  function speechAvailable() {
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   }
 
   function liveThreadCount() {
@@ -239,59 +266,37 @@
   }
 
   function renderThreadList() {
-    var live = visibleThreads();
+    var live = liveThreads();
     // Reverse order: newest at the bottom (WhatsApp/chat-style).
     live.sort(function (a, b) { return (a.lastEventAt || 0) - (b.lastEventAt || 0); });
     threadsUl.innerHTML = '';
-    emptyHint.classList.toggle('hidden', live.length > 0);
+    if (live.length === 0) {
+      emptyHint.classList.remove('hidden');
+      emptyHint.textContent = hostInfo.relayConnected === false
+        ? 'relay offline — open this app from your Mac relay or reconnect cloud bridge'
+        : 'no live sessions — start an agent on your Mac (relay must be running)';
+      return;
+    }
+    emptyHint.classList.add('hidden');
     live.forEach(function (t) {
-      var li = document.createElement('button');
-      li.type = 'button';
       var ac = agentClass(t.agent);
-      li.className = 'thread-row list-item focusable agent-' + ac + ' ' + statusBadge(t);
-      li.setAttribute('role', 'listitem');
-      li.setAttribute('aria-label', displayLabel(t) + ', ' + (t.agent || 'agent') + ', ' + statusBadge(t));
-      var av = document.createElement('div');
-      av.className = 'avatar agent-' + ac + ' ' + statusBadge(t);
-      var icon = agentIcon(t.agent);
-      if (icon) av.innerHTML = icon;
-      else av.textContent = displayLabel(t).charAt(0).toUpperCase();
-      var body = document.createElement('div');
-      body.className = 'thread-body';
-      var name = document.createElement('div');
-      name.className = 'name';
-      var label = document.createElement('span');
-      label.className = 'thread-label';
-      label.textContent = displayLabel(t);
-      name.appendChild(label);
-      var badge = document.createElement('span');
-      badge.className = 'status-tag ' + statusBadge(t);
-      badge.textContent = t.ended ? 'ended' : (t.busy ? 'busy' : (t.yank ? (
+      var badgeText = t.ended ? 'ended' : (t.busy ? 'busy' : (t.yank ? (
         t.yank.awaiting === CS.Awaiting.PERMISSION ? 'approval' :
         t.yank.awaiting === CS.Awaiting.QUESTION ? 'question' : 'done'
       ) : 'live'));
-      name.appendChild(badge);
-      var meta = document.createElement('div');
-      meta.className = 'thread-meta';
-      meta.textContent = t.agent || 'agent';
-      var preview = document.createElement('div');
-      preview.className = 'preview body-preview';
-      preview.textContent = previewText(t);
-      body.appendChild(name);
-      body.appendChild(meta);
-      if (preview.textContent) body.appendChild(preview);
-      var time = document.createElement('div');
-      time.className = 'thread-time';
-      time.textContent = relativeTime(t.lastEventAt);
-      li.appendChild(av);
-      li.appendChild(body);
-      li.appendChild(time);
-      li.addEventListener('click', function () { openThread(t.id, true); });
-      li.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          openThread(t.id, true);
-        }
+      var preview = previewText(t);
+      var li = BLK.renderListItem({
+        className: 'agent-' + ac + ' ' + statusBadge(t),
+        ariaLabel: displayLabel(t) + ', ' + (t.agent || 'agent') + ', ' + statusBadge(t),
+        label: displayLabel(t),
+        preview: preview || undefined,
+        time: relativeTime(t.lastEventAt),
+        avatarHtml: agentIcon(t.agent) || undefined,
+        avatarClass: 'agent-' + ac + ' ' + statusBadge(t),
+        badge: badgeText,
+        badgeClass: 'status-tag ' + statusBadge(t),
+        onClick: function () { openThread(t.id, true); },
+        onActivate: function () { openThread(t.id, true); },
       });
       threadsUl.appendChild(li);
     });
@@ -299,25 +304,43 @@
   }
 
   function renderChips(yank, agent) {
+    cancelAutoAdvance();
     wChips.innerHTML = '';
     if (!yank) return;
-    CS.forYank(yank).forEach(function (c) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'chip focusable chip-' + CS.chipStyle(c.kind);
-      btn.textContent = c.label;
-      btn.addEventListener('click', function () {
-        if (!activeThread) return;
-        if (c.kind === 'dictate') { startDictate(); return; }
-        if (c.kind === 'modify') {
-          showToast('use composer below to modify', 'success');
-          promptEl.focus();
-          return;
-        }
-        if (c.text) sendPrompt(activeThread, c.text);
-      });
-      wChips.appendChild(btn);
+    var chips = CS.forYank(yank).map(function (c) {
+      return {
+        label: c.label,
+        text: c.text,
+        kind: c.kind,
+        style: CS.chipStyle(c.kind),
+      };
     });
+    var primary = chips.filter(function (c) { return c.kind === 'send'; })[0];
+    cancelChipCountdown = BLK.renderAgentActions(wChips, chips, {
+      onDictate: function () {
+        cancelAutoAdvance();
+        startDictate();
+      },
+      onModify: function () {
+        cancelAutoAdvance();
+        showToast('use composer below to modify', 'success');
+        promptEl.focus();
+      },
+      onSend: function (c) {
+        cancelAutoAdvance();
+        if (c.text && activeThread) sendPrompt(activeThread, c.text);
+      },
+    }, yank.awaiting === CS.Awaiting.DONE && primary ? {
+      enabled: true,
+      baseLabel: primary.label,
+      shouldCancel: function () {
+        var row = activeThread ? threads[activeThread] : null;
+        return !row || !row.yank || row.yank.awaiting !== CS.Awaiting.DONE;
+      },
+      onComplete: function () {
+        if (primary.text && activeThread) sendPrompt(activeThread, primary.text);
+      },
+    } : null);
     if (yank.awaiting === CS.Awaiting.DONE) {
       var extras = CS.followUpChips(agent);
       if (extras.length) {
@@ -379,18 +402,21 @@
   function startDictate() {
     var t = activeThread ? threads[activeThread] : null;
     if (!t) { showToast('open a session first', 'error'); return; }
-    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      showToast('dictate needs Chrome/Safari — type instead', 'error');
+    if (!speechAvailable()) {
+      showToast('voice input unavailable here — type instead', 'error');
       promptEl.focus();
       return;
     }
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     stopDictRec(null);
     var rec = new SR();
     rec.continuous = true;
     rec.interimResults = true;
     rec.lang = 'en-US';
     sendDictate('dictate_begin', t.id);
+    agentBodyBeforeDictate = t.yank ? CS.bodyText(t.yank) : wCard.textContent;
+    cancelAutoAdvance();
+    BLK.showListeningCard(wCard, agentBodyBeforeDictate, '');
     showToast('listening…', 'success');
     promptEl.placeholder = 'listening…';
     rec.onresult = function (e) {
@@ -403,12 +429,14 @@
       }
       if (interim.trim()) {
         promptEl.value = interim.trim();
+        BLK.showListeningCard(wCard, agentBodyBeforeDictate, interim.trim());
         sendDictate('dictate_partial', t.id, interim.trim());
       }
       if (finalText.trim()) {
         var text = finalText.trim();
         sendDictate('dictate_commit', t.id, text);
         if (t.yank) t.yank = Object.assign({}, t.yank, { lastUserInput: text });
+        BLK.clearListeningCard(wCard, agentBodyBeforeDictate);
         promptEl.value = '';
         promptEl.placeholder = 'type your message…';
         showToast('sent', 'success');
@@ -419,6 +447,7 @@
     };
     rec.onerror = function () {
       sendDictate('dictate_abort', t.id);
+      BLK.clearListeningCard(wCard, agentBodyBeforeDictate);
       showToast('dictation failed', 'error');
       promptEl.placeholder = 'type your message…';
       dictRec = null;
@@ -461,6 +490,7 @@
   }
 
   function closeThreadView() {
+    cancelAutoAdvance();
     stopDictRec(activeThread);
     activeThread = null;
     setUrlForSession(null, false);
@@ -492,11 +522,13 @@
     try { return localStorage.getItem('al_default_cwd') || ''; } catch (e) { return ''; }
   }
 
-  // Dictate straight into a text field (new-session first message). No thread yet,
-  // so this is local speech-to-text only; tapping again stops it.
   function dictateIntoField(field, btn) {
+    if (!speechAvailable()) {
+      showToast('voice input unavailable here — type instead', 'error');
+      field.focus();
+      return;
+    }
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { showToast('dictate needs Chrome/Safari — type instead', 'error'); field.focus(); return; }
     if (dictRec) { stopDictRec(null); if (btn) btn.classList.remove('recording'); return; }
     var rec = new SR();
     rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US';
@@ -511,10 +543,23 @@
       }
       field.value = (base + finalText + interim).replace(/\s+/g, ' ').trim();
     };
-    rec.onerror = function () { showToast('dictation failed', 'error'); if (btn) btn.classList.remove('recording'); dictRec = null; };
+    rec.onerror = function (ev) {
+      var why = (ev && ev.error) ? ev.error : 'failed';
+      if (why === 'not-allowed') showToast('microphone blocked — allow mic or type', 'error');
+      else if (why === 'service-not-allowed') showToast('voice not supported in this browser — type instead', 'error');
+      else showToast('dictation failed (' + why + ') — type instead', 'error');
+      if (btn) btn.classList.remove('recording');
+      dictRec = null;
+    };
     rec.onend = function () { if (btn) btn.classList.remove('recording'); dictRec = null; };
-    dictRec = rec;
-    rec.start();
+    try {
+      dictRec = rec;
+      rec.start();
+    } catch (e) {
+      showToast('dictation unavailable — type instead', 'error');
+      if (btn) btn.classList.remove('recording');
+      dictRec = null;
+    }
   }
 
   function startAgentSession(agent) {
@@ -525,27 +570,9 @@
     setTimeout(function () { if (newPrompt) newPrompt.focus(); }, 50);
   }
 
-  // Meta HUD button rows: one expanded pill at a time; icon anchored, label grows right.
+  // Meta HUD button row: exactly one expanded pill — the focused control only.
   function wireRbtnGroups() {
-    document.querySelectorAll('.shelf, .new-actions, .button-row').forEach(function (group) {
-      var btns = group.querySelectorAll('.rbtn');
-      if (!btns.length) return;
-      btns.forEach(function (btn) {
-        btn.addEventListener('pointerdown', function () {
-          btns.forEach(function (b) { b.classList.toggle('selected', b === btn); });
-        });
-        btn.addEventListener('focus', function () {
-          btns.forEach(function (b) { b.classList.toggle('selected', b === btn); });
-        });
-        btn.addEventListener('blur', function () {
-          setTimeout(function () {
-            var active = document.activeElement;
-            if (active && group.contains(active)) return;
-            btns.forEach(function (b) { b.classList.remove('selected'); });
-          }, 0);
-        });
-      });
-    });
+    if (BLK) BLK.wireRbtnGroups(document);
   }
 
   function pickAgent(agent) {
@@ -852,10 +879,40 @@
         relayBadge.classList.toggle('hidden', !hostInfo.relayDebug);
         renderHostPanel();
         if (!data.sessions) return;
+        var cloudPeer = !!data.cloud_peer;
+        var liveOnHost = data.sessions.some(function (s) { return s.state !== 'DEAD'; });
+        // Cloud relay mux can lag behind the laptop peer — don't let stale DEAD
+        // snapshots wipe rows we already have from live WS broadcasts.
+        if (cloudPeer && !liveOnHost) {
+          hostInfo.relayConnected = true;
+          renderThreadList();
+          return;
+        }
+        var bestByThread = {};
         data.sessions.forEach(function (s) {
           var id = s.thread_id || s.session_id;
           if (!id) return;
+          var cur = bestByThread[id];
+          var live = s.state !== 'DEAD';
+          if (!cur) {
+            bestByThread[id] = s;
+            return;
+          }
+          var curLive = cur.state !== 'DEAD';
+          if (live && !curLive) {
+            bestByThread[id] = s;
+            return;
+          }
+          if (live === curLive && (s.last_event_at || 0) >= (cur.last_event_at || 0)) {
+            bestByThread[id] = s;
+          }
+        });
+        Object.keys(bestByThread).forEach(function (id) {
+          var s = bestByThread[id];
           var row = threadRow(id);
+          if (cloudPeer && s.state === 'DEAD' && row.lastEventAt && !row.ended) {
+            return;
+          }
           if (s.label) row.label = s.label;
           else if (s.agent && s.cwd) row.label = s.agent + ': ' + (s.cwd.split('/').pop() || s.cwd);
           if (s.agent) row.agent = s.agent;
@@ -866,10 +923,15 @@
           row.ended = s.state === 'DEAD';
           row.lastEventAt = s.last_event_at || row.lastEventAt || clockNow();
         });
+        reapDeadThreads();
+        hostInfo.relayConnected = true;
         renderThreadList();
         if (activeThread) renderCompose();
       })
-      .catch(function () {});
+      .catch(function () {
+        hostInfo.relayConnected = false;
+        renderThreadList();
+      });
   }
 
   function subscribeFromCursor(cursor) {
@@ -922,6 +984,7 @@
         ended.busy = false;
         ended.yank = null;
         ended.lastEventAt = msg.at || clockNow();
+        reapDeadThreads();
       } else if (msg.type === 'thread_busy') {
         var busy = threadRow(msg.thread);
         busy.busy = true;

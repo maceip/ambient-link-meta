@@ -11,7 +11,7 @@ describe('static web shell', () => {
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     for (const id of [
       'view-threads', 'view-thread', 'view-new', 'w-chips', 'host-panel',
-      'btn-refresh', 'btn-pull', 'relay-badge',
+      'conn-dot', 'btn-pull', 'relay-badge', 'shelf', 'new-start',
     ]) {
       assert.ok(html.includes('id="' + id + '"'), 'missing #' + id);
     }
@@ -28,12 +28,13 @@ describe('static web shell', () => {
     assert.ok(manifest.icons.length > 0);
   });
 
-  it('app shell uses the Meta Display 600px canvas', () => {
+  it('app shell uses the Meta Display viewport and full-bleed canvas', () => {
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     const css = readFileSync(join(root, 'styles.css'), 'utf8');
     assert.ok(html.includes('width=device-width'));
-    assert.ok(css.includes('width: 600px;'));
-    assert.ok(css.includes('height: 600px;'));
+    assert.ok(css.includes('width: 100vw;'));
+    assert.ok(css.includes('height: 100vh;'));
+    assert.ok(css.includes('--bg-primary: #000000;'));
   });
 
   it('service worker caches the complete app shell', () => {
