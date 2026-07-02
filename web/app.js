@@ -17,11 +17,10 @@
   var wMeta      = document.getElementById('w-meta');
   var wCard      = document.getElementById('w-card');
   var wChips     = document.getElementById('w-chips');
-  var composer   = document.getElementById('composer');
   var promptEl   = document.getElementById('prompt');
   var dictateBtn = document.getElementById('dictate');
   var sendBtn     = document.getElementById('send');
-  var shelf      = document.getElementById('shelf');
+  var threadActions = document.getElementById('thread-actions');
   var newTitle   = document.getElementById('new-title');
   var newTitleIcon = document.getElementById('new-title-icon');
   var newCwd     = document.getElementById('new-cwd');
@@ -30,8 +29,8 @@
   var toastEl    = document.getElementById('toast');
   var hostPanel  = document.getElementById('host-panel');
   var relayBadge = document.getElementById('relay-badge');
-  var btnPull    = document.getElementById('btn-pull');
   var newDictate = document.getElementById('new-dictate');
+  var shelf      = document.getElementById('shelf');
 
   var threads = {};
   var threadOrder = [];
@@ -41,13 +40,14 @@
   var backoff = 500;
   var toastTimer;
   var dictRec = null;
+  var phoneDictateThread = null;
+  var agentBodyBeforeDictate = '';
   var pendingDeepLink = null;
   var hostInfo = { relayDebug: false, journal: 0, now: 0, delivery: {}, defaultCwd: '', relayConnected: null };
   var hostPanelOpen = false;
   var pendingInputs = loadPendingInputs();
   var deliveryStates = loadDeliveryStates();
   var cancelChipCountdown = null;
-  var agentBodyBeforeDictate = '';
 
   function cancelAutoAdvance() {
     if (cancelChipCountdown) {
@@ -81,6 +81,11 @@
     var o = { type: type, thread: thread, source: 'web' };
     if (text != null && text !== '') o.text = text;
     ws.send(JSON.stringify(o));
+  }
+
+  function sendSessionSignal(type, thread) {
+    if (!ws || ws.readyState !== 1 || !thread) return;
+    ws.send(JSON.stringify({ type: type, thread: thread, source: 'web' }));
   }
 
   function stopDictRec(abortThread) {
@@ -399,16 +404,43 @@
     sendBtn.disabled = !on;
   }
 
+  function startPhoneDictate(t) {
+    stopDictRec(null);
+    phoneDictateThread = t.id;
+    sendDictate('dictate_begin', t.id);
+    agentBodyBeforeDictate = t.yank ? CS.bodyText(t.yank) : wCard.textContent;
+    cancelAutoAdvance();
+    BLK.showListeningCard(wCard, agentBodyBeforeDictate, '');
+    showToast('listening on phone — speak toward the phone', 'success');
+    promptEl.placeholder = 'listening…';
+    if (dictateBtn) dictateBtn.classList.add('recording');
+  }
+
+  function finishPhoneDictate(thread, text) {
+    if (phoneDictateThread !== thread) return;
+    phoneDictateThread = null;
+    if (dictateBtn) dictateBtn.classList.remove('recording');
+    promptEl.placeholder = 'type your message…';
+    BLK.clearListeningCard(wCard, agentBodyBeforeDictate);
+    if (text) {
+      var row = threads[thread];
+      if (row && row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: text });
+      showToast('sent', 'success');
+    }
+    renderCompose();
+    renderThreadList();
+  }
+
   function startDictate() {
     var t = activeThread ? threads[activeThread] : null;
     if (!t) { showToast('open a session first', 'error'); return; }
     if (!speechAvailable()) {
-      showToast('voice input unavailable here — type instead', 'error');
-      promptEl.focus();
+      startPhoneDictate(t);
       return;
     }
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     stopDictRec(null);
+    phoneDictateThread = null;
     var rec = new SR();
     rec.continuous = true;
     rec.interimResults = true;
@@ -435,21 +467,16 @@
       if (finalText.trim()) {
         var text = finalText.trim();
         sendDictate('dictate_commit', t.id, text);
-        if (t.yank) t.yank = Object.assign({}, t.yank, { lastUserInput: text });
-        BLK.clearListeningCard(wCard, agentBodyBeforeDictate);
+        finishPhoneDictate(t.id, text);
         promptEl.value = '';
-        promptEl.placeholder = 'type your message…';
-        showToast('sent', 'success');
-        renderCompose();
-        renderThreadList();
         dictRec = null;
       }
     };
     rec.onerror = function () {
       sendDictate('dictate_abort', t.id);
-      BLK.clearListeningCard(wCard, agentBodyBeforeDictate);
-      showToast('dictation failed', 'error');
-      promptEl.placeholder = 'type your message…';
+      finishPhoneDictate(t.id, null);
+      showToast('dictation failed — trying phone mic', 'error');
+      startPhoneDictate(t);
       dictRec = null;
     };
     rec.onend = function () { dictRec = null; };
@@ -480,9 +507,11 @@
   }
 
   function openThread(id, compose) {
+    if (activeThread && activeThread !== id) sendSessionSignal('session_blur', activeThread);
     activeThread = id;
     setUrlForSession(id, !!compose);
     showView('thread');
+    sendSessionSignal('session_focus', id);
     renderCompose();
     if (compose) {
       setTimeout(function () { promptEl.focus(); }, 50);
@@ -492,6 +521,10 @@
   function closeThreadView() {
     cancelAutoAdvance();
     stopDictRec(activeThread);
+    if (phoneDictateThread && activeThread) sendDictate('dictate_abort', activeThread);
+    phoneDictateThread = null;
+    if (dictateBtn) dictateBtn.classList.remove('recording');
+    if (activeThread) sendSessionSignal('session_blur', activeThread);
     activeThread = null;
     setUrlForSession(null, false);
     showView('list');
@@ -524,7 +557,7 @@
 
   function dictateIntoField(field, btn) {
     if (!speechAvailable()) {
-      showToast('voice input unavailable here — type instead', 'error');
+      showToast('speak toward your phone — Ambient Link app must be running', 'error');
       field.focus();
       return;
     }
@@ -994,12 +1027,11 @@
         applyYank(msg);
       } else if (msg.type === 'dictate_partial' && activeThread === msg.thread && msg.text) {
         promptEl.value = msg.text;
-      } else if (msg.type === 'dictate_end' && activeThread === msg.thread) {
-        promptEl.placeholder = 'type your message…';
-        if (msg.text) {
-          var row = threads[msg.thread];
-          if (row && row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: msg.text });
+        if (phoneDictateThread === msg.thread) {
+          BLK.showListeningCard(wCard, agentBodyBeforeDictate, msg.text);
         }
+      } else if (msg.type === 'dictate_end' && activeThread === msg.thread) {
+        finishPhoneDictate(msg.thread, msg.text || '');
       } else if (msg.type === 'input_status') {
         applyInputStatus(msg);
         return;
@@ -1022,22 +1054,39 @@
 
   setInterval(syncFromHost, 15000);
 
-  backBtn.addEventListener('click', closeThreadView);
-  btnPull.addEventListener('click', function () {
-    if (activeThread) pullCard(activeThread);
+  // E2E can refresh the agent card without a visible pull button.
+  document.addEventListener('ambient-pull-card', function (e) {
+    var thread = e.detail && e.detail.thread;
+    if (thread) pullCard(thread);
   });
+
+  backBtn.addEventListener('click', closeThreadView);
   newStart.addEventListener('click', startNewThread);
   if (shelf) shelf.addEventListener('click', function (e) {
     var btn = e.target.closest('[data-agent]');
     if (btn) startAgentSession(btn.dataset.agent);
   });
-  composer.addEventListener('submit', function (e) {
-    e.preventDefault();
+  sendBtn.addEventListener('click', function () {
     var text = (promptEl.value || '').trim();
     if (!text || !activeThread) return;
     sendPrompt(activeThread, text);
   });
-  dictateBtn.addEventListener('click', startDictate);
+  promptEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      var text = (promptEl.value || '').trim();
+      if (!text || !activeThread) return;
+      sendPrompt(activeThread, text);
+    }
+  });
+  dictateBtn.addEventListener('click', function () {
+    if (phoneDictateThread && activeThread) {
+      sendDictate('dictate_abort', activeThread);
+      finishPhoneDictate(activeThread, null);
+      return;
+    }
+    startDictate();
+  });
   if (newDictate) newDictate.addEventListener('click', function () { dictateIntoField(newPrompt, newDictate); });
 
   pendingDeepLink = parseDeepLink();

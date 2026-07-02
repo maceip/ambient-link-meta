@@ -47,6 +47,8 @@ object DictationManager {
     if (!commitPartial && notify) main.post { cb?.onCancelled() }
   }
 
+  fun lastPartialText(): String = engine?.lastPartialText() ?: ""
+
   /** Stop capture without callback; returns trailing partial (manual send before final). */
   fun harvestPartial(): String {
     val eng = engine ?: return ""

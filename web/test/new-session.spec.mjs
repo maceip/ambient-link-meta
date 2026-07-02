@@ -105,9 +105,12 @@ async function waitForSent(page) {
 }
 
 async function pullCard(page) {
+  const sessionId = new URL(page.url()).searchParams.get('session');
   for (let attempt = 0; attempt < 8; attempt++) {
     await expect(page.locator('#conn-dot')).toHaveClass(/on/, { timeout: 20_000 });
-    await page.click('#btn-pull');
+    await page.evaluate(function (thread) {
+      document.dispatchEvent(new CustomEvent('ambient-pull-card', { detail: { thread: thread } }));
+    }, sessionId);
     const toastText = ((await page.locator('#toast').textContent()) || '').trim();
     if (/refresh/i.test(toastText)) {
       await waitForToastHidden(page);

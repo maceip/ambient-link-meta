@@ -397,6 +397,7 @@ class HudPresenter(
     if (key == lastRenderedKey) return
     lastRenderedKey = key
     HudWidgets.sendPeek(scope, display, y, chips, ::onChip)
+    RelayService.warmMicForThread(y.thread)
   }
 
   private fun renderExpanded() {
@@ -406,6 +407,7 @@ class HudPresenter(
     if (key == lastRenderedKey) return
     lastRenderedKey = key
     HudWidgets.sendExpanded(scope, d, y, ChipSet.forYank(y), ::onChip)
+    RelayService.warmMicForThread(y.thread)
   }
 
   private fun renderFollowUp() {
@@ -477,6 +479,7 @@ class HudPresenter(
   }
 
   private fun startDictating(y: AgentYank) {
+    RelayService.onHudDictationStart(y.thread)
     if (DictationManager.isActive()) {
       DictationManager.stop(commitPartial = false, notify = false)
     }
@@ -661,6 +664,7 @@ class HudPresenter(
     commitJob?.cancel(); commitJob = null
     renderJob?.cancel(); renderJob = null
     cancelAutoAdvance()
+    val endingThread = current?.thread
     if (DictationManager.isActive()) {
       DictationManager.stop(commitPartial = false, notify = false)
     }
@@ -671,6 +675,7 @@ class HudPresenter(
     state = State.AMBIENT
 
     if (!showNext) {
+      endingThread?.let { RelayService.coolMicForThread(it) }
       tearDownDisplay()
       return
     }
@@ -691,6 +696,7 @@ class HudPresenter(
     }
 
     tearDownDisplay()
+    endingThread?.let { RelayService.coolMicForThread(it) }
   }
 
   /** Turn the glasses screen off. Blank the HUD first so nothing lingers lit on

@@ -37,6 +37,11 @@ class RelayClient(val url: String) {
     data class ThreadIdle(val yank: AgentYank) : Event()
     data class HudYank(val yank: AgentYank) : Event()
     data class ThreadBusy(val thread: String) : Event()
+    data class DictateActive(val thread: String, val source: String) : Event()
+    data class DictatePartial(val thread: String, val text: String, val source: String) : Event()
+    data class DictateEnd(val thread: String, val text: String, val source: String) : Event()
+    data class SessionFocus(val thread: String, val source: String) : Event()
+    data class SessionBlur(val thread: String, val source: String) : Event()
     data class Error(val msg: String) : Event()
   }
   data class ThreadMeta(val id: String, val label: String, val agent: String)
@@ -111,6 +116,26 @@ class RelayClient(val url: String) {
               _events.tryEmit(Event.HudYank(y))
             }
             "thread_busy" -> _events.tryEmit(Event.ThreadBusy(obj.optString("thread")))
+            "dictate_active" -> _events.tryEmit(
+              Event.DictateActive(obj.optString("thread"), obj.optString("source", "")),
+            )
+            "dictate_partial" -> {
+              val text = obj.optString("text", "")
+              if (text.isNotBlank()) {
+                _events.tryEmit(
+                  Event.DictatePartial(obj.optString("thread"), text, obj.optString("source", "")),
+                )
+              }
+            }
+            "dictate_end" -> _events.tryEmit(
+              Event.DictateEnd(obj.optString("thread"), obj.optString("text", ""), obj.optString("source", "")),
+            )
+            "session_focus" -> _events.tryEmit(
+              Event.SessionFocus(obj.optString("thread"), obj.optString("source", "")),
+            )
+            "session_blur" -> _events.tryEmit(
+              Event.SessionBlur(obj.optString("thread"), obj.optString("source", "")),
+            )
           }
         } catch (e: Exception) { Log.w("RelayClient", "parse: ${e.message}") }
       }

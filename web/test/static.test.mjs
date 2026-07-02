@@ -11,7 +11,7 @@ describe('static web shell', () => {
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     for (const id of [
       'view-threads', 'view-thread', 'view-new', 'w-chips', 'host-panel',
-      'conn-dot', 'btn-pull', 'relay-badge', 'shelf', 'new-start',
+      'conn-dot', 'thread-actions', 'relay-badge', 'shelf', 'new-start',
     ]) {
       assert.ok(html.includes('id="' + id + '"'), 'missing #' + id);
     }

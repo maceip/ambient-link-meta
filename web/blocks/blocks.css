@@ -66,7 +66,8 @@
 .blk-shelf-list-view__shelf,
 .shelf,
 .new-actions,
-.blk-form-view__actions {
+.blk-form-view__actions,
+.thread-actions {
   flex: none;
   display: flex;
   align-items: center;
@@ -213,8 +214,9 @@
 
 .blk-form-view__actions .blk-rbtn-row,
 .blk-form-view__actions .rbtn-row,
-.new-actions .rbtn-row {
-  gap: 8px;
+.new-actions .rbtn-row,
+.thread-actions .rbtn-row {
+  gap: var(--rbtn-gap, 10px);
 }
 
 .blk-rbtn,
@@ -270,8 +272,8 @@
 
 .blk-rbtn__icon svg,
 .rbtn .rbtn-icon svg {
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
   display: block;
 }
 

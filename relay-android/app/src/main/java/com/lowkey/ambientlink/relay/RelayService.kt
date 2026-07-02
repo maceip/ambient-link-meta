@@ -15,12 +15,15 @@ import com.lowkey.ambientlink.BuildConfig
 import com.lowkey.ambientlink.MainActivity
 import com.lowkey.ambientlink.R
 import com.lowkey.ambientlink.hud.HudPresenter
+import com.lowkey.ambientlink.soda.SodaRuntime
+import com.google.research.air.cosmo.lib.soda.SodaPrepareResult
 import com.lowkey.ambientlink.wearables.WearablesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +41,7 @@ class RelayService : Service() {
   private val scope = MainScope()
   private var client: RelayClient? = null
   private var presenter: HudPresenter? = null
+  private var webDictation: WebDictationBridge? = null
   private var eventsJob: Job? = null
   private var activeUrl: String = ""
   private var microphoneForeground = false
@@ -54,6 +58,25 @@ class RelayService : Service() {
     // enforce the microphone FGS rules (RECORD_AUDIO + eligible state) at cold
     // start and crash. Microphone is promoted later via setMicrophoneForeground.
     applyForeground("starting…")
+    scope.launch(Dispatchers.IO) { preloadSodaIfEnabled() }
+  }
+
+  private fun preloadSodaIfEnabled() {
+    if (!isSodaPreloadEnabled(applicationContext)) return
+    try {
+      when (val result = SodaRuntime.preparePack(applicationContext)) {
+        is SodaPrepareResult.Available ->
+          Log.i(TAG, "SODA pack pre-loaded")
+        is SodaPrepareResult.Unavailable ->
+          Log.w(TAG, "SODA preload skipped: ${result.reason}")
+      }
+    } catch (e: Exception) {
+      Log.w(TAG, "SODA preload failed: ${e.message}")
+    }
+  }
+
+  fun requestSodaPreload() {
+    scope.launch(Dispatchers.IO) { preloadSodaIfEnabled() }
   }
 
   /** Promote FGS to microphone while glasses dictate runs (Android 14+ requires this for real audio). */
@@ -99,14 +122,21 @@ class RelayService : Service() {
 
   private suspend fun resolveRelayUrl(explicit: String?): String {
     explicit?.takeIf { it.isNotBlank() }?.let { return normalizeRelayUrl(it) }
-    val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    prefs.getString("relay_url", null)?.takeIf { isUsableRelayUrl(it) }?.let { return normalizeRelayUrl(it) }
-    BuildConfig.DEFAULT_RELAY_URL.takeIf { isUsableRelayUrl(it) }?.let { return normalizeRelayUrl(it) }
-    RelayDiscovery.discover(applicationContext)?.also { found ->
-      prefs.edit().putString("relay_url", found).apply()
+    RelayDiscovery.discover(applicationContext, timeoutMs = 4_000)?.let { found ->
+      Log.i(TAG, "relay: using LAN $found")
       return found
     }
-    return normalizeRelayUrl(BuildConfig.DEFAULT_RELAY_URL)
+    val cloud = cloudRelayUrl()
+    Log.i(TAG, "relay: using cloud $cloud")
+    return cloud
+  }
+
+  private fun cloudRelayUrl(): String {
+    val fromBuild = BuildConfig.DEFAULT_RELAY_URL.trim()
+    if (isUsableRelayUrl(fromBuild) && fromBuild.startsWith("wss://")) {
+      return normalizeRelayUrl(fromBuild)
+    }
+    return normalizeRelayUrl("wss://public.computer/ambient-link/ws")
   }
 
   private fun normalizeRelayUrl(raw: String): String {
@@ -141,19 +171,41 @@ class RelayService : Service() {
   private fun doRestart(url: String) {
     eventsJob?.cancel()
     client?.stop()
+    webDictation?.stop()
     val c = RelayClient(url)
     val p = HudPresenter(applicationContext, c, WearablesRepository.getInstance(applicationContext))
+    val dictation = WebDictationBridge(
+      applicationContext,
+      c,
+      scope,
+      getSharedPreferences(PREFS, Context.MODE_PRIVATE),
+    )
     client = c
     presenter = p
+    webDictation = dictation
     _status.update { it.copy(url = url, connected = false, lastError = null) }
 
     eventsJob = scope.launch {
       c.events.collect { ev ->
         when (ev) {
-          is RelayClient.Event.Connected    -> { _status.update { it.copy(connected = true,  lastError = null) }; setNotif("connected") }
+          is RelayClient.Event.Connected    -> {
+            _status.update { it.copy(connected = true,  lastError = null) }
+            setNotif("connected")
+            scope.launch(Dispatchers.IO) { preloadSodaIfEnabled() }
+          }
           is RelayClient.Event.Disconnected -> {
             _status.update { s -> s.copy(connected = false) }
             setNotif("reconnecting…")
+            if (url.startsWith("ws://")) {
+              launch {
+                delay(8_000)
+                if (!_status.value.connected && activeUrl.startsWith("ws://")) {
+                  val cloud = cloudRelayUrl()
+                  Log.i(TAG, "LAN unreachable — switching to $cloud")
+                  restart(cloud, force = true)
+                }
+              }
+            }
           }
           is RelayClient.Event.Hello        -> {
             _status.update { it.copy(threads = ev.threads.map { t -> t.label }, lastError = null) }
@@ -162,10 +214,14 @@ class RelayService : Service() {
           is RelayClient.Event.ThreadIdle   -> p.onIdle(ev.yank)
           is RelayClient.Event.HudYank      -> p.yank(ev.yank)
           is RelayClient.Event.ThreadBusy   -> p.cancelIfFor(ev.thread)
+          is RelayClient.Event.DictateActive -> dictation.onActive(ev.thread, ev.source)
+          is RelayClient.Event.DictateEnd   -> dictation.onEnd(ev.thread)
+          is RelayClient.Event.SessionFocus -> dictation.onSessionFocus(ev.thread)
+          is RelayClient.Event.SessionBlur  -> dictation.onSessionBlur(ev.thread)
           is RelayClient.Event.Error        -> {
-            // Keep retrying silently; surface error only if we stay disconnected.
             _status.update { s -> if (!s.connected) s.copy(lastError = ev.msg) else s }
           }
+          is RelayClient.Event.DictatePartial -> { /* HUD/web clients consume via host fan-out */ }
         }
       }
     }
@@ -174,6 +230,7 @@ class RelayService : Service() {
 
   override fun onDestroy() {
     eventsJob?.cancel()
+    webDictation?.stop()
     client?.stop()
     scope.cancel()
     state = null
@@ -215,6 +272,8 @@ class RelayService : Service() {
     private const val NOTIF_ID = 1
     private const val PREFS    = "ambient-link-meta"
     private const val TAG = "RelayService"
+    private const val PREF_PREWARM_MIC = "prewarm_mic"
+    private const val PREF_PRELOAD_SODA = "preload_soda"
     const val EXTRA_URL = "relay_url"
     const val EXTRA_FORCE = "relay_force"
     private val _status = MutableStateFlow(Status())
@@ -228,6 +287,41 @@ class RelayService : Service() {
 
     fun setMicrophoneForeground(active: Boolean) {
       state?.setMicrophoneForeground(active)
+    }
+
+    /** Pre-warm mic while user is in a session (glasses web or HUD card). */
+    fun warmMicForThread(thread: String) {
+      state?.webDictation?.onSessionFocus(thread)
+    }
+
+    fun coolMicForThread(thread: String) {
+      state?.webDictation?.onSessionBlur(thread)
+    }
+
+    fun isPreWarmMicEnabled(ctx: Context): Boolean =
+      ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getBoolean(PREF_PREWARM_MIC, true)
+
+    fun setPreWarmMicEnabled(ctx: Context, on: Boolean) {
+      state?.webDictation?.setPreWarmEnabled(on)
+        ?: ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+          .edit().putBoolean(PREF_PREWARM_MIC, on).apply()
+    }
+
+    fun isSodaPreloadEnabled(ctx: Context? = null): Boolean {
+      val c = ctx ?: state?.applicationContext ?: return true
+      return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getBoolean(PREF_PRELOAD_SODA, true)
+    }
+
+    fun setSodaPreloadEnabled(ctx: Context, on: Boolean) {
+      ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .edit().putBoolean(PREF_PRELOAD_SODA, on).apply()
+      if (on) state?.requestSodaPreload()
+    }
+
+    fun onHudDictationStart(thread: String) {
+      state?.webDictation?.onHudDictationStart(thread)
     }
 
     fun start(ctx: Context, url: String?, force: Boolean = false) {

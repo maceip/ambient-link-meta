@@ -49,8 +49,8 @@
   --dur-focus-out: 625ms;
   --dur-color-in: 300ms;
   --dur-color-out: 300ms;
-  --rbtn-size: 52px;
-  --rbtn-gap: 8px;
+  --rbtn-size: 64px;
+  --rbtn-gap: 10px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

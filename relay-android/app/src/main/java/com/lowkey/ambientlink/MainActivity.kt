@@ -44,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -204,6 +205,12 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         .getString("default_cwd", "") ?: "",
     )
   }
+  var preWarmMic by remember {
+    mutableStateOf(RelayService.isPreWarmMicEnabled(ctx))
+  }
+  var preloadSoda by remember {
+    mutableStateOf(RelayService.isSodaPreloadEnabled(ctx))
+  }
 
   Scaffold(
     modifier = Modifier.fillMaxSize(),
@@ -292,6 +299,50 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
             svcStatus.lastError ?: "",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
+          )
+        }
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Column(Modifier.weight(1f)) {
+            Text("Pre-load speech model", style = MaterialTheme.typography.bodyMedium)
+            Text(
+              "Unpack SODA when the daemon starts (faster first Dictate)",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+          Switch(
+            checked = preloadSoda,
+            onCheckedChange = {
+              preloadSoda = it
+              RelayService.setSodaPreloadEnabled(ctx, it)
+            },
+          )
+        }
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Column(Modifier.weight(1f)) {
+            Text("Warm mic in sessions", style = MaterialTheme.typography.bodyMedium)
+            Text(
+              "Open mic when a session is active, before you tap Dictate",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+          Switch(
+            checked = preWarmMic,
+            onCheckedChange = {
+              preWarmMic = it
+              RelayService.setPreWarmMicEnabled(ctx, it)
+            },
           )
         }
 
