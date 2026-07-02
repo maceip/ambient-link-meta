@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -223,7 +224,7 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         title = {
           Text(
             "ambient link",
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
           )
         },
@@ -244,26 +245,38 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         .padding(innerPadding)
         .verticalScroll(scrollState)
         .hazeSource(state = hazeState)
-        .padding(horizontal = 16.dp, vertical = 8.dp),
-      verticalArrangement = Arrangement.spacedBy(12.dp),
+        .padding(horizontal = 16.dp, vertical = 4.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      Text(
-        "Background relay daemon for glasses notifications.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
+      SectionCard(title = "Status") {
+        StatusPillRow(
+          pills = buildList {
+            add(StatusPill("Pair", regState.displayLabel(), regState.statusColor()))
+            add(
+              StatusPill(
+                "Link",
+                displayDevice?.linkState?.displayLabel() ?: "—",
+                displayDevice?.linkState?.statusColor() ?: MaterialTheme.colorScheme.onSurfaceVariant,
+              ),
+            )
+            add(StatusPill("Relay", relayLabel(svcStatus), relayStatusColor(svcStatus)))
+          },
+        )
+      }
 
       if (!sdkReady) {
         HintBanner("Grant Bluetooth permissions to initialize the glasses SDK.")
       }
 
       SectionCard(title = "Glasses") {
-        StatusLine("Pairing", regState.displayLabel(), regState.statusColor())
         if (displayDevice != null) {
-          StatusLine("Link", displayDevice.linkState.displayLabel(), displayDevice.linkState.statusColor())
-          LabeledValue("Device", displayDevice.name)
-          LabeledValue("Compatibility", displayDevice.compatibility.name.replace('_', ' ').lowercase()
-            .replaceFirstChar { it.titlecase() })
+          Text(
+            "${displayDevice.name} · ${displayDevice.compatibility.name.replace('_', ' ').lowercase()}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
         } else if (sdkReady) {
           Text(
             "No display-capable glasses found.",
@@ -275,100 +288,38 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
           FilledTonalButton(
             onClick = { wearablesRepo.startRegistration(activity) },
             modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(vertical = 10.dp),
           ) {
             Text("Pair glasses")
           }
         }
         if (displayDevice != null && displayDevice.linkState != LinkState.CONNECTED) {
-          HintBanner("Open Meta AI and connect your glasses until Link shows Connected.")
+          HintBanner("Connect glasses in Meta AI until Link is green.")
         }
       }
 
       SectionCard(title = "Relay") {
-        StatusLine("Status", relayLabel(svcStatus), relayStatusColor(svcStatus))
-        Text(
-          if (svcStatus.running) "Daemon running in background" else "Daemon stopped",
-          style = MaterialTheme.typography.bodySmall,
-          color = if (svcStatus.running) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         if (svcStatus.url.isNotBlank()) {
-          LabeledValue("Connected to", svcStatus.url)
+          InlineMono("Host", svcStatus.url)
         }
         if (svcStatus.threads.isNotEmpty()) {
-          LabeledValue("Active threads", svcStatus.threads.joinToString(", "))
+          InlineMono("Threads", svcStatus.threads.joinToString(", "))
         }
-        if (!svcStatus.running && svcStatus.lastError != null) {
-          Text(
-            svcStatus.lastError ?: "",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-          )
+        svcStatus.lastError?.takeIf { !svcStatus.running }?.let {
+          Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2)
         }
 
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          Column(Modifier.weight(1f)) {
-            Text("Pre-load speech model", style = MaterialTheme.typography.bodyMedium)
-            Text(
-              "Unpack SODA when the daemon starts (faster first Dictate)",
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-          }
-          Switch(
-            checked = preloadSoda,
-            onCheckedChange = {
-              preloadSoda = it
-              RelayService.setSodaPreloadEnabled(ctx, it)
-            },
-          )
+        CompactToggle("Pre-load speech model", preloadSoda) {
+          preloadSoda = it
+          RelayService.setSodaPreloadEnabled(ctx, it)
         }
-
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          Column(Modifier.weight(1f)) {
-            Text("Warm mic in sessions", style = MaterialTheme.typography.bodyMedium)
-            Text(
-              "Open mic when a session is active, before you tap Dictate",
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-          }
-          Switch(
-            checked = preWarmMic,
-            onCheckedChange = {
-              preWarmMic = it
-              RelayService.setPreWarmMicEnabled(ctx, it)
-            },
-          )
+        CompactToggle("Warm mic in sessions", preWarmMic) {
+          preWarmMic = it
+          RelayService.setPreWarmMicEnabled(ctx, it)
         }
-
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          Column(Modifier.weight(1f)) {
-            Text("Glasses Bluetooth mic", style = MaterialTheme.typography.bodyMedium)
-            Text(
-              "Route dictate through glasses HFP (may show call UI on glasses)",
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-          }
-          Switch(
-            checked = bluetoothSco,
-            onCheckedChange = {
-              bluetoothSco = it
-              RelayService.setBluetoothScoEnabled(ctx, it)
-            },
-          )
+        CompactToggle("Glasses Bluetooth mic (in-call UI)", bluetoothSco) {
+          bluetoothSco = it
+          RelayService.setBluetoothScoEnabled(ctx, it)
         }
 
         OutlinedTextField(
@@ -425,7 +376,7 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         )
       }
 
-      SectionCard(title = "New session defaults") {
+      SectionCard(title = "Defaults") {
         OutlinedTextField(
           value = cwd,
           onValueChange = { cwd = it },
@@ -449,19 +400,15 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
             }
           },
           modifier = Modifier.fillMaxWidth(),
+          contentPadding = PaddingValues(vertical = 10.dp),
         ) {
-          Text("Save default directory")
+          Text("Save directory")
         }
       }
 
       SectionCard(title = "Debug") {
         val debugSession = GlassesDisplay.session
         val canDebug = sdkReady && displayDevice != null && displayDevice.linkState == LinkState.CONNECTED
-        Text(
-          "Send a one-shot test card to the glasses HUD.",
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         OutlinedButton(
           onClick = {
             val id = devicesMeta.entries.firstOrNull { it.value == displayDevice }?.key ?: return@OutlinedButton
@@ -469,12 +416,13 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
           },
           enabled = canDebug,
           modifier = Modifier.fillMaxWidth(),
+          contentPadding = PaddingValues(vertical = 10.dp),
         ) {
           Text("Fire test widget")
         }
       }
 
-      Spacer(Modifier.height(16.dp))
+      Spacer(Modifier.height(8.dp))
     }
   }
 }
@@ -484,51 +432,104 @@ private fun SectionCard(title: String, content: @Composable () -> Unit) {
   Card(
     modifier = Modifier.fillMaxWidth(),
     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    shape = MaterialTheme.shapes.large,
+    shape = MaterialTheme.shapes.medium,
   ) {
     Column(
-      Modifier.padding(PaddingValues(16.dp)),
-      verticalArrangement = Arrangement.spacedBy(10.dp),
+      Modifier.padding(PaddingValues(horizontal = 12.dp, vertical = 10.dp)),
+      verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-      Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-      HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+      Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+      HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
       content()
     }
   }
 }
 
+private data class StatusPill(val label: String, val value: String, val dotColor: Color)
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StatusLine(label: String, value: String, dotColor: Color) {
-  Row(
+private fun StatusPillRow(pills: List<StatusPill>) {
+  FlowRow(
     modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    pills.forEach { pill ->
+      StatusPillChip(pill)
+    }
+  }
+}
+
+@Composable
+private fun StatusPillChip(pill: StatusPill) {
+  Row(
+    modifier = Modifier
+      .defaultMinSize(minHeight = 32.dp)
+      .clip(MaterialTheme.shapes.small)
+      .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
+      .padding(horizontal = 10.dp, vertical = 6.dp),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     Box(
       Modifier
-        .size(8.dp)
+        .size(7.dp)
         .clip(CircleShape)
-        .background(dotColor),
+        .background(pill.dotColor),
     )
-    Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(88.dp))
     Text(
-      value,
-      style = MaterialTheme.typography.bodyMedium,
-      fontWeight = FontWeight.Medium,
-      modifier = Modifier.weight(1f),
+      pill.label,
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Text(
+      pill.value,
+      style = MaterialTheme.typography.labelMedium,
+      fontWeight = FontWeight.SemiBold,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
     )
   }
 }
 
 @Composable
-private fun LabeledValue(label: String, value: String) {
-  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-    Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun CompactToggle(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Text(
+      label,
+      style = MaterialTheme.typography.bodyMedium,
+      modifier = Modifier.weight(1f),
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+    Switch(checked = checked, onCheckedChange = onCheckedChange)
+  }
+}
+
+@Composable
+private fun InlineMono(label: String, value: String) {
+  Row(
+    Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalAlignment = Alignment.Top,
+  ) {
+    Text(
+      label,
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = Modifier.width(52.dp),
+    )
     Text(
       value,
-      style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+      style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp),
       color = MaterialTheme.colorScheme.onSurface,
-      maxLines = 3,
+      modifier = Modifier.weight(1f),
+      maxLines = 2,
       overflow = TextOverflow.Ellipsis,
     )
   }
@@ -555,31 +556,62 @@ private fun DaemonActions(
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     val stack = maxWidth < 420.dp
     if (stack) {
-      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = onStart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+      Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Button(
+          onClick = onStart,
+          enabled = !busy,
+          modifier = Modifier.fillMaxWidth(),
+          contentPadding = PaddingValues(vertical = 10.dp),
+        ) {
           Text(if (busy) "Starting…" else "Start daemon")
         }
-        OutlinedButton(onClick = onStop, enabled = daemonRunning && !busy, modifier = Modifier.fillMaxWidth()) {
-          Text("Stop daemon")
-        }
-        OutlinedButton(onClick = onDiscover, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-          Text("Discover host")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+          OutlinedButton(
+            onClick = onStop,
+            enabled = daemonRunning && !busy,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(vertical = 10.dp),
+          ) {
+            Text("Stop")
+          }
+          OutlinedButton(
+            onClick = onDiscover,
+            enabled = !busy,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(vertical = 10.dp),
+          ) {
+            Text("Discover")
+          }
         }
       }
     } else {
-      FlowRow(
+      Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
       ) {
-        Button(onClick = onStart, enabled = !busy) {
-          Text(if (busy) "Starting…" else "Start daemon")
+        Button(
+          onClick = onStart,
+          enabled = !busy,
+          modifier = Modifier.weight(1f),
+          contentPadding = PaddingValues(vertical = 10.dp),
+        ) {
+          Text(if (busy) "Starting…" else "Start")
         }
-        OutlinedButton(onClick = onStop, enabled = daemonRunning && !busy) {
-          Text("Stop daemon")
+        OutlinedButton(
+          onClick = onStop,
+          enabled = daemonRunning && !busy,
+          modifier = Modifier.weight(1f),
+          contentPadding = PaddingValues(vertical = 10.dp),
+        ) {
+          Text("Stop")
         }
-        OutlinedButton(onClick = onDiscover, enabled = !busy) {
-          Text("Discover host")
+        OutlinedButton(
+          onClick = onDiscover,
+          enabled = !busy,
+          modifier = Modifier.weight(1f),
+          contentPadding = PaddingValues(vertical = 10.dp),
+        ) {
+          Text("Discover")
         }
       }
     }

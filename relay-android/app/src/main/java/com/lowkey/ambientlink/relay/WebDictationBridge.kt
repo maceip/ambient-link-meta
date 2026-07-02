@@ -35,7 +35,7 @@ class WebDictationBridge(
   }
 
   fun isBluetoothScoEnabled(): Boolean =
-    prefs.getBoolean(PREF_BLUETOOTH_SCO, true)
+    prefs.getBoolean(PREF_BLUETOOTH_SCO, false)
 
   fun setBluetoothScoEnabled(on: Boolean) {
     prefs.edit().putBoolean(PREF_BLUETOOTH_SCO, on).apply()

@@ -32,7 +32,21 @@
   var newDictate = document.getElementById('new-dictate');
   var shelf      = document.getElementById('shelf');
 
-  var threads = {};
+  var GLASSES_SHELL = false;
+
+  /** Meta Display web app — square viewport, no in-card HUD chips (native DAT only). */
+  function detectGlassesShell() {
+    var ua = navigator.userAgent || '';
+    if (/Meta|Wearable|WAVE|RBD|OculusBrowser/i.test(ua)) return true;
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    if (w > 0 && h > 0 && w <= 640 && h <= 640 && Math.abs(w - h) <= 96) return true;
+    return document.querySelector('meta[name="mrbd-web-app-capable"]') != null &&
+      w <= 640 && h <= 640;
+  }
+
+  GLASSES_SHELL = detectGlassesShell();
+  if (GLASSES_SHELL) document.body.classList.add('glasses-shell');
   var threadOrder = [];
   var activeThread = null;
   var pickedAgent = 'cursor';
@@ -311,7 +325,7 @@
   function renderChips(yank, agent) {
     cancelAutoAdvance();
     wChips.innerHTML = '';
-    if (!yank) return;
+    if (!yank || GLASSES_SHELL) return;
     var chips = CS.forYank(yank).map(function (c) {
       return {
         label: c.label,
@@ -411,7 +425,7 @@
     agentBodyBeforeDictate = t.yank ? CS.bodyText(t.yank) : wCard.textContent;
     cancelAutoAdvance();
     BLK.showListeningCard(wCard, agentBodyBeforeDictate, '');
-    showToast('listening — speak into your glasses mic', 'success');
+    showToast('listening — speak toward the phone', 'success');
     promptEl.placeholder = 'listening…';
     if (dictateBtn) dictateBtn.classList.add('recording');
   }

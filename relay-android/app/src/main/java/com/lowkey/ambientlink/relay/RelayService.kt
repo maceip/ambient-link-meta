@@ -321,10 +321,10 @@ class RelayService : Service() {
       if (on) state?.requestSodaPreload()
     }
 
-    /** Route web/HUD dictate through glasses HFP (Bluetooth SCO). Default on. */
+    /** Off by default — SCO triggers the glasses in-call UI overlay. */
     fun isBluetoothScoEnabled(ctx: Context): Boolean =
       ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        .getBoolean(PREF_BLUETOOTH_SCO, true)
+        .getBoolean(PREF_BLUETOOTH_SCO, false)
 
     fun setBluetoothScoEnabled(ctx: Context, on: Boolean) {
       state?.webDictation?.setBluetoothScoEnabled(on)

@@ -548,6 +548,12 @@
   gap: 8px;
   padding-bottom: 2px;
 }
+
+/* Glasses web shell: no in-card HUD chips — Back / Dictate / Send are in the bottom row. */
+body.glasses-shell .widget-chips,
+body.glasses-shell .blk-agent-card__actions {
+  display: none !important;
+}
 .chip {
   flex: 1;
   min-width: 0;

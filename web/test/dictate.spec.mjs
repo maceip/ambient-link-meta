@@ -1,7 +1,7 @@
 /**
  * Interactive phone-bridge dictate test on the deployed web app.
  *
- * Flow: browser (no SpeechRecognition) → dictate_begin → phone SODA + BT SCO →
+ * Flow: browser (no SpeechRecognition) → dictate_begin → phone SODA (phone mic) →
  * dictate_partial / dictate_commit back to the web composer.
  *
  * YOU SPEAK during the wait window. Requires phone daemon via USB adb.
