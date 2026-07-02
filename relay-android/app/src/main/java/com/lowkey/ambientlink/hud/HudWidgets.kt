@@ -47,7 +47,7 @@ object HudWidgets {
           ) {
             chips.take(MAX_ACTIONS).forEach { c ->
               button(
-                if (c.primary) c.label else c.glyph.ifBlank { c.label },
+                c.label,
                 style = if (c.primary) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE,
                 onClick = { onChip(c) },
               )
@@ -138,7 +138,7 @@ object HudWidgets {
           ) {
             chips.take(MAX_ACTIONS).forEach { c ->
               button(
-                if (c.primary) c.label else c.glyph.ifBlank { c.label },
+                c.label,
                 style = if (c.primary) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE,
                 onClick = { onChip(c) },
               )
@@ -201,22 +201,19 @@ object HudWidgets {
   // bottom) plus a bottom shelf of filter glyphs. Rows and glyphs are DAT buttons.
   data class HudSession(val thread: String, val label: String, val agent: String, val status: String)
 
-  private fun agentGlyph(agent: String): String {
-    val a = agent.lowercase()
-    return when {
-      a.contains("cursor") -> "▣"
-      a.contains("claude") -> "✳"
-      a.contains("codex") || a.contains("openai") -> "❖"
-      else -> "•"
-    }
+  private fun agentPrefix(agent: String): String = when {
+    agent.lowercase().contains("cursor") -> "Cu"
+    agent.lowercase().contains("claude") -> "Cl"
+    agent.lowercase().contains("codex") || agent.lowercase().contains("openai") -> "Cx"
+    else -> "Ag"
   }
 
-  private fun statusGlyph(status: String): String = when (status) {
-    "permission" -> "⚠"
-    "question" -> "?"
-    "busy" -> "…"
-    "done" -> "✓"
-    else -> "•"
+  private fun statusLabel(status: String): String = when (status) {
+    "permission" -> "perm"
+    "question" -> "ask"
+    "busy" -> "busy"
+    "done" -> "done"
+    else -> status.take(4)
   }
 
   fun sendSessionList(
@@ -238,7 +235,7 @@ object HudWidgets {
             }
           } else {
             rows.takeLast(8).forEach { r ->
-              button("${agentGlyph(r.agent)}  ${r.label}   ${statusGlyph(r.status)}", style = ButtonStyle.OUTLINE, onClick = { onRow(r.thread) })
+              button("${agentPrefix(r.agent)} ${r.label} ${statusLabel(r.status)}", style = ButtonStyle.PRIMARY, onClick = { onRow(r.thread) })
             }
           }
           flexBox(
@@ -248,10 +245,10 @@ object HudWidgets {
             crossAlignment = Alignment.CENTER,
             background = FlexBoxBackground.NONE,
           ) {
-            button("‹", style = ButtonStyle.OUTLINE, onClick = { onBack() })
-            button(if (filter == null) "✳ All" else "✳", style = if (filter == null) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("all") })
-            button(if (filter == "cursor") "▣ Cursor" else "▣", style = if (filter == "cursor") ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("cursor") })
-            button(if (filter == "codex") "❖ Codex" else "❖", style = if (filter == "codex") ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("codex") })
+            button("back", style = ButtonStyle.OUTLINE, onClick = { onBack() })
+            button(if (filter == null) "all" else "All", style = if (filter == null) ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("all") })
+            button("cursor", style = if (filter == "cursor") ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("cursor") })
+            button("codex", style = if (filter == "codex") ButtonStyle.PRIMARY else ButtonStyle.OUTLINE, onClick = { onFilter("codex") })
           }
         }
       }

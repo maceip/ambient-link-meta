@@ -8,12 +8,12 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=16">
-  <link rel="stylesheet" href="companion.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="companion.css?v=19">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v16';
+      var BUILD = 'v19';
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', function () {
         // Self-heal: earlier installs left a stale service worker caching an old
@@ -41,22 +41,23 @@
 
   <!-- THREAD LIST -->
   <section id="view-threads" class="view">
+    <header class="list-hdr">
+      <span class="list-title">sessions</span>
+      <span id="conn-dot" class="conn-dot off" title="relay connection" aria-label="relay connection"></span>
+    </header>
     <span id="relay-badge" class="relay-badge hidden" title="relay debug — auto cards suppressed">debug</span>
     <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
     <p id="empty-hint" class="empty-hint">no sessions</p>
     <div id="threads" class="thread-list" role="list"></div>
-    <nav id="shelf" class="shelf" role="toolbar" aria-label="sessions">
-      <button type="button" id="shelf-all" class="rbtn focusable off active" data-filter="all" title="all sessions" aria-label="all sessions">
-        <span class="rbtn-pill"><span class="rbtn-icon">✳</span><span class="rbtn-label">All</span></span>
-      </button>
-      <button type="button" class="rbtn focusable" data-filter="cursor" title="cursor sessions" aria-label="cursor sessions">
+    <nav id="shelf" class="shelf" role="toolbar" aria-label="new session">
+      <button type="button" class="rbtn focusable agent-launcher" data-agent="cursor" title="new cursor session" aria-label="new cursor session">
         <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="cursor"></span><span class="rbtn-label">Cursor</span></span>
       </button>
-      <button type="button" class="rbtn focusable" data-filter="codex" title="codex sessions" aria-label="codex sessions">
-        <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="codex"></span><span class="rbtn-label">Codex</span></span>
+      <button type="button" class="rbtn focusable agent-launcher" data-agent="claude" title="new claude session" aria-label="new claude session">
+        <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="claude"></span><span class="rbtn-label">Claude</span></span>
       </button>
-      <button type="button" id="btn-new" class="rbtn focusable" title="new session" aria-label="new session">
-        <span class="rbtn-pill"><span class="rbtn-icon">+</span><span class="rbtn-label">New</span></span>
+      <button type="button" class="rbtn focusable agent-launcher" data-agent="codex" title="new codex session" aria-label="new codex session">
+        <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="codex"></span><span class="rbtn-label">Codex</span></span>
       </button>
     </nav>
   </section>
@@ -82,25 +83,39 @@
 
   <!-- NEW SESSION -->
   <section id="view-new" class="view hidden">
-    <header class="hdr">
-      <button type="button" id="new-back" class="iconbtn focusable" aria-label="back">‹</button>
-      <span id="new-title" class="title hdr-title">create session</span>
-      <button type="button" id="new-start" class="start-btn focusable" aria-label="start session">START</button>
+    <header class="hdr new-hdr">
+      <div class="new-title-wrap">
+        <span id="new-title-icon" class="new-title-icon agent-cursor" data-agent-icon="cursor" aria-hidden="true"></span>
+        <h1 id="new-title" class="new-title-text">createCursor</h1>
+      </div>
     </header>
     <div class="new-body">
-      <label class="field-label">working directory</label>
+      <label class="field-label" for="new-cwd">working directory</label>
       <input id="new-cwd" class="text-input focusable" type="text" placeholder="/path/to/project">
-      <label class="field-label">prompt</label>
-      <div class="prompt-field">
-        <textarea id="new-prompt" class="text-input focusable" rows="5" placeholder="what should the agent do?"></textarea>
-        <button type="button" id="new-dictate" class="dictate-btn focusable prompt-dictate" title="dictate" aria-label="dictate"></button>
-      </div>
+      <label class="field-label" for="new-prompt">prompt</label>
+      <textarea id="new-prompt" class="text-input focusable" rows="5" placeholder="what should the agent do?"></textarea>
     </div>
+    <nav class="new-actions" role="toolbar" aria-label="create session">
+      <button type="button" id="new-dictate" class="rbtn focusable" title="dictate" aria-label="dictate">
+        <span class="rbtn-pill">
+          <span class="rbtn-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+          </span>
+          <span class="rbtn-label">Dictate</span>
+        </span>
+      </button>
+      <button type="button" id="new-start" class="rbtn focusable rbtn-primary" aria-label="start session">
+        <span class="rbtn-pill">
+          <span class="rbtn-icon" aria-hidden="true">▶</span>
+          <span class="rbtn-label">Start</span>
+        </span>
+      </button>
+    </nav>
   </section>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="chipset.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="chipset.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

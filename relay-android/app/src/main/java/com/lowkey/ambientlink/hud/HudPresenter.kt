@@ -368,7 +368,7 @@ class HudPresenter(
   private fun renderPeekCountdown(y: AgentYank, remaining: Int) {
     val display = datSession.activeDisplay ?: return
     val chips = ChipSet.forYank(y).map {
-      if (it.kind == ChipKind.SEND) it.copy(label = "${it.label} (${remaining} sec)") else it
+      if (it.kind == ChipKind.SEND) it.copy(label = "${it.label} ${remaining}s") else it
     }
     lastRenderedKey = null
     HudWidgets.sendPeek(scope, display, y, chips, ::onChip)

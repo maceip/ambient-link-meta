@@ -124,6 +124,32 @@
 }
 .empty-hint.hidden { display: none; }
 
+.list-hdr {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px 4px;
+}
+.list-title {
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-shadow: var(--hud-text-shadow);
+}
+.conn-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 8px rgba(240, 86, 110, 0.45);
+}
+.conn-dot.on { background: var(--success); box-shadow: 0 0 8px rgba(61, 201, 122, 0.45); }
+.conn-dot.warn { background: var(--warning); box-shadow: 0 0 8px rgba(255, 179, 74, 0.45); }
+.conn-dot.off { background: var(--danger); }
+
 .thread-list {
   list-style: none;
   flex: 1;
@@ -131,9 +157,9 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
   margin: 0;
-  padding: 22px 22px 10px;
+  padding: 10px 20px 8px;
   scrollbar-width: none;
 }
 .thread-list::-webkit-scrollbar,
@@ -147,12 +173,12 @@
   font: inherit;
   position: relative;
   width: 100%;
-  min-height: 76px;
+  min-height: 58px;
   display: grid;
   grid-template-columns: var(--avatar-size) 1fr auto;
   align-items: center;
-  column-gap: 16px;
-  padding: 12px 18px;
+  column-gap: 12px;
+  padding: 8px 14px;
   border: 1px solid var(--stroke);
   border-radius: var(--radius-pill);
   /* Solid, raised list card (matches hud-design-lab/modal.html .file). */
@@ -167,11 +193,17 @@
               box-shadow var(--dur-color-in) var(--ease-color-in),
               transform var(--dur-focus-in) var(--ease-focus-in);
 }
-/* SDK guideline: idle content sits at 80%, targeted content lifts to 100%. */
-.thread-row .name,
-.thread-row .preview,
-.thread-row .time {
-  opacity: 0.95;
+/* Live rows read at full brightness; ended rows are muted via .thread-row.ended. */
+.thread-row:not(.ended) .name,
+.thread-row:not(.ended) .preview,
+.thread-row:not(.ended) .time {
+  opacity: 1;
+  transition: opacity var(--dur-color-in) var(--ease-color-in);
+}
+.thread-row.ended .name,
+.thread-row.ended .preview,
+.thread-row.ended .time {
+  opacity: 0.85;
   transition: opacity var(--dur-color-in) var(--ease-color-in);
 }
 /* Focus = a bright, fully-rounded frosted capsule (the lit "Telekom" row).
@@ -187,7 +219,7 @@
               inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .thread-row.ended {
-  opacity: 0.55;
+  opacity: 0.9;
 }
 
 .avatar {
@@ -209,7 +241,8 @@
 /* Status-tinted gradients mirror the per-app icon gradients in the launcher. */
 .avatar.busy { background: linear-gradient(135deg, #ffb34a 0%, #ff7a59 100%); }
 .avatar.idle,
-.avatar.done { background: linear-gradient(135deg, #3dc97a 0%, #2aa9a0 100%); }
+.avatar.done,
+.avatar.online { background: linear-gradient(135deg, #3dc97a 0%, #2aa9a0 100%); }
 .avatar.question { background: linear-gradient(135deg, #53bdeb 0%, #4f8cff 100%); }
 .avatar.permission { background: linear-gradient(135deg, #ffb34a 0%, #ff7a59 100%); }
 .avatar.ended { background: linear-gradient(135deg, #4a4d55 0%, #34363c 100%); color: #c4c8cf; }
@@ -239,51 +272,60 @@
   opacity: 1;
 }
 
-/* Ended sessions read muted. */
-.thread-row.ended .avatar { filter: grayscale(0.7) brightness(0.7); }
+/* Ended sessions read slightly muted but stay tappable. */
+.thread-row.ended .avatar { filter: grayscale(0.35) brightness(0.85); }
 
 /* ── Button row ────────────────────────────────────────────────────────────
-   The ONLY place round buttons appear. Floats over the list/cards. Each button
-   is icon-only at rest and expands to reveal its text label when selected. */
-.button-row {
+   Meta HUD pills: icon-only circles at rest; focused pill expands rightward
+   to reveal its label while the icon stays anchored on the left. */
+.button-row,
+.shelf,
+.new-actions {
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: center;
+  gap: 12px;
+}
+.button-row {
   padding: 6px 18px 14px;
 }
-/* The button is a left-anchored pill. At rest it's exactly a 46px circle (icon
-   box only). When selected it grows ONLY to the right (the label's max-width
-   drives the width), so the icon never drifts and buttons to its right make
-   room instead of being covered. The pill wrapper is display:contents so the
-   <button> itself is the flex pill (keeps id/focus on the real control). */
 .rbtn {
   appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  height: 46px;
+  flex: none;
+  height: var(--rbtn-size);
+  min-width: var(--rbtn-size);
+  max-width: var(--rbtn-size);
   padding: 0;
   margin: 0;
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--hud-row-edge);
   border-radius: var(--radius-pill);
-  background: linear-gradient(180deg, #23272e 0%, #191c21 100%);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: var(--hud-row-surface);
+  -webkit-backdrop-filter: var(--hud-blur);
+  backdrop-filter: var(--hud-blur);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
   cursor: pointer;
   overflow: hidden;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
-  transition: padding-right var(--dur-focus-in) var(--ease-focus-in),
-              background var(--dur-color-in) var(--ease-color-in),
-              box-shadow var(--dur-color-in) var(--ease-color-in);
+  transition:
+    max-width var(--dur-focus-out) var(--ease-focus-out),
+    padding-right var(--dur-focus-out) var(--ease-focus-out),
+    background var(--dur-color-out) var(--ease-focus-out),
+    border-color var(--dur-color-out) var(--ease-focus-out),
+    box-shadow var(--dur-color-out) var(--ease-focus-out),
+    color var(--dur-color-out) var(--ease-focus-out);
 }
 .rbtn:focus { outline: none; }
 .rbtn .rbtn-pill { display: contents; }
-/* Anchored icon: a fixed 46px square pinned at the left — it never moves. */
+/* Fixed icon box — never moves when the pill grows to the right. */
 .rbtn .rbtn-icon {
   flex: none;
-  width: 46px;
-  height: 46px;
+  width: var(--rbtn-size);
+  height: var(--rbtn-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -291,34 +333,64 @@
   line-height: 1;
   text-shadow: var(--hud-text-shadow);
 }
-.rbtn .rbtn-icon svg { width: 21px; height: 21px; display: block; }
+.rbtn .rbtn-icon svg { width: 22px; height: 22px; display: block; }
 .rbtn .rbtn-label {
+  flex: none;
   max-width: 0;
   opacity: 0;
   overflow: hidden;
+  padding-right: 0;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  text-shadow: var(--hud-text-shadow);
-  transition: max-width var(--dur-focus-in) var(--ease-focus-in), opacity var(--dur-color-in) var(--ease-color-in);
+  text-shadow: none;
+  transition:
+    max-width var(--dur-focus-out) var(--ease-focus-out),
+    opacity var(--dur-color-out) var(--ease-focus-out),
+    padding-right var(--dur-focus-out) var(--ease-focus-out);
 }
-/* Selected/focused: grow rightward into a bright labeled capsule. */
-.rbtn:hover,
+/* Expanded = bright frosted capsule (matches BUTTON_ANIMS.mov Call/Dictate state). */
 .rbtn:focus-visible,
 .rbtn.selected {
-  padding-right: 18px;
-  background: linear-gradient(180deg, #2c313a 0%, #23272e 100%);
-  border-color: rgba(28, 132, 255, 0.55);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45),
-              0 0 0 1px rgba(28, 132, 255, 0.35),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  max-width: 220px;
+  padding-right: 16px;
+  background: var(--hud-capsule);
+  border-color: var(--hud-capsule-edge);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: #fff;
+  transition:
+    max-width var(--dur-focus-in) var(--ease-focus-in),
+    padding-right var(--dur-focus-in) var(--ease-focus-in),
+    background var(--dur-color-in) var(--ease-color-in),
+    border-color var(--dur-color-in) var(--ease-color-in),
+    box-shadow var(--dur-color-in) var(--ease-color-in),
+    color var(--dur-color-in) var(--ease-color-in);
 }
-.rbtn:hover .rbtn-label,
 .rbtn:focus-visible .rbtn-label,
 .rbtn.selected .rbtn-label {
-  max-width: 180px;
+  max-width: 160px;
   opacity: 1;
+  padding-right: 2px;
+  transition:
+    max-width var(--dur-focus-in) var(--ease-focus-in),
+    opacity var(--dur-color-in) var(--ease-color-in),
+    padding-right var(--dur-focus-in) var(--ease-focus-in);
+}
+.rbtn-primary:focus-visible,
+.rbtn-primary.selected {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: #101216;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+.rbtn-primary:focus-visible .rbtn-icon,
+.rbtn-primary.selected .rbtn-icon {
+  text-shadow: none;
+}
+.rbtn.recording {
+  border-color: var(--danger);
+  color: var(--danger);
+  box-shadow: 0 0 16px rgba(240, 86, 110, 0.45);
 }
 
 .thread-body {
@@ -334,7 +406,7 @@
   align-items: center;
   gap: 8px;
   color: #fff;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.01em;
   text-shadow: var(--hud-text-shadow);
@@ -352,7 +424,7 @@
 }
 .thread-row .preview {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
@@ -593,15 +665,6 @@
   cursor: default;
 }
 
-.new-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
-  padding: 16px 20px;
-}
 .field-label {
   color: var(--text-secondary);
   font-size: 13px;
@@ -688,71 +751,78 @@ textarea.text-input {
 .prompt-field .text-input {
   padding-right: 58px;
 }
-/* Inline dictate control anchored in the first-message field (reuses .dictate-btn glyph). */
-.prompt-dictate {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  min-height: 42px;
-}
-.prompt-dictate.recording {
-  border-color: var(--danger);
-  color: var(--danger);
-  box-shadow: 0 0 16px rgba(240, 86, 110, 0.5);
-}
 
-/* ── Bottom shelf (WhatsApp-style tab bar) ─────────────────────────────────
-   Icon-only buttons at rest; the focused one (and the active agent filter)
-   expands into a labeled capsule via the shared .rbtn behavior. */
+/* ── Bottom shelf — agent launchers ─────────────────────────────────────── */
 .shelf {
   flex: none;
+  padding: 10px 20px 18px;
+  background: #000;
+}
+
+/* ── New session ─────────────────────────────────────────────────────────── */
+.new-hdr {
+  height: auto;
+  min-height: 72px;
+  justify-content: center;
+  padding: 18px 22px 8px;
+}
+.new-title-wrap {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 18px 16px;
+  min-width: 0;
+}
+.new-title-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(135deg, #5b8cff 0%, #9a5cff 100%);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+.new-title-icon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+.new-title-icon.agent-cursor  { background: linear-gradient(135deg, #5b8cff 0%, #9a5cff 100%); }
+.new-title-icon.agent-claude  { background: linear-gradient(135deg, #e2876a 0%, #c2410c 100%); }
+.new-title-icon.agent-codex   { background: linear-gradient(135deg, #19c37d 0%, #0b8f6a 100%); }
+.new-title-icon.agent-generic { background: linear-gradient(135deg, #6b7280 0%, #3f4654 100%); }
+.new-title-text {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-shadow: var(--hud-text-shadow);
+  text-transform: none;
+}
+.new-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 8px 20px 12px;
+}
+.new-actions {
+  flex: none;
+  padding: 10px 20px 18px;
   background: #000;
 }
-.shelf .rbtn { flex: none; }
-.shelf .rbtn .rbtn-icon svg { width: 20px; height: 20px; display: block; }
-/* blob (#shelf-all) carries the connection color on its glyph */
-#shelf-all.off .rbtn-icon { color: var(--danger); }
-#shelf-all.warn .rbtn-icon { color: var(--warning); }
-#shelf-all.on .rbtn-icon { color: var(--success); }
-/* Active agent filter = bright blue labeled capsule (matches the wireframe). */
-.shelf .rbtn.active {
-  padding-right: 18px;
-  background: linear-gradient(180deg, #3a91ff 0%, #1c84ff 55%, #0d6ef0 100%);
-  border-color: rgba(28, 132, 255, 0.65);
-  box-shadow: 0 6px 18px rgba(28, 132, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-}
-.shelf .rbtn.active .rbtn-icon { color: #fff; }
-.shelf .rbtn.active .rbtn-label { max-width: 180px; opacity: 1; }
 
-/* START — the single always-labeled primary button in the new-session form. */
-#new-title { text-transform: uppercase; letter-spacing: 0.02em; }
-.start-btn {
-  flex: none;
-  height: 40px;
-  padding: 0 22px;
-  border: 1px solid rgba(28, 132, 255, 0.65);
-  border-radius: var(--radius-pill);
-  background: linear-gradient(180deg, #3a91ff 0%, #1c84ff 55%, #0d6ef0 100%);
-  box-shadow: 0 6px 16px rgba(28, 132, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  cursor: pointer;
-}
-.start-btn:focus,
-.start-btn:focus-visible {
-  outline: none;
-  transform: translateY(-1px);
-  box-shadow: 0 10px 26px rgba(28, 132, 255, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.45);
-}
+/* START — legacy compose primary (thread view only). */
 
 .toast {
   max-width: 536px;

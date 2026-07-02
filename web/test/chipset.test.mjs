@@ -30,14 +30,14 @@ describe('AmbientChipSet', () => {
     assert.equal(chips.map((c) => c.label).join(','), 'approve,deny');
   });
 
-  it('forYank question shows dictate/dismiss', () => {
+  it('forYank question shows dictate only', () => {
     const chips = CS.forYank({ awaiting: CS.Awaiting.QUESTION });
-    assert.equal(chips.map((c) => c.label).join(','), 'dictate,dismiss');
+    assert.equal(chips.map((c) => c.label).join(','), 'dictate');
   });
 
-  it('forYank done shows continue/dictate/dismiss', () => {
+  it('forYank done shows continue/dictate', () => {
     const chips = CS.forYank({ awaiting: CS.Awaiting.DONE });
-    assert.equal(chips.map((c) => c.label).join(','), 'continue,dictate,dismiss');
+    assert.equal(chips.map((c) => c.label).join(','), 'continue,dictate');
   });
 
   it('followUpChips adds agent-specific extras', () => {

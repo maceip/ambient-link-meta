@@ -5,7 +5,7 @@
   var CS = window.AmbientChipSet;
   var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ambient-link/ws';
 
-  var blobEl     = document.getElementById('shelf-all');
+  var connDot    = document.getElementById('conn-dot');
   var threadsUl  = document.getElementById('threads');
   var emptyHint  = document.getElementById('empty-hint');
   var viewList   = document.getElementById('view-threads');
@@ -20,10 +20,9 @@
   var promptEl   = document.getElementById('prompt');
   var dictateBtn = document.getElementById('dictate');
   var sendBtn     = document.getElementById('send');
-  var btnNew     = document.getElementById('btn-new');
-  var newBack    = document.getElementById('new-back');
   var shelf      = document.getElementById('shelf');
   var newTitle   = document.getElementById('new-title');
+  var newTitleIcon = document.getElementById('new-title-icon');
   var newCwd     = document.getElementById('new-cwd');
   var newPrompt  = document.getElementById('new-prompt');
   var newStart   = document.getElementById('new-start');
@@ -37,7 +36,6 @@
   var threadOrder = [];
   var activeThread = null;
   var pickedAgent = 'cursor';
-  var filterAgent = null;
   var ws = null;
   var backoff = 500;
   var toastTimer;
@@ -108,10 +106,11 @@
   }
 
   function setStatus(state) {
-    if (!blobEl) return;
-    blobEl.classList.remove('on', 'off', 'warn');
-    blobEl.classList.add(state);
-    blobEl.setAttribute('aria-label', 'all sessions \u2014 ' + state);
+    if (!connDot) return;
+    connDot.classList.remove('on', 'off', 'warn');
+    connDot.classList.add(state);
+    connDot.setAttribute('title', 'relay ' + state);
+    connDot.setAttribute('aria-label', 'relay ' + state);
   }
 
   function sessionDeliverable(sessionId) {
@@ -241,7 +240,6 @@
 
   function renderThreadList() {
     var live = visibleThreads();
-    if (filterAgent) live = live.filter(function (t) { return agentClass(t.agent) === filterAgent; });
     // Reverse order: newest at the bottom (WhatsApp/chat-style).
     live.sort(function (a, b) { return (a.lastEventAt || 0) - (b.lastEventAt || 0); });
     threadsUl.innerHTML = '';
@@ -311,7 +309,6 @@
       btn.addEventListener('click', function () {
         if (!activeThread) return;
         if (c.kind === 'dictate') { startDictate(); return; }
-        if (c.kind === 'dismiss') { closeThreadView(); return; }
         if (c.kind === 'modify') {
           showToast('use composer below to modify', 'success');
           promptEl.focus();
@@ -480,7 +477,7 @@
   }
 
   function openNew() {
-    if (newTitle) newTitle.textContent = 'create ' + pickedAgent + ' session';
+    pickAgent(pickedAgent);
     if (!newCwd.value) newCwd.value = defaultCwd();
     showView('new');
     newPrompt.focus();
@@ -520,21 +517,49 @@
     rec.start();
   }
 
-  function pickAgent(agent) {
-    pickedAgent = agent;
-    if (newTitle) newTitle.textContent = 'create ' + agent + ' session';
+  function startAgentSession(agent) {
+    pickAgent(agent);
+    if (newCwd) newCwd.value = defaultCwd();
+    if (newPrompt) newPrompt.value = '';
+    showView('new');
+    setTimeout(function () { if (newPrompt) newPrompt.focus(); }, 50);
   }
 
-  // Bottom-shelf agent filter. "all" (blob) clears the filter; an agent chip
-  // both filters the list and pre-selects that agent for a new session.
-  function setFilter(filter, btnEl) {
-    filterAgent = (filter === 'all') ? null : filter;
-    if (shelf) {
-      var chips = shelf.querySelectorAll('[data-filter]');
-      for (var i = 0; i < chips.length; i++) chips[i].classList.toggle('active', chips[i] === btnEl);
+  // Meta HUD button rows: one expanded pill at a time; icon anchored, label grows right.
+  function wireRbtnGroups() {
+    document.querySelectorAll('.shelf, .new-actions, .button-row').forEach(function (group) {
+      var btns = group.querySelectorAll('.rbtn');
+      if (!btns.length) return;
+      btns.forEach(function (btn) {
+        btn.addEventListener('pointerdown', function () {
+          btns.forEach(function (b) { b.classList.toggle('selected', b === btn); });
+        });
+        btn.addEventListener('focus', function () {
+          btns.forEach(function (b) { b.classList.toggle('selected', b === btn); });
+        });
+        btn.addEventListener('blur', function () {
+          setTimeout(function () {
+            var active = document.activeElement;
+            if (active && group.contains(active)) return;
+            btns.forEach(function (b) { b.classList.remove('selected'); });
+          }, 0);
+        });
+      });
+    });
+  }
+
+  function pickAgent(agent) {
+    pickedAgent = agent;
+    var ac = agentClass(agent);
+    if (newTitle) {
+      var key = (agent || 'session').toLowerCase();
+      newTitle.textContent = 'create' + key.charAt(0).toUpperCase() + key.slice(1);
     }
-    if (filterAgent) pickAgent(filterAgent);
-    renderThreadList();
+    if (newTitleIcon) {
+      newTitleIcon.className = 'new-title-icon agent-' + ac;
+      newTitleIcon.setAttribute('data-agent-icon', ac);
+      newTitleIcon.innerHTML = agentIcon(ac);
+    }
   }
 
   function findThreadForAgent(agent, cwd) {
@@ -935,15 +960,13 @@
   setInterval(syncFromHost, 15000);
 
   backBtn.addEventListener('click', closeThreadView);
-  btnNew.addEventListener('click', openNew);
   btnPull.addEventListener('click', function () {
     if (activeThread) pullCard(activeThread);
   });
-  newBack.addEventListener('click', function () { showView('list'); });
   newStart.addEventListener('click', startNewThread);
   if (shelf) shelf.addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-filter]');
-    if (btn) setFilter(btn.dataset.filter, btn);
+    var btn = e.target.closest('[data-agent]');
+    if (btn) startAgentSession(btn.dataset.agent);
   });
   composer.addEventListener('submit', function (e) {
     e.preventDefault();
@@ -959,6 +982,7 @@
     n.innerHTML = agentIcon(n.getAttribute('data-agent-icon'));
   });
   pickAgent('cursor');
+  wireRbtnGroups();
   renderThreadList();
   setStatus('off');
   if (window.__AMBIENT_TEST__) {

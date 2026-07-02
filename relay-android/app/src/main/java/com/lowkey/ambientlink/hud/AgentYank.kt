@@ -1,5 +1,15 @@
 package com.lowkey.ambientlink.hud
 
+enum class Awaiting { PERMISSION, QUESTION, DONE }
+
+private val chipActionSuffix = Regex(
+  """\s+[—–-]\s+(continue|dictate|dismiss)(\s*\|\s*(continue|dictate|dismiss))+\.?\s*$""",
+  RegexOption.IGNORE_CASE,
+)
+
+private fun cleanAssistant(text: String): String =
+  text.replace(chipActionSuffix, "").trim()
+
 data class AgentYank(
   val thread: String,
   val label: String,
@@ -17,10 +27,10 @@ data class AgentYank(
           permissionPrompt?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
             ?: lastAssistant.takeIf { it.isNotBlank() }?.let { parts.add(it) }
         }
-        else -> lastAssistant.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+        else -> cleanAssistant(lastAssistant).takeIf { it.isNotBlank() }?.let { parts.add(it) }
       }
       lastUserInput.takeIf { it.isNotBlank() }?.let { parts.add("You: $it") }
-      return parts.joinToString("\n\n").ifBlank { lastAssistant }
+      return parts.joinToString("\n\n").ifBlank { cleanAssistant(lastAssistant) }
     }
 
   val metaLine: String
@@ -31,5 +41,3 @@ data class AgentYank(
       else                -> label
     }
 }
-
-enum class Awaiting { PERMISSION, QUESTION, DONE }

@@ -4,13 +4,20 @@
 
   var Awaiting = { PERMISSION: 'permission', QUESTION: 'question', DONE: 'done' };
 
+  function stripChipActionSuffix(text) {
+    return (text || '').replace(
+      /\s+[—–-]\s+(continue|dictate|dismiss)(\s*\|\s*(continue|dictate|dismiss))+\.?\s*$/i,
+      '',
+    ).trim();
+  }
+
   function bodyText(yank) {
     var parts = [];
     if (yank.awaiting === Awaiting.PERMISSION) {
       var perm = (yank.permissionPrompt && yank.permissionPrompt.trim()) || yank.lastAssistant || '';
       if (perm) parts.push(perm);
     } else if (yank.lastAssistant) {
-      parts.push(yank.lastAssistant);
+      parts.push(stripChipActionSuffix(yank.lastAssistant));
     }
     if (yank.lastUserInput && yank.lastUserInput.trim()) {
       parts.push('You: ' + yank.lastUserInput.trim());
@@ -47,12 +54,11 @@
   var SEND_APPRV  = { label: 'approve', text: 'y', kind: 'send' };
   var SEND_DENY   = { label: 'deny', text: 'n', kind: 'send' };
   var DICTATE     = { label: 'dictate', text: null, kind: 'dictate' };
-  var DISMISS     = { label: 'dismiss', text: null, kind: 'dismiss' };
 
   function forYank(yank) {
     if (yank.awaiting === Awaiting.PERMISSION) return [SEND_APPRV, SEND_DENY];
-    if (yank.awaiting === Awaiting.QUESTION) return [DICTATE, DISMISS];
-    return [SEND_CONT, DICTATE, DISMISS];
+    if (yank.awaiting === Awaiting.QUESTION) return [DICTATE];
+    return [SEND_CONT, DICTATE];
   }
 
   function followUpChips(agent) {

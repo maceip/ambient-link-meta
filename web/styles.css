@@ -48,6 +48,8 @@
   --dur-focus-in: 475ms;
   --dur-focus-out: 625ms;
   --dur-color-in: 300ms;
+  --dur-color-out: 300ms;
+  --rbtn-size: 48px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

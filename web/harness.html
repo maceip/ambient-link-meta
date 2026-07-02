@@ -3,51 +3,56 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HUD harness</title>
-<link rel="stylesheet" href="styles.css?v=13">
-<link rel="stylesheet" href="companion.css?v=13">
+<title>HUD button harness</title>
+<link rel="stylesheet" href="styles.css?v=19">
+<link rel="stylesheet" href="companion.css?v=19">
 <style>
-  body { margin: 0; background: #000; color: #fff; }
-  .stage { padding: 24px; display: flex; flex-direction: column; gap: 10px; }
+  body { margin: 0; background: #000; color: #fff; min-height: 100vh; }
+  .stage { padding: 24px; display: flex; flex-direction: column; gap: 28px; max-width: 560px; margin: 0 auto; }
   .cap { font: 12px/1.4 var(--font-sans, sans-serif); opacity: .55; letter-spacing: .04em; text-transform: uppercase; }
-  .card { background: var(--hud-glass); box-shadow: inset 0 0 0 1px var(--hud-row-edge);
-          -webkit-backdrop-filter: var(--hud-blur); backdrop-filter: var(--hud-blur);
-          border-radius: var(--radius-lg, 18px); padding: 14px 16px; max-width: 420px;
-          text-shadow: var(--hud-text-shadow); }
+  .hint { font-size: 14px; opacity: .7; line-height: 1.45; }
 </style>
 </head>
 <body>
   <div class="stage">
-    <div class="cap">card</div>
-    <div class="card">
-      <div style="opacity:.7;font-size:13px;margin-bottom:4px">Mom Cell · SUN 11:18 PM</div>
-      <div style="font-size:17px;line-height:1.35">I got abruptly yanked off that call, the time ran out super quick — great to chat with you guys, love you everybody.</div>
-      <div style="opacity:.6;font-size:12px;margin-top:6px;text-align:right">Sent</div>
+    <p class="hint">Tap or focus a button — icon stays left, label expands right (475ms in / 625ms out). Matches Meta Messages HUD from BUTTON_ANIMS.mov.</p>
+
+    <div class="cap">at rest — icon-only circles</div>
+    <div class="button-row">
+      <button type="button" class="rbtn focusable"><span class="rbtn-pill"><span class="rbtn-icon">📞</span><span class="rbtn-label">Call</span></span></button>
+      <button type="button" class="rbtn focusable"><span class="rbtn-pill"><span class="rbtn-icon">🎙</span><span class="rbtn-label">Dictate</span></span></button>
+      <button type="button" class="rbtn focusable"><span class="rbtn-pill"><span class="rbtn-icon">🖼</span><span class="rbtn-label">Gallery</span></span></button>
+      <button type="button" class="rbtn focusable"><span class="rbtn-pill"><span class="rbtn-icon">📷</span><span class="rbtn-label">Camera</span></span></button>
     </div>
 
-    <div class="cap">button row — at rest (all icons, no movement)</div>
-    <div class="button-row">
-      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">↻</span><span class="rbtn-label">Refresh</span></span></button>
-      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">+</span><span class="rbtn-label">New</span></span></button>
-      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">⤓</span><span class="rbtn-label">Yank</span></span></button>
-      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">⌫</span><span class="rbtn-label">Dismiss</span></span></button>
-    </div>
-
-    <div class="cap">button row — first selected (icon anchored, expands right, others fixed)</div>
-    <div class="button-row">
-      <button type="button" class="rbtn selected"><span class="rbtn-pill"><span class="rbtn-icon">↻</span><span class="rbtn-label">Refresh</span></span></button>
-      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">+</span><span class="rbtn-label">New</span></span></button>
-      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">⤓</span><span class="rbtn-label">Yank</span></span></button>
-      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">⌫</span><span class="rbtn-label">Dismiss</span></span></button>
-    </div>
-
-    <div class="cap">button row — third selected (neighbors unchanged)</div>
-    <div class="button-row">
-      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">↻</span><span class="rbtn-label">Refresh</span></span></button>
-      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">+</span><span class="rbtn-label">New</span></span></button>
-      <button type="button" class="rbtn selected"><span class="rbtn-pill"><span class="rbtn-icon">⤓</span><span class="rbtn-label">Yank</span></span></button>
-      <button type="button" class="rbtn"><span class="rbtn-pill"><span class="rbtn-icon">⌫</span><span class="rbtn-label">Dismiss</span></span></button>
-    </div>
+    <div class="cap">agent shelf (same as companion)</div>
+    <nav class="shelf">
+      <button type="button" class="rbtn focusable"><span class="rbtn-pill"><span class="rbtn-icon">◆</span><span class="rbtn-label">Cursor</span></span></button>
+      <button type="button" class="rbtn focusable"><span class="rbtn-pill"><span class="rbtn-icon">✳</span><span class="rbtn-label">Claude</span></span></button>
+      <button type="button" class="rbtn focusable rbtn-primary"><span class="rbtn-pill"><span class="rbtn-icon">▶</span><span class="rbtn-label">Start</span></span></button>
+    </nav>
   </div>
+<script>
+(function () {
+  document.querySelectorAll('.shelf, .new-actions, .button-row').forEach(function (group) {
+    var btns = group.querySelectorAll('.rbtn');
+    btns.forEach(function (btn) {
+      btn.addEventListener('pointerdown', function () {
+        btns.forEach(function (b) { b.classList.toggle('selected', b === btn); });
+      });
+      btn.addEventListener('focus', function () {
+        btns.forEach(function (b) { b.classList.toggle('selected', b === btn); });
+      });
+      btn.addEventListener('blur', function () {
+        setTimeout(function () {
+          var active = document.activeElement;
+          if (active && group.contains(active)) return;
+          btns.forEach(function (b) { b.classList.remove('selected'); });
+        }, 0);
+      });
+    });
+  });
+})();
+</script>
 </body>
 </html>
