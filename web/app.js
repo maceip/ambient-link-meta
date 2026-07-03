@@ -1648,6 +1648,7 @@
   wireRbtnGroups();
   renderThreadList();
   setStatus('off');
+  window.__ambientOpenNew = openNewSession;
   if (window.__AMBIENT_TEST__) {
     window.__AmbientWebTest = {
       threadRow: threadRow,

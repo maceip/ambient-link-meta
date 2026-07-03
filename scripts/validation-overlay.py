@@ -9,7 +9,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VALIDATION = Path('/Users/mac/Desktop/Screenshot 2026-07-03 at 01.14.53.png')
-DEFAULT_CAPTURE = ROOT / 'web/test/output/session-list-v50-600.png'
+DEFAULT_CAPTURE = ROOT / 'web/test/output/session-list-v52-600.png'
 DEFAULT_OUT = ROOT / 'web/test/output/validation-overlay-50pct.png'
 
 

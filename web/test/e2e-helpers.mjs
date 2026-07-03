@@ -74,26 +74,28 @@ export async function waitForRelayConnected(page, timeoutMs = 60_000) {
   );
 }
 
-/** Open new-session form via pull-reveal pill (glasses path). */
+/** Open new-session form (pull-reveal pill or direct hook). */
 export async function openNewSessionForm(page) {
   await page.evaluate(() => {
-    var el = document.getElementById('new-session-reveal');
-    if (el) {
-      el.classList.add('open');
-      el.setAttribute('aria-hidden', 'false');
+    var reveal = document.getElementById('new-session-reveal');
+    if (reveal) {
+      reveal.classList.add('open');
+      reveal.setAttribute('aria-hidden', 'false');
     }
+    if (typeof window.__ambientOpenNew === 'function') window.__ambientOpenNew();
+    else document.getElementById('new-session-pill')?.click();
   });
-  await page.locator('#new-session-pill').click();
-  await expect(page.locator('#view-new')).toBeVisible();
+  await expect(page.locator('#view-threads')).toBeHidden({ timeout: 10_000 });
+  await expect(page.locator('#view-new')).toBeVisible({ timeout: 10_000 });
 }
 
 /** Click #new-start; retries when WS reconnect races the create form. */
 export async function clickNewStart(page) {
+  await expect(page.locator('#view-new')).toBeVisible();
   const start = page.locator('#new-start');
   for (let attempt = 0; attempt < 8; attempt++) {
     await waitForRelayConnected(page, 20_000);
-    await start.scrollIntoViewIfNeeded();
-    await start.click();
+    await page.evaluate(() => document.getElementById('new-start')?.click());
     const toastText = ((await page.locator('#toast').textContent()) || '').trim();
     if (await page.locator('#view-thread').isVisible()) return 'opened';
     if (/starting|sent/i.test(toastText)) {

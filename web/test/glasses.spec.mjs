@@ -44,18 +44,18 @@ test.describe('deployed companion — glasses path', () => {
 
     const { errors } = await openCompanion(page);
     await waitForRelayConnected(page);
-
     await openNewSessionForm(page);
-    await expect(page.locator('#view-new')).toBeVisible();
+    await expect(page.locator('#new-start')).toBeVisible();
     await page.fill('#new-cwd', FRESH_CWD);
     await page.fill('#new-prompt', 'playwright create probe');
-    const outcome = await clickNewStart(page);
 
     if (api.status === 501) {
+      const outcome = await clickNewStart(page);
       expect(outcome).toBe('create_failed');
       await expect(page.locator('#toast')).toContainText(/terminal first/i);
       await expect(page.locator('#view-thread')).toBeHidden();
     } else {
+      const outcome = await clickNewStart(page);
       expect(outcome).toBe('opened');
       await expect(page.locator('#view-thread')).toBeVisible();
       await expect(page.locator('#t-title')).not.toBeEmpty();
