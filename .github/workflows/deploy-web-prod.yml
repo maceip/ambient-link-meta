@@ -1,0 +1,43 @@
+# Automatic production deploy: every push to main updates the server git checkout.
+# Caddy serves /home/devuser/ambient-link-meta/web — no rsync, no local deploy script.
+name: Deploy web (production)
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-web-prod
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Load SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+
+      - name: Pull latest main on server
+        env:
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          host="${PROD_SSH_HOST:?PROD_SSH_HOST secret is required}"
+          user="${PROD_SSH_USER:?PROD_SSH_USER secret is required}"
+          port="${PROD_SSH_PORT:-22}"
+          repo=/home/devuser/ambient-link-meta
+
+          ssh -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" \
+            "sudo -u devuser -H bash -lc 'cd ${repo} && git fetch origin && git checkout main && git reset --hard origin/main && git log -1 --oneline'"
+
+      - name: Verify live site
+        run: |
+          set -euo pipefail
+          curl -sfI https://public.computer/ambient-link/ | head -3
+          curl -sf https://public.computer/ambient-link/sw.js | grep -q 'const CACHE'
+          curl -sf https://public.computer/ambient-link/index.html | grep -q 'new-session-pill'
+          echo "production web deploy verified"

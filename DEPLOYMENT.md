@@ -44,32 +44,46 @@ ownership clean and avoid git "dubious ownership" errors.
 
 ## 2. Update the WEB APP (the common case)
 
-**Git only.** The server checkout at `/home/devuser/ambient-link-meta` is the
-source of truth on disk. Caddy serves those tracked files. Do **not** rsync,
-scp, or edit `web/` on the server — that puts bytes on disk without moving
-`HEAD`, and the next `git pull` will fail or require a destructive reset.
+**Automatic via GitHub Actions.** Every push to `main` runs
+`.github/workflows/deploy-web-prod.yml`, which SSHes to the server and runs
+`git fetch && git reset --hard origin/main` in `/home/devuser/ambient-link-meta`.
+Caddy serves those files at `https://public.computer/ambient-link/`.
 
-From the laptop:
+Local workflow:
 
 ```bash
 git add -A && git commit -m "web: <what changed>"
 git push origin main
-bash scripts/deploy-web-prod.sh
+# CI deploys — watch Actions tab on GitHub
 ```
 
-Or manually on the server:
+Do **not** rsync, scp, or edit `web/` on the server. Do **not** use a local deploy
+script. Disk must always match `origin/main`.
+
+### GitHub repository secrets (Settings → Secrets and variables → Actions)
+
+| Secret | Example | Purpose |
+|---|---|---|
+| `PROD_SSH_PRIVATE_KEY` | `-----BEGIN OPENSSH PRIVATE KEY-----…` | Deploy key; public half in server `authorized_keys` |
+| `PROD_SSH_HOST` | `public.computer` | Production SSH host |
+| `PROD_SSH_USER` | `root` | SSH user (must be able to `sudo -u devuser`) |
+| `PROD_SSH_PORT` | `22` | Optional; omit to use 22 |
+
+Generate a deploy-only key on your laptop:
 
 ```bash
-ssh root@public.computer 'sudo -u devuser -H git -C /home/devuser/ambient-link-meta pull --ff-only'
+ssh-keygen -t ed25519 -f ~/.ssh/ambient-link-prod-deploy -C "github-actions-ambient-link-meta"
+ssh root@public.computer "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys" < ~/.ssh/ambient-link-prod-deploy.pub
 ```
 
-Caddy serves the new files immediately. Go to §4 to verify and §5 to bust the
-cache. No service restart is ever needed for web-app changes.
+Put the **private** key contents into `PROD_SSH_PRIVATE_KEY`. Restrict the public
+key to `from="github-actions-ip-range"` if you add GitHub's meta IPs later; ed25519
+deploy key with no passphrase is the minimum to get running.
 
-> **train.public.computer** and other vhosts on the same machine use different
-> roots (`/opt/train`, etc.). Ambient Link is only
-> `https://public.computer/ambient-link/` → `…/ambient-link-meta/web`. They do
-> not share that directory.
+Go to §4 to verify manually and §5 for service-worker cache busting.
+
+> **train.public.computer** uses `/opt/train` — a different vhost. Ambient Link
+> is only `…/ambient-link-meta/web` on `public.computer`.
 
 ---
 
@@ -199,12 +213,11 @@ not reach the relay — this is the #1 cause of `404` on a new API path.
 ## 8. One-shot quick reference
 
 ```bash
-# WEB: commit, push, pull (preferred)
-bash scripts/deploy-web-prod.sh
+# WEB: push to main — GitHub Actions deploys automatically
+git push origin main
 
-# WEB: manual
-git push origin main && \
-ssh root@public.computer 'sudo -u devuser -H git -C /home/devuser/ambient-link-meta pull --ff-only'
+# WEB: manual recovery only (if CI is down)
+ssh root@public.computer 'sudo -u devuser -H git -C /home/devuser/ambient-link-meta fetch origin && sudo -u devuser -H git -C /home/devuser/ambient-link-meta reset --hard origin/main'
 
 # RELAY: pull, build, restart (server-side build)
 ssh root@public.computer 'sudo -u devuser -H git -C /home/devuser/ambient-link-core pull --ff-only && \
