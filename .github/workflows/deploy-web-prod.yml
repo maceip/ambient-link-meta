@@ -47,5 +47,5 @@ jobs:
           repo=/home/devuser/ambient-link-meta
 
           ssh -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" \
-            "grep -q 'ig-list' ${repo}/web/index.html && ! grep -q 'theme-bar' ${repo}/web/index.html && grep -q 'ambient-link-meta-v49' ${repo}/web/sw.js && git -C ${repo} log -1 --oneline"
+            "grep -q 'ig-list' ${repo}/web/index.html && ! grep -q 'theme-bar' ${repo}/web/index.html && grep -q 'ambient-link-meta-v50' ${repo}/web/sw.js && git -C ${repo} log -1 --oneline"
           echo "production web deploy verified on server"

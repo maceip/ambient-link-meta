@@ -11,7 +11,7 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), 'output');
 mkdirSync(OUT, { recursive: true });
 
 const ORIGIN = (process.env.AMBIENT_WEB_ORIGIN || 'http://127.0.0.1:5181').replace(/\/$/, '');
-const URL = `${ORIGIN}/ambient-link/?v=49&_=${Date.now()}`;
+const URL = `${ORIGIN}/ambient-link/?v=50&_=${Date.now()}`;
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 600, height: 600 } });
@@ -34,7 +34,7 @@ const rows = await page.locator('#threads .thread-row').count();
 if (rows === 0) throw new Error('No session rows rendered');
 
 await page.screenshot({
-  path: join(OUT, 'session-list-v49-600.png'),
+  path: join(OUT, 'session-list-v50-600.png'),
   fullPage: false,
 });
 
@@ -42,7 +42,7 @@ console.log(JSON.stringify({
   ok: true,
   url: URL,
   rows,
-  path: join(OUT, 'session-list-v49-600.png'),
+  path: join(OUT, 'session-list-v50-600.png'),
 }));
 
 await browser.close();
