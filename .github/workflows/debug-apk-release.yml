@@ -1,0 +1,92 @@
+# Adapted from maceip/cursor — builds relay-android debug APK and publishes a GitHub Release.
+name: Debug APK Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: debug-apk-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build and publish debug APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relay-android
+
+    steps:
+      - name: Check out ambient-link-meta
+        uses: actions/checkout@v4
+
+      - name: Check out ambient-link-core (composite build sibling)
+        run: |
+          set -euo pipefail
+          git clone --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/maceip/ambient-link-core.git" \
+            "$(dirname "$GITHUB_WORKSPACE")/ambient-link-core"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Run unit tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
+      - name: Build debug APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Prepare release metadata
+        id: release
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          tag="ambient-link-debug-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}-${short_sha}"
+          apk="dist/${tag}.apk"
+
+          mkdir -p dist
+          cp relay-android/app/build/outputs/apk/debug/app-debug.apk "$apk"
+
+          {
+            echo "tag=$tag"
+            echo "apk=$apk"
+            echo "title=Ambient Link Debug APK ${tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          APK: ${{ steps.release.outputs.apk }}
+          TITLE: ${{ steps.release.outputs.title }}
+        run: |
+          gh release create "$TAG" "$APK" \
+            --target "$GITHUB_SHA" \
+            --title "$TITLE" \
+            --notes "Debug APK built from ${GITHUB_SHA} on ${GITHUB_REF_NAME}. Signed with the debug key — install via adb." \
+            --latest
