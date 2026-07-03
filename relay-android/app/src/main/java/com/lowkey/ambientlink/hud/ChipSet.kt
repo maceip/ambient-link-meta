@@ -27,6 +27,8 @@ object ChipSet {
   private val CONTINUE = Chip("continue", "continue", kind = ChipKind.SEND, primary = true)
   private val APPROVE  = Chip("approve", "y", kind = ChipKind.SEND, primary = true)
   private val DENY     = Chip("deny", "n", kind = ChipKind.SEND)
+  private val YES      = Chip("yes", "yes", kind = ChipKind.SEND, primary = true)
+  private val NO       = Chip("no", "no", kind = ChipKind.SEND)
   private val DICTATE  = Chip("dictate", null, kind = ChipKind.DICTATE, primary = true)
 
   fun config(ctx: Context): ActionConfig = ActionConfig(
@@ -37,9 +39,15 @@ object ChipSet {
 
   fun forYank(yank: AgentYank, config: ActionConfig = ActionConfig()): List<Chip> = when (yank.awaiting) {
     Awaiting.PERMISSION -> listOf(APPROVE, DENY)
-    Awaiting.QUESTION   -> buildActionRow(config, includeContinue = false)
+    Awaiting.QUESTION   -> questionChips(config)
     Awaiting.DONE       -> buildActionRow(config, includeContinue = config.showContinue)
     else                -> buildActionRow(config, includeContinue = config.showContinue)
+  }
+
+  private fun questionChips(config: ActionConfig): List<Chip> {
+    val out = mutableListOf(YES, NO)
+    if (config.showDictate && out.size < MAX_CHIPS) out.add(DICTATE)
+    return out.take(MAX_CHIPS)
   }
 
   private fun buildActionRow(config: ActionConfig, includeContinue: Boolean): List<Chip> {

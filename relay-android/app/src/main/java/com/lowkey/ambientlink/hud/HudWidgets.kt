@@ -22,7 +22,13 @@ object HudWidgets {
   private const val MAX_ACTIONS = 3
   private const val MAX_BODY_CHARS = 220
 
-  private var dictateJob: Job? = null
+  /** Single in-flight sendContent — prevents peek overwriting dictate (and vice versa). */
+  private var contentJob: Job? = null
+
+  private fun postContent(scope: CoroutineScope, block: suspend () -> Unit) {
+    contentJob?.cancel()
+    contentJob = scope.launch { block() }
+  }
 
   private fun truncateBody(text: String): String =
     if (text.length <= MAX_BODY_CHARS) text else text.take(MAX_BODY_CHARS - 1) + "…"
@@ -106,7 +112,7 @@ object HudWidgets {
     chips: List<Chip>,
     onChip: (Chip) -> Unit,
   ) {
-    scope.launch {
+    postContent(scope) {
       display.sendContent {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text(yank.metaLine, style = TextStyle.META, color = TextColor.SECONDARY)
@@ -140,8 +146,7 @@ object HudWidgets {
     partial: String,
     onCancel: () -> Unit,
   ) {
-    dictateJob?.cancel()
-    dictateJob = scope.launch {
+    postContent(scope) {
       display.sendContent {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text(yank.metaLine, style = TextStyle.META, color = TextColor.SECONDARY)
@@ -162,8 +167,7 @@ object HudWidgets {
     display: Display,
     text: String,
   ) {
-    dictateJob?.cancel()
-    dictateJob = scope.launch {
+    postContent(scope) {
       display.sendContent {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text("sent", style = TextStyle.META, color = TextColor.SECONDARY)
@@ -182,7 +186,7 @@ object HudWidgets {
     chips: List<Chip>,
     onChip: (Chip) -> Unit,
   ) {
-    scope.launch {
+    postContent(scope) {
       display.sendContent {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text(yank.metaLine, style = TextStyle.META, color = TextColor.SECONDARY)
@@ -205,7 +209,7 @@ object HudWidgets {
     display: Display,
     message: String,
   ) {
-    scope.launch {
+    postContent(scope) {
       display.sendContent {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text("dictate error", style = TextStyle.META, color = TextColor.SECONDARY)
@@ -224,7 +228,7 @@ object HudWidgets {
     chips: List<Chip>,
     onChip: (Chip) -> Unit,
   ) {
-    scope.launch {
+    postContent(scope) {
       display.sendContent {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
           text("${yank.label} · modify", style = TextStyle.META, color = TextColor.SECONDARY)

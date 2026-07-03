@@ -161,6 +161,28 @@ class HudPresenter(
       Log.i("HudPresenter", "snooze — discard idle thread=${yank.thread}")
       return
     }
+
+    val actionable = yank.awaiting == Awaiting.PERMISSION || yank.awaiting == Awaiting.QUESTION
+
+    if (actionable) {
+      if (isOccupied() || opening || commitJob?.isActive == true) {
+        if (current?.thread == yank.thread) {
+          current = yank
+          scheduleRender(immediate = true) { renderCurrent() }
+        } else {
+          enqueue(yank)
+        }
+        return
+      }
+      if (webOccupiesDisplay()) {
+        enqueue(yank)
+        Log.i("HudPresenter", "queued actionable idle — web owns display thread=${yank.thread}")
+        return
+      }
+      yank(yank)
+      return
+    }
+
     if (System.currentTimeMillis() < quietUntilMs) {
       Log.i("HudPresenter", "quiet after response — skip idle thread=${yank.thread}")
       return
@@ -170,11 +192,6 @@ class HudPresenter(
       return
     }
     if (isOccupied() || opening || commitJob?.isActive == true) {
-      if (yank.awaiting == Awaiting.PERMISSION && current?.thread == yank.thread) {
-        current = yank
-        scheduleRender(immediate = true) { renderCurrent() }
-        return
-      }
       Log.i("HudPresenter", "ignore thread_idle while card showing thread=${yank.thread}")
       return
     }
@@ -535,6 +552,7 @@ class HudPresenter(
   }
 
   private fun startDictating(y: AgentYank) {
+    cancelAutoAdvance()
     RelayService.onHudDictationStart(y.thread)
     if (DictationManager.isActive()) {
       DictationManager.stop(commitPartial = false, notify = false)

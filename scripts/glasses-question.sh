@@ -19,4 +19,4 @@ curl -sf -X POST "$HOST/ambient-link/debug/yank" \
   -H 'Content-Type: application/json' \
   -d "{\"thread\":\"$THREAD\",\"label\":\"cursor\",\"agent\":\"cursor\",\"awaiting\":\"question\",\"lastAssistant\":\"$mj\"}" \
   >/dev/null
-echo "sent — glasses should show: dictate | dismiss"
+echo "sent — glasses should show: yes | no (and dictate if enabled)"
