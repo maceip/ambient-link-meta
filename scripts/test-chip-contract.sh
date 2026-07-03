@@ -21,5 +21,8 @@ const done = CS.forYank(
   { showDictate: true, showContinue: true, quickReplies: ['looks good'] },
 );
 assert(done[0].label === 'looks good', 'done should prioritize quick replies');
+const session = CS.sessionQuickReplies({ quickReplies: ['looks good', 'explain more'] });
+assert(session.length === 2 && session[0].label === 'looks good', 'session quick replies only');
+assert(!session.some((c) => c.kind === 'dictate'), 'session row excludes dictate chip');
 console.log('✓ chip contract');
 "

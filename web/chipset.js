@@ -64,6 +64,18 @@
     return { label: label, text: t, kind: 'send' };
   }
 
+  function sessionQuickReplies(config) {
+    config = config || {};
+    var out = [];
+    (config.quickReplies || []).forEach(function (text) {
+      if (out.length >= MAX_CHIPS) return;
+      var t = String(text || '').trim();
+      if (!t) return;
+      out.push(quickReplyChip(t));
+    });
+    return out;
+  }
+
   function buildActionRow(config, includeContinue) {
     config = config || {};
     var out = [];
@@ -120,6 +132,7 @@
     metaLine: metaLine,
     parseYank: parseYank,
     forYank: forYank,
+    sessionQuickReplies: sessionQuickReplies,
     followUpChips: followUpChips,
     chipStyle: chipStyle,
     quickReplyChip: quickReplyChip,

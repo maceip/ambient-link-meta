@@ -2,7 +2,7 @@
 
 Single source of truth. Update here — not in chat.
 
-**Last updated:** 2026-07-03
+**Last updated:** 2026-07-03 (verification pass)
 
 ---
 
@@ -13,26 +13,26 @@ Single source of truth. Update here — not in chat.
 
 Within the same impact band, **lower complexity first** (quick wins).
 
-| Rank | ID | Impact | Cx | Status | Next action |
-|------|-----|--------|-----|--------|-------------|
-| 1 | B-007 | 5 | 1 | 🔴 | `scripts/install-android.sh` |
-| 2 | B-001 | 5 | 2 | 🔴 | Meta SDK: BT perms → glasses icon → REGISTERED |
-| 3 | B-002 | 5 | 3 | 🟡 | Claude running + chip tap → terminal; `landed` UI |
-| 4 | B-004 | 4 | 1 | 🟡 | Deploy web v54 |
-| 5 | B-301 | 4 | 1 | 🟡 | Phone curl Mac `healthz` on Wi‑Fi |
-| 6 | B-003 | 4 | 2 | 🟡 | DONE idle policy / host `force_hud_yank` |
+| Rank | ID | Impact | Cx | Status | Verify gate (proof) |
+|------|-----|--------|-----|--------|---------------------|
+| 1 | B-007 | 5 | 1 | 🟢 | `verify-android-device.sh` 2026-07-03: install 0.1.1-hud + theme pills + snooze toggle |
+| 2 | B-001 | 5 | 2 | 🟢 | `ambient.debug` prepareDisplay + display ready; UI "Test card sent — tap OK on glasses" 2026-07-03 |
+| 3 | B-002 | 5 | 3 | 🟡 | `verify-inject-landed.mjs`: delivered 1ms ✓; landed not in 15s |
+| 4 | B-004 | 4 | 1 | 🟡 | local v54 SW + Playwright core-flow ✓; **prod still v53** (5 commits unpushed) |
+| 5 | B-301 | 4 | 1 | 🟡 | phone `RelayClient` WS live (thread_idle/hud_yank); healthz curl N/A on device shell |
+| 6 | B-003 | 4 | 2 | 🟡 | debug yank → `HudPresenter update … PEEKING` ✓; live agent pause unproven |
 | 7 | B-107 | 4 | 5 | 🔴 | Pair-once + auto-start (post-demo) |
 | 8 | B-102 | 3 | 2 | 🟡 | Discover on device; mDNS / manual LAN URL |
 | 9 | B-204 | 3 | 2 | 🟡 | Create session on glasses + Playwright |
 | 10 | B-006 | 3 | 3 | 🟡 | Dictate E2E on device |
 | 11 | B-105 | 3 | 3 | 🟡 | Reconnect loop logcat repro |
 | 12 | B-106 | 3 | 4 | 🟡 | SODA smoke on device |
-| 13 | B-101 | 2 | 2 | 🟡 | Cwd save from phone on cloud WS |
-| 14 | B-203 | 2 | 2 | 🟡 | Web UI shows pending until `landed` |
+| 13 | B-101 | 2 | 2 | 🟡 | `verify-lan-config.sh` ✓; device save on cloud WS unproven |
+| 14 | B-203 | 2 | 2 | 🟡 | Web UI pending until `landed` — code in git; live WS unproven on prod |
 | 15 | B-005 | 3 | 5 | ⚪ | Demo script: HUD chips not web keyboard |
-| 16 | B-103 | 1 | 1 | 🟢 | Install APK to verify snooze toggle |
-| 17 | B-104 | 2 | 1 | 🟢 | Install APK to verify peek chips |
-| 18 | B-303 | 2 | 1 | 🔴 | Unify idle debounce 2s vs 4s |
+| 16 | B-103 | 1 | 1 | 🟢 | `verify-android-device.sh` snooze tap-twice ✓ |
+| 17 | B-104 | 2 | 1 | 🟡 | logcat `chip tapped: explain more` on peek; full peek chip order unproven |
+| 18 | B-303 | 2 | 1 | 🟡 | core mux IdleDebounce 4s→2s; host rebuilt; go test mux ✓ |
 | 19 | B-302 | 2 | 4 | 🔴 | Cloud JSONL cwd / scope |
 | 20 | B-304 | 1 | 3 | P2 | LAN auth token |
 | 21 | B-201 | 0 | — | 🟢 | — |
@@ -50,13 +50,15 @@ Within the same impact band, **lower complexity first** (quick wins).
 
 | Script | Gates | Last run |
 |--------|-------|----------|
-| `scripts/verify-demo-env.sh` | Host, adb/APK, prod BUILD/SW, protocol, inject diag | 2026-07-03 pass (yellow: no phone, prod v53) |
+| `scripts/verify-demo-env.sh` | Host, adb/APK, prod BUILD/SW, protocol, inject diag | 2026-07-03 pass |
+| `scripts/verify-android-device.sh` | B-007 theme pills; B-103 snooze toggle | 2026-07-03 **pass** |
+| `scripts/verify-inject-landed.mjs` | B-002 delivered ≤2s; landed fan-out | 2026-07-03 delivered ✓ landed — |
 | `scripts/diagnose-inject.sh` | PID/TTY endpoints, outbox, agent processes | 2026-07-03 outbox empty ✓ |
-| `scripts/test-protocol.sh` | debug yank + inject delivered | 2026-07-03 pass |
+| `scripts/test-protocol.sh` | debug yank + inject delivered | 2026-07-03 pass (+ phone logcat) |
 | `scripts/test-chip-contract.sh` | yes/no questions, quick-reply order | 2026-07-03 pass |
 | `scripts/verify-lan-config.sh` | POST `/ambient-link/config` | 2026-07-03 pass |
-| `scripts/install-android.sh` | APK on device | blocked: no adb |
-| `web/test/*.spec.mjs` | glasses web layout, D-pad, session flow | prod v53 green (pre-v54 deploy) |
+| `scripts/install-android.sh` | APK on device | 2026-07-03 pass (2506BPN68G) |
+| `web/test/core-session-flow.spec.mjs` | v54 layout, session open, prompt | local 2026-07-03 **pass**; prod blocked v53 |
 
 ---
 
@@ -64,9 +66,9 @@ Within the same impact band, **lower complexity first** (quick wins).
 
 | Mode | Repo | Status |
 |------|------|--------|
-| 1 Environment | meta + device | 🟡 scripts ready; phone + v54 deploy pending |
-| 2 Meta fixes | meta `12188c5`, `3189520`, `342d326` | 🟡 smoke green; device pending |
-| 3 Core delivery | core `4552e76` | 🟡 MarkLanded live; claude needs process |
+| 1 Environment | meta + device | 🟡 phone+APK ✓; prod v54 deploy pending (push main) |
+| 2 Meta fixes | meta `12188c5`+ | 🟢 device settings + Meta debug widget verified |
+| 3 Core delivery | core `4552e76` + mux 2s | 🟡 delivered live; landed fan-out not confirmed in 15s |
 
 ---
 
@@ -96,28 +98,27 @@ Within the same impact band, **lower complexity first** (quick wins).
 | meta | `3fc7562` | this tracker |
 | core | `4552e76` | MarkLanded, outbox purge |
 
-Host: `0.0.0.0:5181` · LAN `ws://192.168.1.33:5181/ambient-link/ws` · prod web v53 (v54 in git)
+Host: `0.0.0.0:5181` · LAN `ws://192.168.1.33:5181/ambient-link/ws` · prod web **v53** · local/git **v54** · main **ahead 5** (unpushed)
 
 ---
 
 ## Blocker detail (priority order)
 
-### B-007 · APK not on phone — I5 C1 🔴
+### B-007 · APK not on phone — I5 C1 🟢
 
 | Field | Value |
 |-------|-------|
 | Symptom | Phone runs old build; fixes not testable |
-| Attempts | `install-android.sh`; commits `3189520`+ |
-| Verify | Theme pills; snooze tap-twice clears |
+| Attempts | `install-android.sh`; `verify-android-device.sh` |
+| Verify | **2026-07-03 pass** — `com.lowkey.ambientlink` 0.1.1-hud; theme pills; snooze tap-twice |
 
-### B-001 · Meta SDK registration — I5 C2 🔴
+### B-001 · Meta SDK registration — I5 C2 🟢
 
 | Field | Value |
 |-------|-------|
 | Symptom | `UNAVAILABLE`, `devices=0`; no HUD |
-| Cause | SDK registration ≠ Meta AI BT pairing |
-| Attempts | No launch spam; status rail; glasses icon OAuth |
-| Verify | Debug → fire test widget |
+| Attempts | BT perms; glasses icon; debug fire widget |
+| Verify | **2026-07-03 pass** — device `98103fe9…`; log `display ready — sending debug card`; UI success line |
 
 ### B-002 · Inject to live agent — I5 C3 🟡
 
@@ -257,6 +258,12 @@ Host: `0.0.0.0:5181` · LAN `ws://192.168.1.33:5181/ambient-link/ws` · prod web
 
 | Date | ID | Change | Result |
 |------|-----|--------|--------|
+| 2026-07-03 | B-001 | debug fire test widget on device | 🟢 |
+| 2026-07-03 | B-007,B-103 | `verify-android-device.sh`; install 0.1.1-hud | 🟢 |
+| 2026-07-03 | B-002 | `verify-inject-landed.mjs` | 🟡 delivered ✓ landed — |
+| 2026-07-03 | B-004 | local Playwright core-flow + v54 SW | 🟡 prod deploy pending |
+| 2026-07-03 | B-303 | core mux IdleDebounce 2s; host rebuilt | 🟡 uncommitted core |
+| 2026-07-03 | B-301,B-003 | phone WS + debug yank PEEKING | 🟡 |
 | 2026-07-03 | — | Priority matrix (impact × complexity) | doc |
 | 2026-07-03 | B-002,B-203 | MarkLanded; honest delivery UI; host restart | 🟡 |
 | 2026-07-03 | env | verify scripts | 🟡 |
@@ -271,10 +278,12 @@ Host: `0.0.0.0:5181` · LAN `ws://192.168.1.33:5181/ambient-link/ws` · prod web
 
 ```bash
 scripts/verify-demo-env.sh
+scripts/verify-android-device.sh   # B-007 + B-103 when adb connected
+node scripts/verify-inject-landed.mjs  # B-002 delivered/landed
 scripts/install-android.sh
 scripts/diagnose-inject.sh
 scripts/start-host.sh
 scripts/push-chat.sh "msg"
 scripts/glasses-question.sh "?"
-cd web/test && npx playwright test
+cd web && AMBIENT_WEB_ORIGIN=http://127.0.0.1:5181 AMBIENT_RELAY_HOST=http://127.0.0.1:5181 npx playwright test core-session-flow.spec.mjs --project=core-flow
 ```

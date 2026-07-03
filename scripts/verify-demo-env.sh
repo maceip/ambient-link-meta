@@ -66,6 +66,21 @@ echo "== 5. Core inject diagnostics =="
 bash "$ROOT/scripts/diagnose-inject.sh" || true
 
 echo
+echo "== 6. Device gates (when adb connected) =="
+if adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{found=1} END{exit !found}'; then
+  if bash "$ROOT/scripts/verify-android-device.sh" >/dev/null 2>&1; then
+    grn "verify-android-device.sh (theme + snooze)"
+  else
+    red "verify-android-device.sh failed"
+  fi
+  if node "$ROOT/scripts/verify-inject-landed.mjs" >/dev/null 2>&1; then
+    grn "verify-inject-landed.mjs (delivered gate)"
+  else
+    ylw "verify-inject-landed.mjs — delivered or endpoint missing"
+  fi
+fi
+
+echo
 if [[ "$FAIL" -ne 0 ]]; then
   echo "Fix red items above before demo."
   exit 1

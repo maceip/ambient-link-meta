@@ -91,11 +91,9 @@
   }
 
   function sessionActionChips(t) {
-    var cfg = chipConfig();
-    if (t && t.yank) return CS.forYank(t.yank, cfg);
-    return (cfg.quickReplies || []).map(function (text) {
-      return CS.quickReplyChip(text);
-    });
+    // Active session compose: custom quick-reply pills only — no continue/dictate
+    // (dictate lives in the action bar; continue is for peek cards, not live chat).
+    return CS.sessionQuickReplies(chipConfig());
   }
 
   function applyCompanionConfig(msg) {
@@ -834,7 +832,9 @@
     titleEl.textContent = displayLabel(t);
     setComposerEnabled(!t.ended);
 
-    var listening = phoneDictateThread === t.id || dictRec ? listeningPartial : '';
+    var listening = (dictatePhase === 'listening' || phoneDictateThread === t.id || dictRec)
+      ? (listeningPartial || promptEl.value || 'Listening… speak now')
+      : '';
     var thinking = t.busy && !t.ended;
 
     if (t.ended) {
@@ -895,59 +895,53 @@
     promptEl.placeholder = 'listening…';
   }
 
-  function finishPhoneDictate(thread, text, enterReview) {
-    if (phoneDictateThread !== thread && phoneDictateThread != null) return;
-    var wasPhone = phoneDictateThread === thread;
-    phoneDictateThread = null;
+  function applyDictateResult(thread, text) {
+    if (phoneDictateThread === thread || phoneDictateThread != null) phoneDictateThread = null;
     listeningPartial = '';
+    if (dictRec) {
+      try { dictRec.stop(); } catch (e) {}
+      dictRec = null;
+    }
     if (dictateBtn) dictateBtn.classList.remove('recording');
     promptEl.placeholder = 'type your message…';
-    if (text) {
-      dictateDraft = text.trim();
-      promptEl.value = dictateDraft;
-      var row = threads[thread];
-      if (row) {
-        upsertChatTurn(row, 'user', dictateDraft);
-        if (row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: dictateDraft });
-      }
-      if (enterReview !== false) {
-        setDictatePhase('review');
-        renderCompose();
-        renderThreadList();
-        return;
-      }
-      showToast('sent', 'success');
+    resetDictateUi();
+    var trimmed = (text || '').trim();
+    if (!trimmed) {
+      renderCompose();
+      return;
     }
-    if (wasPhone && !text) resetDictateUi();
+    var row = threads[thread];
+    if (row) {
+      upsertChatTurn(row, 'user', trimmed);
+      if (row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: trimmed });
+      row.busy = true;
+      row.lastEventAt = clockNow();
+    }
+    promptEl.value = '';
+    showToast('sent', 'success');
     renderCompose();
     renderThreadList();
+  }
+
+  function finishPhoneDictate(thread, text) {
+    applyDictateResult(thread, text);
   }
 
   function pauseDictate() {
     var t = activeThread ? threads[activeThread] : null;
     if (!t) return;
     stopDictRec(t.id);
-    if (phoneDictateThread) {
-      sendDictate('dictate_commit', t.id, dictateDraft || listeningPartial || promptEl.value.trim());
-      finishPhoneDictate(t.id, dictateDraft || listeningPartial || promptEl.value.trim(), true);
+    var text = (dictateDraft || listeningPartial || promptEl.value || '').trim();
+    if (!text) {
+      sendDictate('dictate_abort', t.id);
+      resetDictateUi();
+      renderCompose();
       return;
     }
-    var text = (dictateDraft || listeningPartial || promptEl.value || '').trim();
     sendDictate('dictate_commit', t.id, text);
-    if (text) {
-      dictateDraft = text;
-      promptEl.value = text;
-      var row = threads[t.id];
-      if (row) {
-        upsertChatTurn(row, 'user', text);
-        if (row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: text });
-      }
-      setDictatePhase('review');
-    } else {
-      resetDictateUi();
-    }
+    promptEl.placeholder = 'sending…';
+    setDictatePhase('idle');
     renderCompose();
-    renderThreadList();
   }
 
   function startDictate() {
@@ -998,7 +992,20 @@
       startPhoneDictate(t);
       dictRec = null;
     };
-    rec.onend = function () { dictRec = null; };
+    rec.onend = function () {
+      dictRec = null;
+      if (dictatePhase !== 'listening' || activeThread !== t.id) return;
+      var spoken = (dictateDraft || listeningPartial || promptEl.value || '').trim();
+      if (spoken) {
+        sendDictate('dictate_commit', t.id, spoken);
+        promptEl.placeholder = 'sending…';
+        setDictatePhase('idle');
+      } else {
+        sendDictate('dictate_abort', t.id);
+        resetDictateUi();
+      }
+      renderCompose();
+    };
     dictRec = rec;
     rec.start();
   }
@@ -1032,8 +1039,13 @@
     activeThread = id;
     setUrlForSession(id, !!compose);
     showView('thread');
+    var cached = threads[id];
+    titleEl.textContent = cached ? displayLabel(cached) : 'loading…';
     sendSessionSignal('session_focus', id);
     renderCompose();
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'hud_yank', thread: id }));
+    }
     syncFromHost();
     if (compose) {
       setTimeout(function () { promptEl.focus(); }, 50);
@@ -1560,6 +1572,15 @@
       } else if (msg.type === 'companion_config') {
         applyCompanionConfig(msg);
         return;
+      } else if (msg.type === 'dictate_active' && activeThread === msg.thread) {
+        if (msg.source && msg.source !== 'web') phoneDictateThread = msg.thread;
+        setDictatePhase('listening');
+        if (dictateStatusText) {
+          dictateStatusText.textContent = (msg.source === 'phone')
+            ? 'Listening on phone — speak now'
+            : 'Listening… speak now';
+        }
+        promptEl.placeholder = 'listening…';
       } else if (msg.type === 'dictate_partial' && activeThread === msg.thread && msg.text) {
         promptEl.value = msg.text;
         if (phoneDictateThread === msg.thread) {
@@ -1568,7 +1589,7 @@
           renderCompose();
         }
       } else if (msg.type === 'dictate_end' && activeThread === msg.thread) {
-        finishPhoneDictate(msg.thread, msg.text || '', true);
+        applyDictateResult(msg.thread, msg.text || '');
       } else if (msg.type === 'input_status') {
         applyInputStatus(msg);
         return;
@@ -1597,6 +1618,18 @@
     }
   });
 
+  function regainSessionFocus() {
+    if (!activeThread || activeView !== 'thread') return;
+    if (!ws || ws.readyState !== 1) return;
+    sendSessionSignal('session_focus', activeThread);
+    sendCompanionUi('thread');
+  }
+
+  window.addEventListener('pageshow', regainSessionFocus);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') regainSessionFocus();
+  });
+
   // E2E can refresh the agent card without a visible pull button.
   document.addEventListener('ambient-pull-card', function (e) {
     var thread = e.detail && e.detail.thread;
@@ -1609,14 +1642,14 @@
   wireThemes();
   wireDpadNavigation();
   sendBtn.addEventListener('click', function () {
-    var text = (dictatePhase === 'review' ? dictateDraft : (promptEl.value || '')).trim();
+    var text = (promptEl.value || '').trim();
     if (!text || !activeThread) return;
     sendPrompt(activeThread, text);
   });
   promptEl.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      var text = (dictatePhase === 'review' ? dictateDraft : (promptEl.value || '')).trim();
+      var text = (promptEl.value || '').trim();
       if (!text || !activeThread) return;
       sendPrompt(activeThread, text);
     }
@@ -1626,7 +1659,6 @@
       pauseDictate();
       return;
     }
-    if (dictatePhase === 'review') return;
     startDictate();
   });
   if (dictatePause) dictatePause.addEventListener('click', function () { pauseDictate(); });
