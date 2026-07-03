@@ -42,11 +42,13 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -68,7 +70,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lowkey.ambientlink.hud.GlassesDisplay
+import com.lowkey.ambientlink.relay.RelayConfig
 import com.lowkey.ambientlink.relay.RelayService
+import com.lowkey.ambientlink.relay.CwdSaveOutcome
 import com.lowkey.ambientlink.settings.AiCoreProbe
 import com.lowkey.ambientlink.settings.CompanionSuggest
 import com.lowkey.ambientlink.settings.UserPrefs
@@ -250,6 +254,8 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
   var addReplyStatus by remember { mutableStateOf<ActionLine?>(null) }
   var cwdSaveStatus by remember { mutableStateOf<ActionLine?>(null) }
   var cwdSaveLoading by remember { mutableStateOf(false) }
+  var cwdCreatePrompt by remember { mutableStateOf<String?>(null) }
+  var cwdCreateLoading by remember { mutableStateOf(false) }
   var debugWidgetLoading by remember { mutableStateOf(false) }
   var debugWidgetStatus by remember { mutableStateOf<ActionLine?>(null) }
   var relayActionStatus by remember { mutableStateOf<ActionLine?>(null) }
@@ -305,8 +311,37 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
     RelayService.pushCompanionConfig(ctx)
   }
 
+  fun clearCwdFeedback() {
+    cwdSaveStatus = null
+    cwdCreatePrompt = null
+  }
+
+  suspend fun persistCwdToMac(path: String, create: Boolean) {
+    val normalized = RelayConfig.normalizeCwdInput(path)
+    when (val outcome = RelayConfig.saveDefaultCwd(ctx, url, svcStatus.url, normalized, create)) {
+      is CwdSaveOutcome.Saved -> {
+        ctx.getSharedPreferences("ambient-link-meta", Context.MODE_PRIVATE)
+          .edit().putString("default_cwd", normalized).apply()
+        cwd = normalized
+        clearCwdFeedback()
+        cwdSaveStatus = ActionLine("Directory saved", ok = true)
+      }
+      is CwdSaveOutcome.NotFound -> {
+        cwdCreatePrompt = outcome.resolvedPath
+        cwdSaveStatus = null
+      }
+      is CwdSaveOutcome.Unreachable -> {
+        cwdCreatePrompt = null
+        cwdSaveStatus = ActionLine(outcome.hint, ok = false)
+      }
+      is CwdSaveOutcome.Failed -> {
+        cwdCreatePrompt = null
+        cwdSaveStatus = ActionLine(outcome.message, ok = false)
+      }
+    }
+  }
+
   val glassesTint = glassesIconColor(regState, displayDevice)
-  val cwdHint = validateCwdHint(cwd)
 
   Scaffold(
     modifier = Modifier.fillMaxSize(),
@@ -398,39 +433,25 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         }
         OutlinedTextField(
           value = cwd,
-          onValueChange = { cwd = it; cwdSaveStatus = null },
+          onValueChange = { cwd = it; clearCwdFeedback() },
           label = { Text("Working directory") },
           placeholder = { Text("~/Projects/my-app") },
-          supportingText = {
-            Text(
-              cwdHint.message,
-              color = when (cwdHint.ok) {
-                true -> MaterialTheme.colorScheme.secondary
-                false -> MaterialTheme.colorScheme.error
-                null -> MaterialTheme.colorScheme.onSurfaceVariant
-              },
-            )
-          },
           singleLine = true,
           modifier = Modifier.fillMaxWidth(),
         )
         AmbientPrimaryButton(
           text = "Save directory",
           loading = cwdSaveLoading,
-          enabled = cwdHint.ok != false,
           onClick = {
             val v = cwd.trim()
+            if (v.isEmpty()) {
+              cwdSaveStatus = ActionLine("Enter a folder path", ok = false)
+              return@AmbientPrimaryButton
+            }
             cwdSaveLoading = true
-            cwdSaveStatus = null
-            ctx.getSharedPreferences("ambient-link-meta", Context.MODE_PRIVATE)
-              .edit().putString("default_cwd", v).apply()
+            clearCwdFeedback()
             scope.launch {
-              val ok = pushDefaultCwd(url, v)
-              cwdSaveStatus = if (ok) {
-                ActionLine("Saved on Mac relay", ok = true)
-              } else {
-                ActionLine("Saved on phone — Mac relay offline", ok = false)
-              }
+              persistCwdToMac(v, create = false)
               cwdSaveLoading = false
             }
           },
@@ -631,6 +652,34 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
       Spacer(Modifier.height(8.dp))
       }
 
+      cwdCreatePrompt?.let { resolved ->
+        AlertDialog(
+          onDismissRequest = { cwdCreatePrompt = null },
+          title = { Text("Create folder?") },
+          text = {
+            Text(
+              "This folder is not on your Mac yet:\n$resolved",
+              style = MaterialTheme.typography.bodyMedium,
+            )
+          },
+          confirmButton = {
+            TextButton(
+              enabled = !cwdCreateLoading,
+              onClick = {
+                cwdCreateLoading = true
+                scope.launch {
+                  persistCwdToMac(cwd, create = true)
+                  cwdCreateLoading = false
+                }
+              },
+            ) { Text(if (cwdCreateLoading) "Creating…" else "Create on Mac") }
+          },
+          dismissButton = {
+            TextButton(onClick = { cwdCreatePrompt = null }) { Text("Cancel") }
+          },
+        )
+      }
+
       if (showTipOverlay) {
         FirstRunTipOverlay(
           aiCore = aiCoreStatus,
@@ -790,22 +839,6 @@ private fun glassesIconColor(
   displayDevice.linkState == LinkState.CONNECTED -> MaterialTheme.colorScheme.secondary
   displayDevice.linkState == LinkState.CONNECTING -> Color(0xFFF0A93C)
   else -> MaterialTheme.colorScheme.onSurfaceVariant
-}
-
-private data class CwdHint(val ok: Boolean?, val message: String)
-
-private fun validateCwdHint(raw: String): CwdHint {
-  val v = raw.trim()
-  if (v.isEmpty()) {
-    return CwdHint(null, "Path on your Mac (where the relay runs). ~ = home folder.")
-  }
-  if (v.contains("://") || v.startsWith("ftp:", ignoreCase = true)) {
-    return CwdHint(false, "Use a Mac folder path, not a URL or FTP address.")
-  }
-  if (v.startsWith("/") || v.startsWith("~")) {
-    return CwdHint(true, "Valid path format")
-  }
-  return CwdHint(false, "Start with / or ~")
 }
 
 @Composable
@@ -983,23 +1016,3 @@ private suspend fun debugFireWidget(
 
 private fun isUsableRelayUrl(url: String) =
   url.isNotBlank() && !url.contains("example.com")
-
-private suspend fun pushDefaultCwd(relayUrl: String, cwd: String): Boolean =
-  kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-    try {
-      var base = relayUrl.replaceFirst("wss://", "https://").replaceFirst("ws://", "http://")
-      val cut = base.indexOf("/ambient-link").let { if (it >= 0) it else base.indexOf("/face-chat") }
-      if (cut >= 0) base = base.substring(0, cut)
-      base = base.trimEnd('/')
-      if (base.isBlank()) return@withContext false
-      val payload = "{\"default_cwd\":${org.json.JSONObject.quote(cwd)}}"
-      val req = okhttp3.Request.Builder()
-        .url("$base/ambient-link/config")
-        .post(payload.toRequestBody("application/json".toMediaType()))
-        .build()
-      okhttp3.OkHttpClient().newCall(req).execute().use { it.isSuccessful }
-    } catch (e: Exception) {
-      Log.w("ambient.config", "pushDefaultCwd failed: ${e.message}")
-      false
-    }
-  }

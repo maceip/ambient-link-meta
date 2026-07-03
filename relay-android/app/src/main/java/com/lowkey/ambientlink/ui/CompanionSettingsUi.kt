@@ -539,11 +539,6 @@ fun AiCoreSettingsSection(
   modifier: Modifier = Modifier,
 ) {
   Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    Text(
-      "AI Core",
-      style = MaterialTheme.typography.titleSmall,
-      fontWeight = FontWeight.SemiBold,
-    )
     AiCoreStatusChip(status = status, probing = probing)
     Text(
       when (status.tier) {
