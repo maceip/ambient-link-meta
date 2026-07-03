@@ -113,9 +113,9 @@ object UserPrefs {
     prefs(ctx).edit().putBoolean(KEY_SHOW_DICTATE, on).apply()
   }
 
-  /** When on, done-cards auto-tap the primary chip after a short countdown. */
+  /** When on, done-cards auto-tap the primary chip after a short countdown. Default off — explicit tap only. */
   fun autoContinueEnabled(ctx: Context): Boolean =
-    prefs(ctx).getBoolean(KEY_AUTO_CONTINUE, true)
+    prefs(ctx).getBoolean(KEY_AUTO_CONTINUE, false)
 
   fun setAutoContinueEnabled(ctx: Context, on: Boolean) {
     prefs(ctx).edit().putBoolean(KEY_AUTO_CONTINUE, on).apply()

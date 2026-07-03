@@ -18,7 +18,7 @@ Within the same impact band, **lower complexity first** (quick wins).
 | 1 | B-007 | 5 | 1 | 🟢 | `verify-android-device.sh` 2026-07-03: install 0.1.1-hud + theme pills + snooze toggle |
 | 2 | B-001 | 5 | 2 | 🟢 | `ambient.debug` prepareDisplay + display ready; UI "Test card sent — tap OK on glasses" 2026-07-03 |
 | 3 | B-002 | 5 | 3 | 🟡 | `verify-inject-landed.mjs`: delivered 1ms ✓; landed not in 15s |
-| 4 | B-004 | 4 | 1 | 🟡 | local v54 SW + Playwright core-flow ✓; **prod still v53** (5 commits unpushed) |
+| 4 | B-004 | 4 | 1 | 🟢 | prod `app.js?v=54` SW=v54; Playwright core-flow on prod ✓ 2026-07-03 |
 | 5 | B-301 | 4 | 1 | 🟡 | phone `RelayClient` WS live (thread_idle/hud_yank); healthz curl N/A on device shell |
 | 6 | B-003 | 4 | 2 | 🟡 | debug yank → `HudPresenter update … PEEKING` ✓; live agent pause unproven |
 | 7 | B-107 | 4 | 5 | 🔴 | Pair-once + auto-start (post-demo) |
@@ -98,7 +98,7 @@ Within the same impact band, **lower complexity first** (quick wins).
 | meta | `3fc7562` | this tracker |
 | core | `4552e76` | MarkLanded, outbox purge |
 
-Host: `0.0.0.0:5181` · LAN `ws://192.168.1.33:5181/ambient-link/ws` · prod web **v53** · local/git **v54** · main **ahead 5** (unpushed)
+Host: `0.0.0.0:5181` · LAN `ws://192.168.1.33:5181/ambient-link/ws` · prod web **v54** · meta `4687921` · core mux 2s `b8484d2`
 
 ---
 

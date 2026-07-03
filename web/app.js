@@ -921,6 +921,7 @@
     showToast('sent', 'success');
     renderCompose();
     renderThreadList();
+    setTimeout(syncFromHost, 400);
   }
 
   function finishPhoneDictate(thread, text) {
