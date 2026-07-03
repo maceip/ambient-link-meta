@@ -116,17 +116,54 @@ class RelayService : Service() {
     val force = intent?.getBooleanExtra(EXTRA_FORCE, false) == true
     scope.launch {
       val url = resolveRelayUrl(explicit)
+      if (url == null) {
+        _status.update {
+          it.copy(
+            running = true,
+            connected = false,
+            url = "",
+            lastError = "LAN-only: no Mac relay on Wi‑Fi",
+          )
+        }
+        setNotif("LAN-only — no host")
+        return@launch
+      }
       restart(url, force)
     }
     return START_STICKY
   }
 
-  private suspend fun resolveRelayUrl(explicit: String?): String {
-    explicit?.takeIf { it.isNotBlank() }?.let { return normalizeRelayUrl(it) }
-    RelayDiscovery.discover(applicationContext, timeoutMs = 4_000)?.let { found ->
-      Log.i(TAG, "relay: using LAN $found")
-      RelayLanStore.rememberLanWs(applicationContext, found)
-      return found
+  private suspend fun resolveLanRelayUrl(): String? {
+    RelayDiscovery.discover(applicationContext, timeoutMs = if (isLanOnlyEnabled(applicationContext)) 6_000 else 4_000)
+      ?.let { found ->
+        Log.i(TAG, "relay: using LAN $found")
+        RelayLanStore.rememberLanWs(applicationContext, found)
+        return found
+      }
+    RelayLanStore.lastLanWs(applicationContext)?.let { cached ->
+      if (RelayConfig.isReachableWs(cached)) {
+        Log.i(TAG, "relay: using cached LAN $cached")
+        return cached
+      }
+      if (isLanOnlyEnabled(applicationContext)) {
+        Log.i(TAG, "relay: LAN-only trying cached $cached")
+        return cached
+      }
+    }
+    return null
+  }
+
+  private suspend fun resolveRelayUrl(explicit: String?): String? {
+    val lanOnly = isLanOnlyEnabled(applicationContext)
+    explicit?.takeIf { it.isNotBlank() }?.let { raw ->
+      val normalized = normalizeRelayUrl(raw)
+      if (!lanOnly || normalized.startsWith("ws://")) return normalized
+      Log.w(TAG, "relay: LAN-only — ignoring cloud URL $normalized")
+    }
+    resolveLanRelayUrl()?.let { return it }
+    if (lanOnly) {
+      Log.w(TAG, "relay: LAN-only — no Mac relay found")
+      return null
     }
     val cloud = cloudRelayUrl()
     Log.i(TAG, "relay: using cloud $cloud")
@@ -201,7 +238,7 @@ class RelayService : Service() {
           is RelayClient.Event.Disconnected -> {
             _status.update { s -> s.copy(connected = false) }
             setNotif("reconnecting…")
-            if (url.startsWith("ws://")) {
+            if (url.startsWith("ws://") && !isLanOnlyEnabled(applicationContext)) {
               launch {
                 delay(8_000)
                 if (!_status.value.connected && activeUrl.startsWith("ws://")) {
@@ -296,6 +333,7 @@ class RelayService : Service() {
     private const val PREF_PREWARM_MIC = "prewarm_mic"
     private const val PREF_PRELOAD_SODA = "preload_soda"
     private const val PREF_BLUETOOTH_SCO = "use_bluetooth_sco"
+    private const val PREF_LAN_ONLY = "debug_lan_only"
     const val EXTRA_URL = "relay_url"
     const val EXTRA_FORCE = "relay_force"
     private val _status = MutableStateFlow(Status())
@@ -351,6 +389,16 @@ class RelayService : Service() {
       state?.webDictation?.setBluetoothScoEnabled(on)
         ?: ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
           .edit().putBoolean(PREF_BLUETOOTH_SCO, on).apply()
+    }
+
+    /** Debug: never use cloud relay; glasses web loads from Mac HTTP origin. */
+    fun isLanOnlyEnabled(ctx: Context): Boolean =
+      ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getBoolean(PREF_LAN_ONLY, false)
+
+    fun setLanOnlyEnabled(ctx: Context, on: Boolean) {
+      ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .edit().putBoolean(PREF_LAN_ONLY, on).apply()
     }
 
     fun pushCompanionConfig(ctx: Context) {

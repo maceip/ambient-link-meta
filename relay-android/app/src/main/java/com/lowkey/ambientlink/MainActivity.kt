@@ -261,6 +261,7 @@ private fun ControlScreen(
   var debugWidgetLoading by remember { mutableStateOf(false) }
   var debugWidgetStatus by remember { mutableStateOf<ActionLine?>(null) }
   var relayActionStatus by remember { mutableStateOf<ActionLine?>(null) }
+  var lanOnly by remember { mutableStateOf(RelayService.isLanOnlyEnabled(ctx)) }
   var selectedSnoozeLabel by remember { mutableStateOf<String?>(null) }
   var snoozeActionStatus by remember { mutableStateOf<ActionLine?>(null) }
 
@@ -579,7 +580,46 @@ private fun ControlScreen(
           fontWeight = FontWeight.SemiBold,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (svcStatus.url.isNotBlank()) InlineMono("Host", svcStatus.url)
+        CompactToggle(
+          label = "LAN only (debug)",
+          description = "Relay + glasses web from your Mac — no cloud fallback.",
+          checked = lanOnly,
+          onCheckedChange = { on ->
+            lanOnly = on
+            RelayService.setLanOnlyEnabled(ctx, on)
+            busy = true
+            relayActionStatus = null
+            scope.launch {
+              if (on) {
+                relayActionStatus = ActionLine("LAN-only — discovering Mac…", ok = true)
+                val found = RelayService.discoverUrl(ctx)
+                if (found != null) {
+                  url = found
+                  RelayService.start(ctx, found, force = true)
+                  relayActionStatus = ActionLine("LAN-only → $found", ok = true)
+                } else {
+                  RelayService.start(ctx, null, force = true)
+                  relayActionStatus = ActionLine(
+                    "LAN-only — no Mac on Wi‑Fi (relay running? same network?)",
+                    ok = false,
+                  )
+                }
+              } else {
+                RelayService.start(ctx, null, force = true)
+                relayActionStatus = ActionLine("Cloud fallback enabled", ok = true)
+              }
+              busy = false
+            }
+          },
+        )
+        if (svcStatus.url.isNotBlank()) {
+          InlineMono("Host", svcStatus.url)
+          val webOrigin = svcStatus.url
+            .replace("wss://", "https://")
+            .replace("ws://", "http://")
+            .substringBefore("/ambient-link")
+          InlineMono("Web", if (lanOnly || svcStatus.url.startsWith("ws://")) "$webOrigin/ambient-link/" else "public.computer (cloud)")
+        }
         if (svcStatus.threads.isNotEmpty()) InlineMono("Threads", svcStatus.threads.joinToString(", "))
         svcStatus.lastError?.takeIf { !svcStatus.running }?.let {
           Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2)
