@@ -43,6 +43,16 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Provision SODA runtime binaries
+        working-directory: ${{ github.workspace }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          chmod +x scripts/provision-soda-for-ci.sh
+          scripts/provision-soda-for-ci.sh
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 

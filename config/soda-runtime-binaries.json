@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "description": "Recovered SODA runtime binaries for relay-android CI (gitignored locally). Stored in the FM runtime S3 bucket; CI needs AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION secrets.",
+  "artifacts": [
+    {
+      "id": "recovered_soda_jar",
+      "path": "relay-android/app/libs/recovered-soda.jar",
+      "s3Uri": "s3://fm-runtime-assets-095713295645-euc1-20260518/neural/runtime-binaries/d8609675ae64e3144e73bd7a1f47ef413d8f2ff23e4fcca013f3944362380e51/recovered-soda.jar",
+      "sha256": "d8609675ae64e3144e73bd7a1f47ef413d8f2ff23e4fcca013f3944362380e51",
+      "sizeBytes": 3400245
+    },
+    {
+      "id": "native_soda_dev_jni_arm64",
+      "path": "relay-android/app/src/main/jniLibs/arm64-v8a/libsoda_dev_jni.so",
+      "s3Uri": "s3://fm-runtime-assets-095713295645-euc1-20260518/neural/runtime-binaries/8cded6b93c622d5184069174c6ca9e4163f2680581325dd99361b25eece267ff/libsoda_dev_jni.so",
+      "sha256": "8cded6b93c622d5184069174c6ca9e4163f2680581325dd99361b25eece267ff",
+      "sizeBytes": 49730232
+    },
+    {
+      "id": "soda_lp_cpu",
+      "path": "relay-android/app/src/main/assets/soda/lp_cpu.zip",
+      "s3Uri": "s3://fm-runtime-assets-095713295645-euc1-20260518/neural/runtime-binaries/fac23ca956f473c5025621784a1657a1663a16b0754886b975f3cde3f1345f04/lp_cpu.zip",
+      "sha256": "fac23ca956f473c5025621784a1657a1663a16b0754886b975f3cde3f1345f04",
+      "sizeBytes": 56458465
+    }
+  ]
+}

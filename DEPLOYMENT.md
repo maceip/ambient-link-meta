@@ -68,6 +68,9 @@ script. Disk must always match `origin/main`.
 | `PROD_SSH_HOST` | `public.computer` | Production SSH host |
 | `PROD_SSH_USER` | `devuser` | SSH user; must own `/home/devuser/ambient-link-meta` |
 | `PROD_SSH_PORT` | `22` | Optional; omit to use 22 |
+| `AWS_ACCESS_KEY_ID` | (IAM key) | Read `fm-runtime-assets-*` for SODA binaries in APK CI |
+| `AWS_SECRET_ACCESS_KEY` | (IAM secret) | Pair with `AWS_ACCESS_KEY_ID` |
+| `AWS_REGION` | `eu-central-1` | S3 region for runtime binaries |
 
 Generate a deploy-only key on your laptop:
 
@@ -81,6 +84,12 @@ key to `from="github-actions-ip-range"` if you add GitHub's meta IPs later; ed25
 deploy key with no passphrase is the minimum to get running.
 
 Go to §4 to verify manually and §5 for service-worker cache busting.
+
+**Android debug APK** — every push to `main` also runs
+`.github/workflows/debug-apk-release.yml` (adapted from `maceip/cursor`). It
+provisions SODA binaries via `scripts/provision-soda-for-ci.sh`, builds
+`:app:assembleDebug`, and publishes a GitHub Release with the APK. Install from
+the Releases tab or `adb install -r` after downloading.
 
 > **train.public.computer** uses `/opt/train` — a different vhost. Ambient Link
 > is only `…/ambient-link-meta/web` on `public.computer`.
