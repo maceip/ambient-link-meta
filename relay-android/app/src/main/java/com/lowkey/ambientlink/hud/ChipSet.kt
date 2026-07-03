@@ -44,12 +44,16 @@ object ChipSet {
 
   private fun buildActionRow(config: ActionConfig, includeContinue: Boolean): List<Chip> {
     val out = mutableListOf<Chip>()
-    if (includeContinue) out.add(CONTINUE)
-    if (config.showDictate) out.add(DICTATE)
+    // User quick replies first so they aren't pushed off by continue + dictate.
     config.quickReplies.forEach { text ->
       if (out.size >= MAX_CHIPS) return@forEach
-      out.add(quickReplyChip(text))
+      val t = text.trim()
+      if (t.isEmpty()) return@forEach
+      if (includeContinue && config.showContinue && t.equals("continue", ignoreCase = true)) return@forEach
+      out.add(quickReplyChip(t))
     }
+    if (config.showDictate && out.size < MAX_CHIPS) out.add(DICTATE)
+    if (includeContinue && config.showContinue && out.size < MAX_CHIPS) out.add(CONTINUE)
     return out.take(MAX_CHIPS)
   }
 

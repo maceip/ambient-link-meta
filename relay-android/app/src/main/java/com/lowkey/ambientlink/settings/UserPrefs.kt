@@ -120,4 +120,19 @@ object UserPrefs {
   fun setAutoContinueEnabled(ctx: Context, on: Boolean) {
     prefs(ctx).edit().putBoolean(KEY_AUTO_CONTINUE, on).apply()
   }
+
+  private const val KEY_UI_THEME = "ui_theme"
+
+  val UI_THEMES = listOf("meta", "dracula", "tokyo-night", "catppuccin", "nord")
+
+  fun getUiTheme(ctx: Context): String {
+    val raw = prefs(ctx).getString(KEY_UI_THEME, "meta")?.lowercase() ?: "meta"
+    return if (raw in UI_THEMES) raw else "meta"
+  }
+
+  fun setUiTheme(ctx: Context, theme: String) {
+    val clean = theme.lowercase().trim()
+    val value = if (clean in UI_THEMES) clean else "meta"
+    prefs(ctx).edit().putString(KEY_UI_THEME, value).apply()
+  }
 }

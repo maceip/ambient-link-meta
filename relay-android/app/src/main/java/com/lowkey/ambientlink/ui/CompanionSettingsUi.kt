@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,7 +76,8 @@ fun AmbientPrimaryButton(
     enabled = enabled && !loading,
     modifier = modifier.defaultMinSize(minHeight = 44.dp),
     contentPadding = PaddingValues(vertical = 10.dp, horizontal = 16.dp),
-    shape = RoundedCornerShape(12.dp),
+    shape = AmbientTheme.fieldShape,
+    colors = AmbientTheme.tonalButtonColors(),
   ) {
     if (loading) {
       CircularProgressIndicator(
@@ -103,20 +105,16 @@ fun InlineActionStatus(line: ActionLine?, modifier: Modifier = Modifier) {
   )
 }
 
-/** Frosted pill strip — single horizontal row (scrolls when needed). */
-@OptIn(ExperimentalHazeMaterialsApi::class)
+/** Selectable pill — same shape/color on agent, snooze, and quick-reply rows. */
 @Composable
-fun FuzzyPillGrid(
-  hazeState: HazeState,
+fun AmbientPillGrid(
   pills: List<String>,
-  selected: Set<String> = emptySet(),
+  selected: Set<String>,
   onPillClick: (String) -> Unit,
   modifier: Modifier = Modifier,
 ) {
   if (pills.isEmpty()) return
   val scrollState = rememberScrollState()
-  val hazeStyle = HazeMaterials.regular(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
-
   Row(
     modifier = modifier
       .fillMaxWidth()
@@ -127,31 +125,117 @@ fun FuzzyPillGrid(
       val isOn = label in selected
       val interaction = remember(label) { MutableInteractionSource() }
       val pressed by interaction.collectIsPressedAsState()
-      val scale by animateFloatAsState(if (pressed) 0.94f else 1f, label = "pillScale")
-      val borderColor by animateColorAsState(
-        if (isOn) MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
-        else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-        label = "pillBorder",
-      )
+      val scale by animateFloatAsState(if (pressed) 0.96f else 1f, label = "pillScale")
       Text(
         label,
         modifier = Modifier
           .scale(scale)
-          .clip(RoundedCornerShape(999.dp))
-          .hazeEffect(state = hazeState, style = hazeStyle)
+          .clip(AmbientTheme.pillShape)
           .background(
-            if (isOn) MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
-            else Color.White.copy(alpha = 0.07f),
+            if (isOn) AmbientTheme.accentSelectedBackground()
+            else AmbientTheme.accentUnselectedBackground(),
           )
-          .border(1.dp, borderColor, RoundedCornerShape(999.dp))
+          .border(
+            1.dp,
+            if (isOn) AmbientTheme.accentSelectedBorder()
+            else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+            AmbientTheme.pillShape,
+          )
           .clickable(interactionSource = interaction, indication = null) { onPillClick(label) }
-          .defaultMinSize(minHeight = 32.dp)
-          .padding(horizontal = 12.dp, vertical = 6.dp),
+          .defaultMinSize(minHeight = 36.dp)
+          .padding(horizontal = 14.dp, vertical = 8.dp),
         style = MaterialTheme.typography.labelLarge,
         fontWeight = if (isOn) FontWeight.SemiBold else FontWeight.Medium,
-        color = MaterialTheme.colorScheme.onSurface,
+        color = if (isOn) AmbientTheme.accentSelectedForeground()
+        else MaterialTheme.colorScheme.onSurface,
         maxLines = 1,
       )
+    }
+  }
+}
+
+/** @deprecated Use [AmbientPillGrid] — kept as alias for call sites being migrated. */
+@Composable
+fun FuzzyPillGrid(
+  hazeState: HazeState,
+  pills: List<String>,
+  selected: Set<String> = emptySet(),
+  onPillClick: (String) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  AmbientPillGrid(pills, selected, onPillClick, modifier)
+}
+
+@Composable
+fun SettingsBlockLabel(
+  title: String,
+  description: String? = null,
+  modifier: Modifier = Modifier,
+) {
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Text(
+      title,
+      style = MaterialTheme.typography.labelLarge,
+      fontWeight = FontWeight.SemiBold,
+      color = MaterialTheme.colorScheme.onSurface,
+    )
+    if (!description.isNullOrBlank()) {
+      Text(
+        description,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        lineHeight = 18.sp,
+      )
+    }
+  }
+}
+
+@Composable
+fun InlineSaveField(
+  label: String,
+  value: String,
+  onValueChange: (String) -> Unit,
+  placeholder: String,
+  actionLabel: String,
+  actionLoading: Boolean,
+  onAction: () -> Unit,
+  modifier: Modifier = Modifier,
+  enabled: Boolean = true,
+) {
+  Row(
+    modifier = modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    OutlinedTextField(
+      value = value,
+      onValueChange = onValueChange,
+      label = { Text(label) },
+      placeholder = { Text(placeholder) },
+      singleLine = true,
+      enabled = enabled,
+      modifier = Modifier.weight(1f),
+      shape = AmbientTheme.fieldShape,
+    )
+    FilledTonalButton(
+      onClick = onAction,
+      enabled = enabled && !actionLoading,
+      modifier = Modifier
+        .height(56.dp)
+        .defaultMinSize(minHeight = 44.dp),
+      contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+      shape = AmbientTheme.fieldShape,
+      colors = AmbientTheme.tonalButtonColors(),
+    ) {
+      if (actionLoading) {
+        CircularProgressIndicator(
+          Modifier.size(18.dp),
+          strokeWidth = 2.dp,
+          color = MaterialTheme.colorScheme.onSurface,
+        )
+      } else {
+        Text(actionLabel, fontWeight = FontWeight.Medium)
+      }
     }
   }
 }
@@ -165,10 +249,13 @@ fun QuickRepliesEditor(
   addStatus: ActionLine? = null,
 ) {
   var draft by remember { mutableStateOf("") }
-  Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    SettingsBlockLabel(
+      "Quick replies",
+      "Short taps on glasses peek cards — tap a pill to remove it.",
+    )
     if (replies.isNotEmpty()) {
-      FuzzyPillGrid(
-        hazeState = hazeState,
+      AmbientPillGrid(
         pills = replies,
         selected = replies.toSet(),
         onPillClick = { pill -> onChange(replies.filter { it != pill }) },
@@ -182,9 +269,11 @@ fun QuickRepliesEditor(
       OutlinedTextField(
         value = draft,
         onValueChange = { draft = it },
+        label = { Text("Add reply") },
         modifier = Modifier.weight(1f),
-        placeholder = { Text("add a quick reply…") },
+        placeholder = { Text("e.g. looks good") },
         singleLine = true,
+        shape = AmbientTheme.fieldShape,
       )
       FilledTonalButton(
         onClick = {
@@ -198,8 +287,9 @@ fun QuickRepliesEditor(
         modifier = Modifier
           .height(56.dp)
           .defaultMinSize(minHeight = 44.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+        shape = AmbientTheme.fieldShape,
+        colors = AmbientTheme.tonalButtonColors(),
       ) {
         Text("Add", fontWeight = FontWeight.Medium)
       }
@@ -480,15 +570,19 @@ fun AiQuickReplySuggestions(
   }
   if (!loading && pending.isEmpty()) return
 
-  Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    SuggestionHeader("Suggestions", loading)
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    SettingsBlockLabel(
+      if (loading) "Suggested replies…" else "Suggested replies",
+      if (fromAi) "From on-device AI based on your sessions." else "From your recent session patterns.",
+    )
     if (loading) {
       CircularProgressIndicator(
         Modifier.size(20.dp),
         strokeWidth = 2.dp,
+        color = MaterialTheme.colorScheme.primary,
       )
     } else {
-      FuzzyPillGrid(hazeState, pending, emptySet(), onAdd)
+      AmbientPillGrid(pills = pending, selected = emptySet(), onPillClick = onAdd)
     }
   }
 }
@@ -504,32 +598,25 @@ fun AiSnoozeSuggestions(
   onPick: (CompanionSuggest.SnoozeOption) -> Unit,
   modifier: Modifier = Modifier,
 ) {
-  Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    SuggestionHeader("Snooze", loading)
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    SettingsBlockLabel(
+      if (loading) "Suggested snooze…" else "Suggested snooze",
+      if (fromAi) "Smart snooze times from your habits." else "Based on when you usually snooze.",
+    )
     if (loading) {
       CircularProgressIndicator(
         Modifier.size(20.dp),
         strokeWidth = 2.dp,
+        color = MaterialTheme.colorScheme.primary,
       )
     } else if (suggestions.isNotEmpty()) {
-      FuzzyPillGrid(
-        hazeState = hazeState,
+      AmbientPillGrid(
         pills = suggestions.map { it.label },
         selected = selected,
         onPillClick = { label -> suggestions.firstOrNull { it.label == label }?.let(onPick) },
       )
     }
   }
-}
-
-@Composable
-private fun SuggestionHeader(title: String, loading: Boolean) {
-  Text(
-    if (loading) "$title…" else title,
-    style = MaterialTheme.typography.labelMedium,
-    fontWeight = FontWeight.SemiBold,
-    color = MaterialTheme.colorScheme.onSurfaceVariant,
-  )
 }
 
 @Composable

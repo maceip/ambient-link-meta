@@ -29,14 +29,33 @@ object RelayConfig {
   fun normalizeCwdInput(raw: String): String =
     raw.trim().replace('～', '~')
 
-  /** Resolve the Mac host HTTP base — cloud WS URLs cannot accept folder config directly. */
-  suspend fun resolveHostHttpBase(ctx: Context, relayWsUrl: String, daemonWsUrl: String): String? =
-    withContext(Dispatchers.IO) {
-      listOf(relayWsUrl, daemonWsUrl)
-        .mapNotNull { wsToHttp(it) }
-        .firstOrNull { !isCloudRelay(it) }
-        ?: RelayService.discoverUrl(ctx)?.let { wsToHttp(it) }?.takeUnless { isCloudRelay(it) }
+  /** Resolve a Mac host that accepts POST /ambient-link/config (never the cloud WS URL). */
+  suspend fun resolveHostHttpBase(
+    ctx: Context,
+    relayWsUrl: String,
+    daemonWsUrl: String,
+    discoverIfNeeded: Boolean = true,
+  ): String? = withContext(Dispatchers.IO) {
+    val candidates = linkedSetOf<String>()
+    listOf(relayWsUrl, daemonWsUrl).forEach { ws ->
+      wsToHttp(ws)?.takeIf { !isCloudRelay(it) }?.let { candidates.add(it) }
     }
+    RelayLanStore.lastLanHttp(ctx)?.let { candidates.add(it) }
+    if (discoverIfNeeded) {
+      RelayDiscovery.discover(ctx, timeoutMs = 10_000)?.let { found ->
+        RelayLanStore.rememberLanWs(ctx, found)
+        wsToHttp(found)?.let { candidates.add(it) }
+      }
+    }
+    for (base in candidates) {
+      if (probeHealth(base)) {
+        Log.i(TAG, "config host: $base")
+        return@withContext base
+      }
+    }
+    Log.w(TAG, "no LAN config host (tried ${candidates.size} candidates)")
+    null
+  }
 
   suspend fun saveDefaultCwd(
     ctx: Context,
@@ -46,15 +65,17 @@ object RelayConfig {
     create: Boolean,
   ): CwdSaveOutcome = withContext(Dispatchers.IO) {
     val normalized = normalizeCwdInput(cwd)
-    val base = resolveHostHttpBase(ctx, relayWsUrl, daemonWsUrl)
-    if (base.isNullOrBlank()) {
-      return@withContext CwdSaveOutcome.Unreachable(
-        "Can't reach your Mac. In Debug, tap Discover or start ambient-link on your Mac.",
+    val base = resolveHostHttpBase(ctx, relayWsUrl, daemonWsUrl, discoverIfNeeded = true)
+      ?: return@withContext CwdSaveOutcome.Unreachable(
+        "Can't reach your Mac on Wi‑Fi. In Debug, set Relay URL to ws://YOUR_MAC_IP:5181/ambient-link/ws",
       )
-    }
+    postConfig(base, normalized, create)
+  }
+
+  private fun postConfig(base: String, cwd: String, create: Boolean): CwdSaveOutcome {
     try {
       val payload = JSONObject()
-        .put("default_cwd", normalized)
+        .put("default_cwd", cwd)
         .put("create", create)
         .toString()
       val req = Request.Builder()
@@ -64,17 +85,26 @@ object RelayConfig {
       http.newCall(req).execute().use { resp ->
         val body = resp.body?.string().orEmpty()
         if (!resp.isSuccessful) {
-          return@withContext CwdSaveOutcome.Failed(
+          return CwdSaveOutcome.Failed(
             if (body.isNotBlank()) body else "Mac relay returned ${resp.code}",
           )
         }
-        parseConfigResponse(body)
+        return parseConfigResponse(body)
       }
     } catch (e: Exception) {
       Log.w(TAG, "saveDefaultCwd failed: ${e.message}")
-      CwdSaveOutcome.Unreachable(
-        "Can't reach your Mac. In Debug, tap Discover or start ambient-link on your Mac.",
+      return CwdSaveOutcome.Unreachable(
+        "Can't reach your Mac on Wi‑Fi. In Debug, set Relay URL to ws://YOUR_MAC_IP:5181/ambient-link/ws",
       )
+    }
+  }
+
+  private fun probeHealth(base: String): Boolean {
+    return try {
+      http.newCall(Request.Builder().url("$base/healthz").get().build())
+        .execute().use { it.isSuccessful }
+    } catch (_: Exception) {
+      false
     }
   }
 
@@ -95,14 +125,13 @@ object RelayConfig {
     return CwdSaveOutcome.Failed(err)
   }
 
-  private fun wsToHttp(ws: String): String? {
-    var base = ws.trim()
-    if (base.isBlank()) return null
-    base = base.replaceFirst("wss://", "https://").replaceFirst("ws://", "http://")
-    val cut = base.indexOf("/ambient-link").let { if (it >= 0) it else base.indexOf("/face-chat") }
-    if (cut >= 0) base = base.substring(0, cut)
-    base = base.trimEnd('/')
-    return base.ifBlank { null }
+  private fun wsToHttp(ws: String): String? = RelayLanStore.wsToHttp(ws)
+
+  /** True when the Mac relay HTTP API responds (LAN only — never cloud). */
+  fun isReachableWs(ws: String): Boolean {
+    val base = wsToHttp(ws.trim()) ?: return false
+    if (isCloudRelay(base)) return false
+    return probeHealth(base)
   }
 
   private fun isCloudRelay(httpBase: String): Boolean {

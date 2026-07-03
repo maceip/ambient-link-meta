@@ -125,6 +125,7 @@ class RelayService : Service() {
     explicit?.takeIf { it.isNotBlank() }?.let { return normalizeRelayUrl(it) }
     RelayDiscovery.discover(applicationContext, timeoutMs = 4_000)?.let { found ->
       Log.i(TAG, "relay: using LAN $found")
+      RelayLanStore.rememberLanWs(applicationContext, found)
       return found
     }
     val cloud = cloudRelayUrl()
@@ -191,6 +192,9 @@ class RelayService : Service() {
         when (ev) {
           is RelayClient.Event.Connected    -> {
             _status.update { it.copy(connected = true,  lastError = null) }
+            if (activeUrl.startsWith("ws://")) {
+              RelayLanStore.rememberLanWs(applicationContext, activeUrl)
+            }
             setNotif("connected")
             scope.launch(Dispatchers.IO) { preloadSodaIfEnabled() }
           }
@@ -395,6 +399,18 @@ class RelayService : Service() {
       ctx.stopService(Intent(ctx, RelayService::class.java))
     }
 
-    suspend fun discoverUrl(ctx: Context): String? = RelayDiscovery.discover(ctx)
+    suspend fun discoverUrl(ctx: Context): String? {
+      RelayDiscovery.discover(ctx, timeoutMs = 10_000)?.let { found ->
+        RelayLanStore.rememberLanWs(ctx, found)
+        return found
+      }
+      RelayLanStore.lastLanWs(ctx)?.let { cached ->
+        if (RelayConfig.isReachableWs(cached)) {
+          Log.i(TAG, "discover: using cached LAN $cached")
+          return cached
+        }
+      }
+      return null
+    }
   }
 }

@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,8 +36,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
@@ -82,7 +78,11 @@ import com.lowkey.ambientlink.ui.AiSnoozeSuggestions
 import com.lowkey.ambientlink.ui.ActionLine
 import com.lowkey.ambientlink.ui.AmbientPrimaryButton
 import com.lowkey.ambientlink.ui.InlineActionStatus
+import com.lowkey.ambientlink.ui.InlineSaveField
 import com.lowkey.ambientlink.ui.QuickRepliesEditor
+import com.lowkey.ambientlink.ui.SettingsBlockLabel
+import com.lowkey.ambientlink.ui.AmbientPillGrid
+import com.lowkey.ambientlink.ui.AmbientTheme
 import com.lowkey.ambientlink.ui.SodaDebugPanel
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
@@ -108,19 +108,24 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
-private val AmbientColorScheme = darkColorScheme(
-  primary = Color(0xFF1C84FF),
-  onPrimary = Color(0xFFF3F5F8),
-  secondary = Color(0xFF3DC97A),
-  onSecondary = Color(0xFF0D0F13),
-  background = Color(0xFF000000),
-  surface = Color(0xFF0D0F13),
-  surfaceVariant = Color(0xFF1D2025),
-  onSurface = Color(0xFFF3F5F8),
-  onSurfaceVariant = Color(0xFF8C939E),
-  outline = Color(0xFF2E323A),
-  error = Color(0xFFF0566E),
-)
+@Composable
+private fun AmbientApp(activity: MainActivity, wearablesRepo: WearablesRepository) {
+  val ctx = activity.applicationContext
+  var uiTheme by remember { mutableStateOf(UserPrefs.getUiTheme(ctx)) }
+  MaterialTheme(colorScheme = AmbientTheme.colorSchemeFor(uiTheme), typography = MaterialTheme.typography) {
+    Surface(
+      Modifier
+        .fillMaxSize()
+        .windowInsetsPadding(WindowInsets.systemBars),
+      color = MaterialTheme.colorScheme.background,
+    ) {
+      ControlScreen(activity, wearablesRepo, uiTheme = uiTheme, onUiThemeChange = { next ->
+        uiTheme = next
+        UserPrefs.setUiTheme(ctx, next)
+      })
+    }
+  }
+}
 
 class MainActivity : ComponentActivity() {
   private val wearablesRepo by lazy { WearablesRepository.getInstance(applicationContext) }
@@ -146,16 +151,7 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
-      MaterialTheme(colorScheme = AmbientColorScheme, typography = MaterialTheme.typography) {
-        Surface(
-          Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.systemBars),
-          color = MaterialTheme.colorScheme.background,
-        ) {
-          ControlScreen(this, wearablesRepo)
-        }
-      }
+      AmbientApp(this, wearablesRepo)
     }
   }
 
@@ -193,9 +189,14 @@ class MainActivity : ComponentActivity() {
   }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeMaterialsApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeMaterialsApi::class)
 @Composable
-private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesRepository) {
+private fun ControlScreen(
+  activity: ComponentActivity,
+  wearablesRepo: WearablesRepository,
+  uiTheme: String,
+  onUiThemeChange: (String) -> Unit,
+) {
   val ctx = androidx.compose.ui.platform.LocalContext.current
   val regState by wearablesRepo.registrationState.collectAsState()
   val devicesMeta by wearablesRepo.devicesMetadata.collectAsState()
@@ -251,6 +252,7 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
   var modelDownloadBusy by remember { mutableStateOf(false) }
   val hasUsageData = CompanionSuggest.hasData(ctx)
   var debugExpanded by remember { mutableStateOf(false) }
+  var settingsExpanded by remember { mutableStateOf(true) }
   var addReplyStatus by remember { mutableStateOf<ActionLine?>(null) }
   var cwdSaveStatus by remember { mutableStateOf<ActionLine?>(null) }
   var cwdSaveLoading by remember { mutableStateOf(false) }
@@ -269,6 +271,15 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
     suggestions = loaded
     aiCoreStatus = loaded.aiCore
     suggestionsLoading = false
+  }
+
+  LaunchedEffect(snoozeUntilMs) {
+    if (System.currentTimeMillis() < snoozeUntilMs) {
+      val mins = (UserPrefs.snoozeDurationMs(ctx) / 60_000L).toInt().coerceAtLeast(1)
+      selectedSnoozeLabel = formatSnoozeLabel(mins)
+    } else {
+      selectedSnoozeLabel = null
+    }
   }
 
   suspend fun refreshAiCoreAndSuggestions() {
@@ -311,6 +322,13 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
     RelayService.pushCompanionConfig(ctx)
   }
 
+  fun pickSnoozeMinutes(minutes: Int) {
+    val label = formatSnoozeLabel(minutes)
+    val active = System.currentTimeMillis() < snoozeUntilMs
+    if (active && selectedSnoozeLabel == label) clearSnooze()
+    else activateSnoozeMinutes(minutes)
+  }
+
   fun clearCwdFeedback() {
     cwdSaveStatus = null
     cwdCreatePrompt = null
@@ -351,7 +369,7 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         Modifier
           .fillMaxWidth()
           .hazeEffect(state = hazeState, style = hazeStyle)
-          .padding(top = 8.dp, bottom = 6.dp),
+          .padding(top = 10.dp, bottom = 8.dp),
       ) {
         Row(
           Modifier
@@ -370,7 +388,7 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
             contentDescription = "Glasses link",
             tint = glassesTint,
             modifier = Modifier
-              .size(26.dp)
+              .size(78.dp)
               .clickable {
                 if (regState != RegistrationState.REGISTERED && sdkReady) {
                   wearablesRepo.startRegistration(activity)
@@ -405,48 +423,39 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         HintBanner("Tap the glasses icon to connect Meta AI.")
       }
 
-      SectionCard(title = "Auto-responder") {
-        Text(
+      CollapsibleSectionCard(
+        title = "Settings",
+        expanded = settingsExpanded,
+        onToggle = { settingsExpanded = !settingsExpanded },
+      ) {
+        SettingsBlockLabel(
           "Default agent",
-          style = MaterialTheme.typography.labelLarge,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          "Used when you start a new session from the glasses web app.",
         )
-        FlowRow(
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-          verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          UserPrefs.DEFAULT_AGENTS.forEach { agent ->
-            FilterChip(
-              selected = defaultAgent == agent,
-              onClick = {
-                defaultAgent = agent
-                UserPrefs.setDefaultAgent(ctx, agent)
-                RelayService.pushCompanionConfig(ctx)
-              },
-              label = { Text(agent.replaceFirstChar { it.uppercase() }) },
-              colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                selectedLabelColor = MaterialTheme.colorScheme.onSurface,
-              ),
-            )
-          }
-        }
-        OutlinedTextField(
+        AmbientPillGrid(
+          pills = UserPrefs.DEFAULT_AGENTS.map { it.replaceFirstChar { c -> c.uppercase() } },
+          selected = setOf(defaultAgent.replaceFirstChar { it.uppercase() }),
+          onPillClick = { label ->
+            val agent = UserPrefs.DEFAULT_AGENTS.firstOrNull {
+              it.replaceFirstChar { c -> c.uppercase() } == label
+            } ?: return@AmbientPillGrid
+            defaultAgent = agent
+            UserPrefs.setDefaultAgent(ctx, agent)
+            RelayService.pushCompanionConfig(ctx)
+          },
+        )
+        InlineSaveField(
+          label = "Working directory",
           value = cwd,
           onValueChange = { cwd = it; clearCwdFeedback() },
-          label = { Text("Working directory") },
-          placeholder = { Text("~/Projects/my-app") },
-          singleLine = true,
-          modifier = Modifier.fillMaxWidth(),
-        )
-        AmbientPrimaryButton(
-          text = "Save directory",
-          loading = cwdSaveLoading,
-          onClick = {
+          placeholder = "~/Projects/my-app",
+          actionLabel = "Save",
+          actionLoading = cwdSaveLoading,
+          onAction = {
             val v = cwd.trim()
             if (v.isEmpty()) {
               cwdSaveStatus = ActionLine("Enter a folder path", ok = false)
-              return@AmbientPrimaryButton
+              return@InlineSaveField
             }
             cwdSaveLoading = true
             clearCwdFeedback()
@@ -458,15 +467,46 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         )
         InlineActionStatus(cwdSaveStatus)
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-        CompactToggle("Continue button", showContinue) {
-          persistChipToggles(it, showDictate)
-        }
-        CompactToggle("5s auto-continue countdown", autoContinue) {
-          persistChipToggles(showContinue, showDictate, it)
-        }
-        CompactToggle("Dictate button", showDictate) {
-          persistChipToggles(showContinue, it)
-        }
+        SettingsBlockLabel("Theme")
+        AmbientPillGrid(
+          pills = listOf("Meta", "Dracula", "Tokyo", "Catppuccin", "Nord"),
+          selected = setOf(
+            when (uiTheme) {
+              "dracula" -> "Dracula"
+              "tokyo-night" -> "Tokyo"
+              "catppuccin" -> "Catppuccin"
+              "nord" -> "Nord"
+              else -> "Meta"
+            },
+          ),
+          onPillClick = { label ->
+            val next = when (label) {
+              "Dracula" -> "dracula"
+              "Tokyo" -> "tokyo-night"
+              "Catppuccin" -> "catppuccin"
+              "Nord" -> "nord"
+              else -> "meta"
+            }
+            onUiThemeChange(next)
+          },
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+        SettingsBlockLabel("Glasses action chips")
+        CompactToggle(
+          label = "Continue button",
+          checked = showContinue,
+          onCheckedChange = { persistChipToggles(it, showDictate) },
+        )
+        CompactToggle(
+          label = "5s auto-continue countdown",
+          checked = autoContinue,
+          onCheckedChange = { persistChipToggles(showContinue, showDictate, it) },
+        )
+        CompactToggle(
+          label = "Dictate button",
+          checked = showDictate,
+          onCheckedChange = { persistChipToggles(showContinue, it) },
+        )
         if (hasUsageData) {
           AiQuickReplySuggestions(
             hazeState = hazeState,
@@ -502,15 +542,14 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        com.lowkey.ambientlink.ui.FuzzyPillGrid(
-          hazeState = hazeState,
+        AmbientPillGrid(
           pills = UserPrefs.SUGGESTED_SNOOZE_MINUTES.map { formatSnoozeLabel(it) },
           selected = buildSet {
             selectedSnoozeLabel?.let { add(it) }
           },
           onPillClick = { label ->
             val mins = UserPrefs.SUGGESTED_SNOOZE_MINUTES.firstOrNull { formatSnoozeLabel(it) == label }
-            if (mins != null) activateSnoozeMinutes(mins)
+            if (mins != null) pickSnoozeMinutes(mins)
           },
         )
         if (hasUsageData) {
@@ -520,7 +559,7 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
             loading = suggestionsLoading,
             fromAi = suggestions.fromAi,
             selected = buildSet { selectedSnoozeLabel?.let { add(it) } },
-            onPick = { s -> activateSnoozeMinutes(s.minutes) },
+            onPick = { s -> pickSnoozeMinutes(s.minutes) },
           )
         }
         InlineActionStatus(snoozeActionStatus)
@@ -545,14 +584,23 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         svcStatus.lastError?.takeIf { !svcStatus.running }?.let {
           Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2)
         }
-        CompactToggle("Pre-load speech model", preloadSoda) {
-          preloadSoda = it
-          RelayService.setSodaPreloadEnabled(ctx, it)
-        }
-        CompactToggle("Glasses Bluetooth mic (in-call UI)", bluetoothSco) {
-          bluetoothSco = it
-          RelayService.setBluetoothScoEnabled(ctx, it)
-        }
+        CompactToggle(
+          label = "Pre-load speech model",
+          checked = preloadSoda,
+          onCheckedChange = {
+            preloadSoda = it
+            RelayService.setSodaPreloadEnabled(ctx, it)
+          },
+        )
+        CompactToggle(
+          label = "Glasses Bluetooth mic (in-call UI)",
+          description = "Triggers in-call UI on glasses — leave off unless testing.",
+          checked = bluetoothSco,
+          onCheckedChange = {
+            bluetoothSco = it
+            RelayService.setBluetoothScoEnabled(ctx, it)
+          },
+        )
         OutlinedTextField(
           value = url,
           onValueChange = { url = it },
@@ -600,7 +648,15 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
                 RelayService.start(ctx, found, force = true)
                 relayActionStatus = ActionLine("Connecting to $found", ok = true)
               } else {
-                relayActionStatus = ActionLine("No host on LAN", ok = false)
+                val cached = com.lowkey.ambientlink.relay.RelayLanStore.lastLanWs(ctx)
+                relayActionStatus = ActionLine(
+                  if (cached != null) {
+                    "Mac not found — last seen $cached (same Wi‑Fi? relay running?)"
+                  } else {
+                    "No host on LAN — start ambient-link on your Mac"
+                  },
+                  ok = false,
+                )
               }
               busy = false
             }
@@ -643,9 +699,11 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
         }
-      }
-
-      SectionCard(title = "AI Core") {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+        SettingsBlockLabel(
+          "AI Core",
+          "On-device Gemini Nano for smarter quick-reply and snooze suggestions.",
+        )
         AiCoreSettingsSection(status = aiCoreStatus, probing = suggestionsLoading)
       }
 
@@ -726,7 +784,7 @@ private fun SectionCard(
 ) {
   Card(
     modifier = Modifier.fillMaxWidth(),
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    colors = CardDefaults.cardColors(containerColor = AmbientTheme.sectionBackground),
     shape = MaterialTheme.shapes.medium,
   ) {
     Column(
@@ -756,7 +814,7 @@ private fun CollapsibleSectionCard(
 ) {
   Card(
     modifier = Modifier.fillMaxWidth(),
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    colors = CardDefaults.cardColors(containerColor = AmbientTheme.sectionBackground),
     shape = MaterialTheme.shapes.medium,
   ) {
     Column(Modifier.padding(PaddingValues(horizontal = 12.dp, vertical = 10.dp))) {
@@ -850,20 +908,40 @@ private fun linkStatusColor(state: LinkState): Color = when (state) {
 }
 
 @Composable
-private fun CompactToggle(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun CompactToggle(
+  label: String,
+  description: String? = null,
+  checked: Boolean,
+  onCheckedChange: (Boolean) -> Unit,
+) {
   Row(
     modifier = Modifier.fillMaxWidth(),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    Text(
-      label,
-      style = MaterialTheme.typography.bodyMedium,
-      modifier = Modifier.weight(1f),
-      maxLines = 1,
-      overflow = TextOverflow.Ellipsis,
+    Column(
+      modifier = Modifier.weight(1f).padding(end = 8.dp),
+      verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+      Text(
+        label,
+        style = MaterialTheme.typography.bodyMedium,
+        maxLines = 2,
+      )
+      if (!description.isNullOrBlank()) {
+        Text(
+          description,
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          lineHeight = 17.sp,
+        )
+      }
+    }
+    Switch(
+      checked = checked,
+      onCheckedChange = onCheckedChange,
+      colors = AmbientTheme.switchColors(),
     )
-    Switch(checked = checked, onCheckedChange = onCheckedChange)
   }
 }
 
@@ -900,7 +978,6 @@ private fun HintBanner(text: String) {
   )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DaemonActions(
   busy: Boolean,
