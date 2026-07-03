@@ -37,7 +37,7 @@ jobs:
       - name: Verify live site
         run: |
           set -euo pipefail
-          curl -sfI https://public.computer/ambient-link/ | head -3
+          curl -sfI https://public.computer/ambient-link/ >/dev/null
           curl -sf https://public.computer/ambient-link/sw.js | grep -q 'const CACHE'
           curl -sf https://public.computer/ambient-link/index.html | grep -q 'new-session-pill'
           echo "production web deploy verified"
