@@ -535,7 +535,7 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         onToggle = { debugExpanded = !debugExpanded },
       ) {
         Text(
-          "Cloud proxy",
+          "Mac relay",
           style = MaterialTheme.typography.labelMedium,
           fontWeight = FontWeight.SemiBold,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -800,7 +800,7 @@ private fun StatusRail(
     verticalAlignment = Alignment.CenterVertically,
   ) {
     StatusRailCell("Meta AI", metaAiColor)
-    StatusRailCell("cloud proxy", proxyColor)
+    StatusRailCell("Relay", proxyColor)
   }
 }
 

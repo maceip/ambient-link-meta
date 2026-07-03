@@ -24,9 +24,9 @@ curl -sf "${LOCAL}/healthz" >/dev/null || {
   exit 1
 }
 
-PEER=$(curl -sf "${REMOTE}/ambient-link/status" | python3 -c "import json,sys; print(json.load(sys.stdin).get('cloud_peer', False))" 2>/dev/null || echo False)
+PEER=$(curl -sf "${REMOTE}/ambient-link/status" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('laptop_peer_connected', d.get('cloud_peer', False)))" 2>/dev/null || echo False)
 if [[ "$PEER" != "True" ]]; then
-  echo "cloud_peer not connected on $REMOTE — check AMBIENT_LINK_CLOUD on laptop host" >&2
+  echo "Mac not linked to cloud relay ($REMOTE) — check AMBIENT_LINK_CLOUD on laptop host" >&2
   exit 1
 fi
 

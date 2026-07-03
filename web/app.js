@@ -67,7 +67,7 @@
     delivery: {},
     defaultCwd: '',
     relayConnected: null,
-    cloudPeer: false,
+    laptopPeerConnected: false,
     liveSessionCount: 0,
   };
   var hostPanelOpen = false;
@@ -287,7 +287,7 @@
     if (live > 0) {
       return 'Connected · ' + live + ' live session' + (live === 1 ? '' : 's');
     }
-    if (hostInfo.cloudPeer) {
+    if (hostInfo.laptopPeerConnected) {
       return 'Connected · Mac linked, no active agents';
     }
     return 'Connected · no Mac agents running';
@@ -334,6 +334,7 @@
       'relay_debug: ' + (hostInfo.relayDebug ? 'on' : 'off'),
       'journal: ' + (hostInfo.journal || 0),
       'live threads: ' + liveThreadCount(),
+      'mac linked: ' + (hostInfo.laptopPeerConnected ? 'yes' : 'no'),
     ];
     hostPanel.textContent = lines.join('\n');
     hostPanel.classList.remove('hidden');
@@ -497,7 +498,7 @@
   function statusBadge(t) {
     if (t.ended || t.sessionState === 'DEAD') return 'dead';
     if (!wsConnected()) return 'offline';
-    if (t.sessionId && !t.deliverable && hostInfo.cloudPeer) return 'unreachable';
+    if (t.sessionId && !t.deliverable && hostInfo.laptopPeerConnected) return 'unreachable';
     if (t.busy || t.sessionState === 'BUSY' || t.sessionState === 'STARTING') return 'busy';
     if (t.yank && t.yank.awaiting === CS.Awaiting.PERMISSION) return 'permission';
     if (t.yank && t.yank.awaiting === CS.Awaiting.QUESTION) return 'question';
@@ -740,7 +741,7 @@
         ? 'Relay offline — open this app from your Mac or wait for reconnect'
         : (hostInfo.liveSessionCount > 0
           ? 'Loading sessions…'
-          : (hostInfo.cloudPeer
+          : (hostInfo.laptopPeerConnected
             ? 'No active agents — start Cursor, Claude, or Codex on your Mac'
             : 'No sessions — start an agent on your Mac (relay must be running)'));
       renderConnStatus();
@@ -1378,13 +1379,13 @@
         relayBadge.classList.toggle('hidden', !hostInfo.relayDebug);
         renderHostPanel();
         if (!data.sessions) return;
-        var cloudPeer = !!data.cloud_peer;
+        var laptopPeer = !!(data.laptop_peer_connected || data.cloud_peer);
         var liveOnHost = data.sessions.some(function (s) { return s.state !== 'DEAD'; });
         // Cloud relay mux can lag behind the laptop peer — don't let stale DEAD
         // snapshots wipe rows we already have from live WS broadcasts.
-        if (cloudPeer && !liveOnHost) {
+        if (laptopPeer && !liveOnHost) {
           hostInfo.relayConnected = true;
-          hostInfo.cloudPeer = true;
+          hostInfo.laptopPeerConnected = true;
           hostInfo.liveSessionCount = 0;
           renderConnStatus();
           renderThreadList();
@@ -1412,7 +1413,7 @@
         Object.keys(bestByThread).forEach(function (id) {
           var s = bestByThread[id];
           var row = threadRow(id);
-          if (cloudPeer && s.state === 'DEAD' && row.lastEventAt && !row.ended) {
+          if (laptopPeer && s.state === 'DEAD' && row.lastEventAt && !row.ended) {
             return;
           }
           if (s.label) row.label = s.label;
@@ -1429,7 +1430,7 @@
         });
         reapDeadThreads();
         hostInfo.relayConnected = true;
-        hostInfo.cloudPeer = cloudPeer;
+        hostInfo.laptopPeerConnected = laptopPeer;
         hostInfo.liveSessionCount = Object.keys(bestByThread).filter(function (id) {
           return bestByThread[id].state !== 'DEAD';
         }).length;

@@ -46,9 +46,9 @@ async function requireIntegratedStack() {
   }
   await bridgeOnce();
   const remote = await fetchRelayStatus(RELAY);
-  if (!remote.cloud_peer) {
+  if (!remote.laptop_peer_connected && !remote.cloud_peer) {
     throw new Error(
-      `cloud_peer=false on ${RELAY}. Set AMBIENT_LINK_CLOUD=wss://public.computer/ambient-link/relay on laptop host.`,
+      `Mac not linked on ${RELAY}. Set AMBIENT_LINK_CLOUD=wss://public.computer/ambient-link/relay on laptop host.`,
     );
   }
   const live = liveRelaySessions(remote);

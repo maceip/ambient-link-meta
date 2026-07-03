@@ -31,6 +31,9 @@ push-test/node_modules/
 # scratch only, never tracked (the dex-check dump alone is ~79 MB).
 artifacts/
 
+# Local agent notes (never commit)
+.local/
+
 # OS
 .DS_Store
 Thumbs.db
