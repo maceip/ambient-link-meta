@@ -96,6 +96,7 @@ export async function clickNewStart(page) {
   for (let attempt = 0; attempt < 8; attempt++) {
     await waitForRelayConnected(page, 20_000);
     await page.evaluate(() => document.getElementById('new-start')?.click());
+    await page.waitForTimeout(400);
     const toastText = ((await page.locator('#toast').textContent()) || '').trim();
     if (await page.locator('#view-thread').isVisible()) return 'opened';
     if (/starting|sent/i.test(toastText)) {

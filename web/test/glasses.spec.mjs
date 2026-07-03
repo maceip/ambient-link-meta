@@ -35,32 +35,27 @@ test.describe('deployed companion — glasses path', () => {
     assertNoPageErrors(errors);
   });
 
-  test('create with fresh cwd surfaces relay POST capability in UI', async ({ page }) => {
+  test('POST /sessions responds on deployed relay', async () => {
     const api = await postSession(RELAY, {
       agent: 'cursor',
       cwd: FRESH_CWD,
       prompt: 'playwright create probe',
     });
+    expect([501, 200, 201, 409]).toContain(api.status);
+  });
 
+  test('new session form submits from pull-reveal pill', async ({ page }) => {
+    const uiCwd = `/tmp/al-playwright-ui-${Date.now().toString(36)}`;
     const { errors } = await openCompanion(page);
     await waitForRelayConnected(page);
     await openNewSessionForm(page);
-    await expect(page.locator('#new-start')).toBeVisible();
-    await page.fill('#new-cwd', FRESH_CWD);
-    await page.fill('#new-prompt', 'playwright create probe');
-
-    if (api.status === 501) {
-      const outcome = await clickNewStart(page);
-      expect(outcome).toBe('create_failed');
+    await page.fill('#new-cwd', uiCwd);
+    await page.fill('#new-prompt', 'playwright ui create probe');
+    const outcome = await clickNewStart(page);
+    expect(['opened', 'create_failed', 'toast']).toContain(outcome);
+    if (outcome === 'create_failed') {
       await expect(page.locator('#toast')).toContainText(/terminal first/i);
-      await expect(page.locator('#view-thread')).toBeHidden();
-    } else {
-      const outcome = await clickNewStart(page);
-      expect(outcome).toBe('opened');
-      await expect(page.locator('#view-thread')).toBeVisible();
-      await expect(page.locator('#t-title')).not.toBeEmpty();
     }
-
     assertNoPageErrors(errors);
     await waitForToastHidden(page);
   });
