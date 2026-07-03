@@ -1397,12 +1397,8 @@
         });
       });
     });
-    Object.keys(deliveryStates).forEach(function (id) {
-      var row = deliveryStates[id];
-      if (row && row.status === 'queued' && !pending[id]) {
-        trackDelivery(id, { status: 'delivered', error: '' });
-      }
-    });
+    // Do NOT upgrade queued → delivered when a message leaves the outbox.
+    // Only input_status (delivered / landed) from the relay is authoritative.
   }
 
   function applyYank(msg) {

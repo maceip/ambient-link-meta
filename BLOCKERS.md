@@ -2,7 +2,15 @@
 
 Living tracker for demo recovery. **Crush one row at a time** — when something moves, update Status + add a line under Fix attempts.
 
-Last updated: 2026-07-03 (HUD fixes: question yes/no, idle policy, dictate race — build ok, not installed)
+## Three failure modes (address separately)
+
+| Mode | What it is | How we verify | Status |
+|------|------------|---------------|--------|
+| **1. Environment** | Meta SDK, APK install, stale SW | `scripts/verify-demo-env.sh` | Scripts added; phone still needs USB |
+| **2. Meta repo (device-proof)** | Snooze, chips, web list, LAN cwd | `test-chip-contract.sh`, `verify-lan-config.sh`, Playwright | Chip + LAN config automated ✓ |
+| **3. Core repo** | Inject → live terminal; delivered ≠ landed | `diagnose-inject.sh`; `MarkLanded` + `input_status: landed` wired | Code in core; **restart host** to pick up |
+
+Last updated: 2026-07-03
 
 ---
 
@@ -41,7 +49,7 @@ Last updated: 2026-07-03 (HUD fixes: question yes/no, idle policy, dictate race 
 | **Symptom** | Tap yes/continue on glasses → nothing happens in real Claude/Cursor terminal; or host returns `ok` but agent never sees text |
 | **Cause** | **Observe path works; deliver path mismatched.** Host `inject.SendInput` routes cursor → inbox, claude/codex → tmux session `fc-{agent}`. Real agents often run in normal terminals, not those tmux sessions. “Delivered” = written to channel, not confirmed in transcript (`MarkLanded` never wired — see ARCHITECTURE-REVIEW §2.5) |
 | **Fix attempts** | Fixed fake ack loop on host; yes/no on peek for questions; inbox path verified for cursor test threads; `push-chat.sh` + debug inject tested locally |
-| **Status** | 🟡 partial — proc registry + PTY path works when session mapped (`test-protocol.sh` → `delivered`); claude messages can still queue in outbox if no live endpoint |
+| **Status** | 🟡 partial — `MarkLanded` wired on JSONL user_prompt; web no longer fakes delivered on outbox dequeue; restart host with new binary |
 | **Next** | In **ambient-link-core**: bind inject to proc registry PID/TTY for live sessions, or document “run agents in fc-claude / fc-codex tmux”. Add inject trace logging visible in `/ambient-link/status` |
 | **Verify** | Chip tap → new line in **your** active agent terminal within 2s; host log shows `Delivered` + transcript shows user turn |
 
@@ -67,7 +75,7 @@ Last updated: 2026-07-03 (HUD fixes: question yes/no, idle policy, dictate race 
 | **Symptom** | Theme bar focus trap (v45), missing D-pad, can’t reach session list |
 | **Cause** | Meta Display caches web app; SW served old `app.js` until force-quit Meta AI |
 | **Fix attempts** | v49 removed `#theme-bar` / `#conn-status`; v50+ SW `controllerchange` auto-reload; cache bump per deploy (v53); Playwright 11/11 on prod |
-| **Status** | 🟢 fixed on prod — 🔴 if user still on cached build |
+| **Status** | 🟢 fixed v54 — network-first SW + BUILD purge + controllerchange reload; deploy v54 then force-quit Meta AI |
 | **Next** | Force-quit Meta AI after deploy; confirm no `#theme-bar` in running app |
 | **Verify** | `https://public.computer/ambient-link/` → D-pad through list → Enter opens session (Playwright `core-session-flow.spec.mjs`) |
 
@@ -106,7 +114,7 @@ Last updated: 2026-07-03 (HUD fixes: question yes/no, idle policy, dictate race 
 | **Symptom** | Settings/LAN fixes exist only in git; phone still runs old build |
 | **Cause** | `adb devices` empty during last build |
 | **Fix attempts** | `assembleDebug` succeeded; commit `342d326` |
-| **Status** | 🟡 partial — built, not installed |
+| **Status** | 🟡 scripts: `verify-demo-env.sh`, `install-android.sh` — run when phone plugged in |
 | **Next** | Plug phone → `cd relay-android && ./gradlew installDebug` |
 | **Verify** | Settings shows Theme pills + collapsible Debug; snooze pill tap-twice clears |
 
@@ -121,7 +129,7 @@ Last updated: 2026-07-03 (HUD fixes: question yes/no, idle policy, dictate race 
 | **Symptom** | Save directory fails when Relay URL is `wss://public.computer/...` |
 | **Cause** | POST `/ambient-link/config` must hit Mac HTTP, not cloud |
 | **Fix attempts** | `RelayLanStore` remembers last LAN ws; `RelayConfig.resolveHostHttpBase()` mDNS + cached LAN + health probe |
-| **Status** | 🟡 partial — not device-verified |
+| **Status** | 🟢 `verify-lan-config.sh` passes against local host |
 | **Next** | Phone on cloud WS + Mac on same Wi‑Fi → Save cwd → expect “Directory saved” |
 | **Verify** | Mac `curl localhost:5181/ambient-link/config` reflects new default_cwd |
 
