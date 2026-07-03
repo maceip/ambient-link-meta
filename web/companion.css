@@ -129,15 +129,17 @@
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 22px 4px;
+  justify-content: center;
+  padding: 10px 16px 2px;
+  pointer-events: none;
 }
 .list-title {
-  color: #fff;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  text-shadow: var(--hud-text-shadow);
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: none;
 }
 .conn-dot {
   flex: none;
@@ -417,7 +419,92 @@
 /* Ended sessions read slightly muted but stay tappable. */
 .thread-row.ended .avatar { filter: grayscale(0.35) brightness(0.85); }
 
-/* Instagram-style flat list (session list view — no bottom shelf). */
+/* Instagram / WhatsApp validation list — floating pills, max 4 rows visible. */
+.ig-list.dm-list.blk-shelf-list-view__list,
+.ig-list.dm-list.thread-list {
+  gap: 10px;
+  padding: 12px 14px 16px;
+  overflow: visible;
+}
+
+.ig-list.dm-list .blk-list-item,
+.ig-list.dm-list .thread-row {
+  min-height: 76px;
+  padding: 12px 14px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  background: rgba(35, 39, 46, 0.92);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  row-gap: 3px;
+  align-items: center;
+  width: 100%;
+}
+
+.ig-list.dm-list .blk-list-item + .blk-list-item,
+.ig-list.dm-list .thread-row + .thread-row {
+  border-top: none;
+}
+
+.ig-list.dm-list .blk-list-item__avatar,
+.ig-list.dm-list .thread-row .avatar {
+  grid-row: 1 / 3;
+  width: 52px;
+  height: 52px;
+  margin: 0;
+  border-radius: 50%;
+  position: relative;
+}
+
+.ig-list.dm-list .blk-list-item__time,
+.ig-list.dm-list .thread-time {
+  color: #25d366;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ig-list.dm-list .blk-list-item__label,
+.ig-list.dm-list .thread-label {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ig-list.dm-list .blk-list-item__preview,
+.ig-list.dm-list .thread-row .preview {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ig-list.dm-list .thread-conn-dot--live {
+  background: #25d366;
+  box-shadow: 0 0 6px rgba(37, 211, 102, 0.5);
+}
+
+.ig-list.dm-list .blk-list-item:focus,
+.ig-list.dm-list .blk-list-item:focus-visible,
+.ig-list.dm-list .thread-row:focus,
+.ig-list.dm-list .thread-row:focus-visible {
+  outline: none;
+  background: rgba(58, 62, 72, 0.95);
+  border-color: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 6px 20px rgba(0, 0, 0, 0.4);
+  transform: none;
+}
+
+.ig-list.dm-list .session-offline {
+  opacity: 0.72;
+}
+
+.ig-list.dm-list .session-offline .thread-conn-dot--live {
+  background: var(--text-muted);
+  box-shadow: none;
+}
+
+/* Legacy flat ig-list rules below — superseded by floating pills above. */
 .ig-list .thread-row {
   min-height: 68px;
   padding: 10px 4px;

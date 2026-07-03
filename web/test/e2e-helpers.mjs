@@ -60,13 +60,18 @@ export async function openCompanion(page, opts = {}) {
 
   const errors = attachPageDiagnostics(page);
   const url = APP_PATH + (cacheBust ? `?/_=${Date.now()}` : '');
-  await page.goto(url);
-  await expect(page.locator('#conn-dot')).toBeAttached({ timeout: 10_000 });
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#app')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('#theme-bar')).toHaveCount(0);
+  await expect(page.locator('#conn-status')).toHaveCount(0);
   return { errors };
 }
 
 export async function waitForRelayConnected(page, timeoutMs = 60_000) {
-  await expect(page.locator('#conn-dot')).toHaveClass(/on/, { timeout: timeoutMs });
+  await page.waitForFunction(
+    () => document.body && document.body.dataset.relayState === 'on',
+    { timeout: timeoutMs },
+  );
 }
 
 /** Click #new-start; retries when WS reconnect races the create form. */
@@ -102,7 +107,7 @@ export async function waitForToastHidden(page) {
 
 /** UI live rows should match relay /status (same filter: state !== DEAD). */
 export async function expectSessionListMatchesRelay(page, status) {
-  const expected = liveRelaySessions(status).length;
+  const expected = Math.min(4, liveRelaySessions(status).length);
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const rows = await page.locator('.thread-row').count();

@@ -1,7 +1,7 @@
 // Minimal service worker — required for Meta Display web-app install.
 // Network-first for the shell (so a new deploy is never masked by a stale cache),
 // cache as offline fallback. Relay paths are never intercepted.
-const CACHE = 'ambient-link-meta-v46';
+const CACHE = 'ambient-link-meta-v49';
 const SHELL = [
   './',
   './index.html',
@@ -12,7 +12,6 @@ const SHELL = [
   './blocks/blocks.css',
   './styles.css',
   './companion.css',
-  './themes.css',
   './manifest.json',
   './icon.svg',
 ];

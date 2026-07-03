@@ -24,8 +24,12 @@ export default defineConfig({
       testMatch: '**/glasses.spec.mjs',
     },
     {
-      name: 'integrated',
-      testMatch: '**/integrated.spec.mjs',
+      name: 'session-list',
+      testMatch: '**/session-list-layout.spec.mjs',
+    },
+    {
+      name: 'core-flow',
+      testMatch: '**/core-session-flow.spec.mjs',
     },
     {
       name: 'dictate',
