@@ -71,7 +71,7 @@
     });
   }
 
-  /** Glasses browsers often focus on first tap and click on second — fire click on touchend. */
+  /** Glasses browsers often focus on first tap and click on second — activate on touchend. */
   function wireImmediateTap(scope) {
     var rootEl = scope && scope.querySelectorAll ? scope : document;
     rootEl.querySelectorAll('.rbtn, .quick-reply-pill, .thread-row, .compose-pill').forEach(function (el) {
@@ -80,8 +80,14 @@
       el.addEventListener('touchend', function (e) {
         if (el.disabled) return;
         e.preventDefault();
+        if (el.focus) el.focus({ preventScroll: true });
         el.click();
       }, { passive: false });
+      el.addEventListener('pointerup', function (e) {
+        if (e.pointerType !== 'touch' || el.disabled) return;
+        e.preventDefault();
+        el.click();
+      });
     });
   }
 
@@ -136,6 +142,7 @@
     li.className = 'blk-list-item thread-row list-item focusable' +
       (data.className ? ' ' + data.className : '');
     li.setAttribute('role', 'listitem');
+    if (data.threadId) li.dataset.threadId = data.threadId;
     if (data.ariaLabel) li.setAttribute('aria-label', data.ariaLabel);
 
     var av = document.createElement('div');

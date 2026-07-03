@@ -33,6 +33,8 @@
   var newCwd     = document.getElementById('new-cwd');
   var newPrompt  = document.getElementById('new-prompt');
   var newStart   = document.getElementById('new-start');
+  var newBack    = document.getElementById('new-back');
+  var listNewSession = document.getElementById('list-new-session');
   var toastEl    = document.getElementById('toast');
   var hostPanel  = document.getElementById('host-panel');
   var relayBadge = document.getElementById('relay-badge');
@@ -59,6 +61,8 @@
   var dictatePhase = 'idle'; // idle | listening | review
   var dictateDraft = '';
   var chatPinBottom = true;
+  var listPinBottom = true;
+  var listFocusedThreadId = null;
   var pendingDeepLink = null;
   var hostInfo = {
     relayDebug: false,
@@ -373,8 +377,19 @@
       root.querySelectorAll('.focusable:not([disabled])')
     ).filter(function (el) {
       if (name === 'thread' && el.id === 'prompt') return false;
+      if (name === 'new' && (el.id === 'new-prompt' || el.id === 'new-cwd')) return false;
       return !el.classList.contains('hidden') && el.offsetParent !== null;
     });
+  }
+
+  function focusLastListRow() {
+    if (!threadsUl) return;
+    var rows = threadsUl.querySelectorAll('.thread-row');
+    if (!rows.length) return;
+    var pick = listFocusedThreadId
+      ? threadsUl.querySelector('.thread-row[data-thread-id="' + listFocusedThreadId + '"]')
+      : null;
+    (pick || rows[rows.length - 1]).focus();
   }
 
   /** Glasses can't type — land on Dictate (mic), expanded and ready. */
@@ -390,18 +405,25 @@
     }, 60);
   }
 
+  function focusNewPrimary() {
+    if (activeView !== 'new') return;
+    setTimeout(function () {
+      if (newStart && !newStart.disabled) newStart.focus();
+      else if (newBack) newBack.focus();
+    }, 60);
+  }
+
   function focusInitialInView(which) {
     if (which === 'list') {
-      var row = threadsUl && threadsUl.querySelector('.thread-row');
-      if (row) setTimeout(function () { row.focus(); }, 0);
+      focusLastListRow();
       return;
     }
     if (which === 'thread') {
       focusSessionPrimary();
       return;
     }
-    if (which === 'new' && newPrompt) {
-      setTimeout(function () { newPrompt.focus(); }, 50);
+    if (which === 'new') {
+      focusNewPrimary();
     }
   }
 
@@ -446,7 +468,7 @@
       if (key === 'Escape' && activeView !== 'list') {
         e.preventDefault();
         if (activeView === 'thread') closeThreadView();
-        else if (activeView === 'new') showView('list');
+        else if (activeView === 'new') closeNewSessionView();
       }
     });
   }
@@ -475,8 +497,13 @@
     });
   }
 
+  /** Glasses: browser STT is broken — always use phone mic relay path. */
+  function usePhoneDictate() {
+    return true;
+  }
+
   function speechAvailable() {
-    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    return !usePhoneDictate() && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   }
 
   function liveThreadCount() {
@@ -819,6 +846,18 @@
     /* Themes live in the Android companion app — not on the glasses web shell. */
   }
 
+  function wireListScroll() {
+    if (!listScroll || listScroll.dataset.listScrollWired) return;
+    listScroll.dataset.listScrollWired = '1';
+    listScroll.addEventListener('scroll', function () {
+      var dist = listScroll.scrollHeight - listScroll.scrollTop - listScroll.clientHeight;
+      listPinBottom = dist <= 48;
+    }, { passive: true });
+    listScroll.addEventListener('touchmove', function () {
+      listPinBottom = false;
+    }, { passive: true });
+  }
+
   function scrollListToBottom() {
     var el = listScroll || threadsUl;
     if (el) el.scrollTop = el.scrollHeight;
@@ -842,6 +881,16 @@
 
   function renderThreadList() {
     var live = liveThreads();
+    var scrollEl = listScroll || threadsUl;
+    var distFromBottom = scrollEl
+      ? scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight
+      : 0;
+    var wasNearBottom = distFromBottom <= 48;
+    var scrollTopBefore = scrollEl ? scrollEl.scrollTop : 0;
+    var activeRow = threadsUl && threadsUl.querySelector('.thread-row:focus');
+    if (activeRow && activeRow.dataset.threadId) {
+      listFocusedThreadId = activeRow.dataset.threadId;
+    }
     // Newest at bottom (chat-style). Cap at MAX_LIST_ITEMS — keep the most recent.
     live.sort(function (a, b) { return (a.lastEventAt || 0) - (b.lastEventAt || 0); });
     if (live.length > MAX_LIST_ITEMS) {
@@ -856,8 +905,9 @@
           ? 'Loading sessions…'
           : (hostInfo.laptopPeerConnected
             ? 'No active agents — start Cursor, Claude, or Codex on your Mac'
-            : 'No sessions — start an agent on your Mac (relay must be running)'));
+            : 'No sessions — tap New session below'));
       renderConnStatus();
+      wireRbtnGroups();
       return;
     }
     emptyHint.classList.add('hidden');
@@ -868,6 +918,7 @@
       var connState = listConnectionDot(t);
       var snoozed = isSnoozing();
       var li = BLK.renderListItem({
+        threadId: t.id,
         className: 'dm-row agent-' + ac + ' ' + badgeState + (wsConnected() ? '' : ' session-offline'),
         ariaLabel: folderTitle(t) + ', ' + (t.agent || 'agent') + ', ' + agentStatusLabel(badgeState),
         label: folderTitle(t),
@@ -877,16 +928,27 @@
         avatarClass: 'agent-' + ac,
         muted: snoozed,
         connectionState: connState,
-        onClick: function () { openThread(t.id, true); },
-        onActivate: function () { openThread(t.id, true); },
+        onClick: function () {
+          listFocusedThreadId = t.id;
+          openThread(t.id, true);
+        },
+        onActivate: function () {
+          listFocusedThreadId = t.id;
+          openThread(t.id, true);
+        },
       });
       threadsUl.appendChild(li);
     });
-    scrollListToBottom();
+    requestAnimationFrame(function () {
+      if (!scrollEl) return;
+      if (listPinBottom && wasNearBottom) scrollEl.scrollTop = scrollEl.scrollHeight;
+      else scrollEl.scrollTop = scrollTopBefore;
+    });
     renderConnStatus();
+    wireRbtnGroups();
     if (activeView === 'list') {
       var focused = document.activeElement;
-      if (!threadsUl.contains(focused)) focusInitialInView('list');
+      if (!threadsUl.contains(focused)) focusLastListRow();
     }
   }
 
@@ -1063,67 +1125,10 @@
   function startDictate() {
     var t = activeThread ? threads[activeThread] : null;
     if (!t) { showToast('open a session first', 'error'); return; }
-    if (!speechAvailable()) {
-      startPhoneDictate(t);
-      if (dictateStatusText) dictateStatusText.textContent = 'Listening on phone…';
-      renderCompose();
-      return;
-    }
-    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     stopDictRec(null);
-    phoneDictateThread = null;
-    dictateDraft = '';
-    var rec = new SR();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = 'en-US';
-    sendDictate('dictate_begin', t.id);
-    listeningPartial = '';
-    setDictatePhase('listening');
-    promptEl.placeholder = 'listening…';
+    startPhoneDictate(t);
+    if (dictateStatusText) dictateStatusText.textContent = 'Listening on phone…';
     renderCompose();
-    rec.onresult = function (e) {
-      var interim = '';
-      var finalText = '';
-      for (var i = e.resultIndex; i < e.results.length; i++) {
-        var r = e.results[i];
-        if (r.isFinal) finalText += r[0].transcript;
-        else interim += r[0].transcript;
-      }
-      if (finalText.trim()) {
-        dictateDraft = (dictateDraft + ' ' + finalText.trim()).trim();
-      }
-      var live = (dictateDraft + (interim ? ' ' + interim : '')).trim();
-      if (live) {
-        promptEl.value = live;
-        listeningPartial = live;
-        sendDictate('dictate_partial', t.id, live);
-        renderCompose();
-      }
-    };
-    rec.onerror = function () {
-      sendDictate('dictate_abort', t.id);
-      resetDictateUi();
-      showToast('dictation failed — trying phone mic', 'error');
-      startPhoneDictate(t);
-      dictRec = null;
-    };
-    rec.onend = function () {
-      dictRec = null;
-      if (dictatePhase !== 'listening' || activeThread !== t.id) return;
-      var spoken = (dictateDraft || listeningPartial || promptEl.value || '').trim();
-      if (spoken) {
-        sendDictate('dictate_commit', t.id, spoken);
-        promptEl.placeholder = 'sending…';
-        setDictatePhase('idle');
-      } else {
-        sendDictate('dictate_abort', t.id);
-        resetDictateUi();
-      }
-      renderCompose();
-    };
-    dictRec = rec;
-    rec.start();
   }
 
   function debugPingText() {
@@ -1202,7 +1207,19 @@
     pickAgent(pickedAgent);
     if (!newCwd.value) newCwd.value = defaultCwd();
     showView('new');
-    newPrompt.focus();
+    focusNewPrimary();
+  }
+
+  function closeNewSessionView() {
+    showView('list');
+    focusLastListRow();
+  }
+
+  function fillNewTestPrompt() {
+    if (!newPrompt) return;
+    newPrompt.value = debugPingText();
+    showToast('test prompt filled — tap Start', 'success');
+    focusNewPrimary();
   }
 
   // Prefill the working directory: host-configured default (set from the Android
@@ -1215,9 +1232,9 @@
   }
 
   function dictateIntoField(field, btn) {
-    if (!speechAvailable()) {
-      field.placeholder = 'Type here — dictate needs an open session on glasses';
-      field.focus();
+    if (usePhoneDictate()) {
+      if (field === newPrompt) fillNewTestPrompt();
+      else showToast('use phone mic in session', 'error');
       return;
     }
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1259,7 +1276,7 @@
     if (newCwd) newCwd.value = defaultCwd();
     if (newPrompt) newPrompt.value = '';
     showView('new');
-    setTimeout(function () { if (newPrompt) newPrompt.focus(); }, 50);
+    focusNewPrimary();
   }
 
   // Meta HUD button row: exactly one expanded pill — the focused control only.
@@ -1792,8 +1809,11 @@
   });
 
   backBtn.addEventListener('click', closeThreadView);
+  if (newBack) newBack.addEventListener('click', closeNewSessionView);
+  if (listNewSession) listNewSession.addEventListener('click', openNewSession);
   newStart.addEventListener('click', startNewThread);
   wireListPullReveal();
+  wireListScroll();
   wireChatScroll();
   wireThemes();
   wireDpadNavigation();
@@ -1840,7 +1860,7 @@
     }
     startDictate();
   });
-  if (newDictate) newDictate.addEventListener('click', function () { dictateIntoField(newPrompt, newDictate); });
+  if (newDictate) newDictate.addEventListener('click', fillNewTestPrompt);
 
   pendingDeepLink = parseDeepLink();
   document.querySelectorAll('[data-agent-icon]').forEach(function (n) {

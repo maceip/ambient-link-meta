@@ -8,13 +8,13 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=57">
-  <link rel="stylesheet" href="blocks/blocks.css?v=57">
-  <link rel="stylesheet" href="companion.css?v=57">
+  <link rel="stylesheet" href="styles.css?v=58">
+  <link rel="stylesheet" href="blocks/blocks.css?v=58">
+  <link rel="stylesheet" href="companion.css?v=58">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v57';
+      var BUILD = 'v58';
       if (!('serviceWorker' in navigator)) return;
       var reloadedForSw = false;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -64,6 +64,18 @@
         <div id="threads" class="thread-list dm-list ig-list blk-shelf-list-view__list" role="list"></div>
       </div>
     </div>
+    <nav id="list-actions" class="list-actions" role="toolbar" aria-label="session list actions">
+      <div class="rbtn-row blk-rbtn-row">
+        <button type="button" id="list-new-session" class="rbtn focusable rbtn-primary" aria-label="new session">
+          <span class="rbtn-pill">
+            <span class="rbtn-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.75"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+            </span>
+            <span class="rbtn-label">New session</span>
+          </span>
+        </button>
+      </div>
+    </nav>
   </section>
 
   <!-- SESSION COMPOSE -->
@@ -131,18 +143,21 @@
     </header>
     <div class="new-body blk-form-view__body">
       <label class="field-label" for="new-cwd">working directory (on your Mac)</label>
-      <input id="new-cwd" class="text-input focusable" type="text" placeholder="~/Projects/my-app">
+      <input id="new-cwd" class="text-input focusable" type="text" placeholder="~/Projects/my-app" tabindex="-1" aria-hidden="true">
       <label class="field-label" for="new-prompt">prompt</label>
-      <textarea id="new-prompt" class="text-input focusable" rows="5" placeholder="what should the agent do?"></textarea>
+      <textarea id="new-prompt" class="text-input focusable" rows="5" placeholder="what should the agent do?" tabindex="-1" aria-hidden="true"></textarea>
     </div>
     <nav class="new-actions blk-form-view__actions" role="toolbar" aria-label="create session">
       <div class="rbtn-row blk-rbtn-row">
-      <button type="button" id="new-dictate" class="rbtn focusable" title="dictate" aria-label="dictate">
+      <button type="button" id="new-back" class="rbtn focusable rbtn-stroke" aria-label="back">
+        <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M15 5.5 8 12l7 6.5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rbtn-label">Back</span></span>
+      </button>
+      <button type="button" id="new-dictate" class="rbtn focusable" title="fill test prompt" aria-label="fill test prompt">
         <span class="rbtn-pill">
           <span class="rbtn-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
           </span>
-          <span class="rbtn-label">Dictate</span>
+          <span class="rbtn-label">Test prompt</span>
         </span>
       </button>
       <button type="button" id="new-start" class="rbtn focusable rbtn-primary" aria-label="start session">
@@ -157,9 +172,9 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="chipset.js?v=57"></script>
-<script src="content-pipeline.js?v=57"></script>
-<script src="blocks/blocks.js?v=57"></script>
-<script src="app.js?v=57"></script>
+<script src="chipset.js?v=58"></script>
+<script src="content-pipeline.js?v=58"></script>
+<script src="blocks/blocks.js?v=58"></script>
+<script src="app.js?v=58"></script>
 </body>
 </html>
