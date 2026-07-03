@@ -49,16 +49,36 @@
     };
   }
 
-  var SEND_CONT   = { label: 'continue', text: 'continue', kind: 'send' };
-  var MODIFY      = { label: 'modify', text: null, kind: 'modify' };
-  var SEND_APPRV  = { label: 'approve', text: 'y', kind: 'send' };
+  var SEND_CONT   = { label: 'continue', text: 'continue', kind: 'send', primary: true };
+  var SEND_APPRV  = { label: 'approve', text: 'y', kind: 'send', primary: true };
   var SEND_DENY   = { label: 'deny', text: 'n', kind: 'send' };
-  var DICTATE     = { label: 'dictate', text: null, kind: 'dictate' };
+  var DICTATE     = { label: 'dictate', text: null, kind: 'dictate', primary: true };
 
-  function forYank(yank) {
+  var MAX_CHIPS = 3;
+
+  function quickReplyChip(text) {
+    var t = String(text || '').trim();
+    var label = t.length <= 16 ? t : t.slice(0, 14).trim() + '…';
+    return { label: label, text: t, kind: 'send' };
+  }
+
+  function buildActionRow(config, includeContinue) {
+    config = config || {};
+    var out = [];
+    if (includeContinue && config.showContinue !== false) out.push(SEND_CONT);
+    if (config.showDictate !== false) out.push(DICTATE);
+    (config.quickReplies || []).forEach(function (text) {
+      if (out.length >= MAX_CHIPS) return;
+      out.push(quickReplyChip(text));
+    });
+    return out.slice(0, MAX_CHIPS);
+  }
+
+  function forYank(yank, config) {
+    config = config || {};
     if (yank.awaiting === Awaiting.PERMISSION) return [SEND_APPRV, SEND_DENY];
-    if (yank.awaiting === Awaiting.QUESTION) return [DICTATE];
-    return [SEND_CONT, DICTATE];
+    if (yank.awaiting === Awaiting.QUESTION) return buildActionRow(config, false);
+    return buildActionRow(config, config.showContinue !== false);
   }
 
   function followUpChips(agent) {
@@ -90,5 +110,6 @@
     forYank: forYank,
     followUpChips: followUpChips,
     chipStyle: chipStyle,
+    quickReplyChip: quickReplyChip,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

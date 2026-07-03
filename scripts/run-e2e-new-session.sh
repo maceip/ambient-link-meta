@@ -101,11 +101,11 @@ RESPONDER_PID=$!
 echo "[e2e] agent-responder pid=$RESPONDER_PID RUN_ID=$AMBIENT_TEST_RUN_ID"
 
 cd "$ROOT/web"
-npm run test:e2e
+npm run test:e2e:integrated
 
 OUT="$ROOT/web/test/output"
-for f in 01-create-session-form.png 02-session-list-active.png 03-session-first-prompt.png 04-session-two-turns.png; do
+for f in integrated-01-thread-open.png integrated-02-first-turn.png integrated-03-second-turn.png; do
   [[ -s "$OUT/$f" ]] || { echo "FAIL: missing $OUT/$f" >&2; exit 1; }
 done
-echo "OK — deployed e2e screenshots in $OUT/"
+echo "OK — integrated e2e screenshots in $OUT/"
 ls -la "$OUT"/*.png

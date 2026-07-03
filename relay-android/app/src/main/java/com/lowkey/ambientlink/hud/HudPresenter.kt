@@ -8,6 +8,7 @@ import com.lowkey.ambientlink.dictation.DictationCallback
 import com.lowkey.ambientlink.dictation.DictationManager
 import com.lowkey.ambientlink.relay.RelayClient
 import com.lowkey.ambientlink.relay.RelayService
+import com.lowkey.ambientlink.settings.UserPrefs
 import com.lowkey.ambientlink.wearables.WearablesRepository
 import com.lowkey.ambientlink.wearables.WearablesRuntime
 import com.meta.wearable.dat.core.types.DeviceIdentifier
@@ -78,13 +79,53 @@ class HudPresenter(
   // session's idle event doesn't immediately re-open a menu on the glasses.
   private var quietUntilMs = 0L
   private val QUIET_AFTER_RESPONSE_MS = 10_000L
+  /** When the web companion is on the glasses display, queue native HUD peeks. */
+  private var webCompanionScreen: String? = null
+
+  private fun webOccupiesDisplay(): Boolean {
+    val s = webCompanionScreen ?: return false
+    return s.isNotBlank() && s != "idle"
+  }
+
+  /** Web app owns the waveguide — hide native DAT and queue yanks until idle. */
+  fun onCompanionUi(screen: String) {
+    val wasOccupied = webOccupiesDisplay()
+    webCompanionScreen = screen
+    Log.i("HudPresenter", "companion_ui screen=$screen occupied=${webOccupiesDisplay()}")
+    if (webOccupiesDisplay()) {
+      if (isOccupied() || opening || datSession.activeDisplay != null) {
+        current?.let { y ->
+          queue.removeAll { it.thread == y.thread }
+          queue.addLast(y)
+        }
+        dismissCard(showNext = false)
+      }
+      return
+    }
+    if (!wasOccupied) return
+    maybeShowQueuedAfterWeb()
+  }
+
+  private fun maybeShowQueuedAfterWeb() {
+    if (webOccupiesDisplay() || isOccupied() || opening) return
+    dequeueNext()?.let { yank(it) }
+  }
 
   fun yank(yank: AgentYank) {
     if (!WearablesRuntime.initialized) {
       Log.w("HudPresenter", "Wearables SDK not initialized (open app and grant BT permissions)")
       return
     }
+    if (UserPrefs.isSnoozing(appContext)) {
+      Log.i("HudPresenter", "snooze — discard yank thread=${yank.thread}")
+      return
+    }
     upsertSession(yank)
+    if (webOccupiesDisplay()) {
+      enqueue(yank)
+      Log.i("HudPresenter", "queued yank — web owns display ($webCompanionScreen) thread=${yank.thread}")
+      return
+    }
     if (state == State.DICTATING && current?.thread == yank.thread) {
       Log.i("HudPresenter", "ignore yank while dictating thread=${yank.thread}")
       return
@@ -116,6 +157,10 @@ class HudPresenter(
   /** Host `thread_idle` — surfaces agent idle; does not clobber an open card. */
   fun onIdle(yank: AgentYank) {
     upsertSession(yank)
+    if (UserPrefs.isSnoozing(appContext)) {
+      Log.i("HudPresenter", "snooze — discard idle thread=${yank.thread}")
+      return
+    }
     if (System.currentTimeMillis() < quietUntilMs) {
       Log.i("HudPresenter", "quiet after response — skip idle thread=${yank.thread}")
       return
@@ -135,6 +180,11 @@ class HudPresenter(
     }
     if (state == State.AMBIENT && yank.lastUserInput.isNotBlank()) {
       Log.i("HudPresenter", "skip re-yank after user reply thread=${yank.thread}")
+      return
+    }
+    if (webOccupiesDisplay()) {
+      enqueue(yank)
+      Log.i("HudPresenter", "queued idle — web owns display ($webCompanionScreen) thread=${yank.thread}")
       return
     }
     yank(yank)
@@ -197,6 +247,7 @@ class HudPresenter(
       state == State.DICTATING || state == State.BROWSING
 
   private fun enqueue(yank: AgentYank) {
+    if (UserPrefs.isSnoozing(appContext)) return
     queue.clear()
     if (queue.any { it.thread == yank.thread && it.bodyText == yank.bodyText }) return
     queue.addLast(yank)
@@ -334,6 +385,10 @@ class HudPresenter(
     armAutoAdvance()
   }
 
+  private fun chipConfig() = ChipSet.config(appContext)
+
+  private fun chipsFor(y: AgentYank) = ChipSet.forYank(y, chipConfig())
+
   // On a "done" peek the user hasn't touched, tick a visible countdown on the
   // primary button, then invoke it automatically. Any tap, dictate, dismiss, or
   // card change cancels it (re-checked each tick). Never armed for permission or
@@ -342,7 +397,7 @@ class HudPresenter(
     autoJob?.cancel()
     val y = current ?: return
     if (state != State.PEEKING || y.awaiting != Awaiting.DONE) return
-    val primary = ChipSet.forYank(y).firstOrNull { it.kind == ChipKind.SEND } ?: return
+    val primary = chipsFor(y).firstOrNull { it.kind == ChipKind.SEND } ?: return
     autoJob = scope.launch {
       var remaining = AUTO_ADVANCE_SECS
       while (remaining > 0) {
@@ -367,7 +422,7 @@ class HudPresenter(
   // still fires the real primary action.
   private fun renderPeekCountdown(y: AgentYank, remaining: Int) {
     val display = datSession.activeDisplay ?: return
-    val chips = ChipSet.forYank(y).map {
+    val chips = chipsFor(y).map {
       if (it.primary && it.kind == ChipKind.SEND) {
         it.copy(label = "${it.label} · ${remaining}s")
       } else {
@@ -391,7 +446,7 @@ class HudPresenter(
   private fun renderPeek(d: Display? = datSession.activeDisplay) {
     val display = d ?: return
     val y = current ?: return
-    val chips = ChipSet.forYank(y)
+    val chips = chipsFor(y)
     if (chips.isEmpty()) return
     val key = renderKey(y, mode = "peek")
     if (key == lastRenderedKey) return
@@ -406,7 +461,7 @@ class HudPresenter(
     val key = renderKey(y, mode = "expanded")
     if (key == lastRenderedKey) return
     lastRenderedKey = key
-    HudWidgets.sendExpanded(scope, d, y, ChipSet.forYank(y), ::onChip)
+    HudWidgets.sendExpanded(scope, d, y, chipsFor(y), ::onChip)
     RelayService.warmMicForThread(y.thread)
   }
 
@@ -645,16 +700,15 @@ class HudPresenter(
   }
 
   private fun onSnooze() {
-    state = State.SNOOZED
-    val y = current
-    val keepQueue = queue.toList()
+    val duration = UserPrefs.snoozeDurationMs(appContext)
+    UserPrefs.activateSnooze(appContext, duration)
     queue.clear()
-    queue.addAll(keepQueue)
+    snoozeTimer?.cancel()
+    snoozeTimer = null
     dismissCard(showNext = false)
-    snoozeTimer = scope.launch {
-      delay(SNOOZE_MS)
-      if (y != null) yank(y)
-    }
+    state = State.AMBIENT
+    RelayService.pushCompanionConfig(appContext)
+    Log.i("HudPresenter", "snooze ${duration / 1000}s — peeks discarded until expiry")
   }
 
   /** Hide current card; keep DAT session alive if more are queued. */

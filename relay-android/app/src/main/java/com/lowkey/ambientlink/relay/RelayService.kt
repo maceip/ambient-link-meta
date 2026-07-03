@@ -17,6 +17,7 @@ import com.lowkey.ambientlink.R
 import com.lowkey.ambientlink.hud.HudPresenter
 import com.lowkey.ambientlink.soda.SodaRuntime
 import com.google.research.air.cosmo.lib.soda.SodaPrepareResult
+import com.lowkey.ambientlink.settings.UserPrefs
 import com.lowkey.ambientlink.wearables.WearablesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -210,14 +211,28 @@ class RelayService : Service() {
           is RelayClient.Event.Hello        -> {
             _status.update { it.copy(threads = ev.threads.map { t -> t.label }, lastError = null) }
             p.hello(ev.threads)
+            pushCompanionConfig(applicationContext)
           }
-          is RelayClient.Event.ThreadIdle   -> p.onIdle(ev.yank)
-          is RelayClient.Event.HudYank      -> p.yank(ev.yank)
+          is RelayClient.Event.ThreadIdle   -> {
+            com.lowkey.ambientlink.settings.CompanionSuggest.noteYank(applicationContext, ev.yank)
+            p.onIdle(ev.yank)
+          }
+          is RelayClient.Event.HudYank      -> {
+            com.lowkey.ambientlink.settings.CompanionSuggest.noteYank(applicationContext, ev.yank)
+            p.yank(ev.yank)
+          }
           is RelayClient.Event.ThreadBusy   -> p.cancelIfFor(ev.thread)
           is RelayClient.Event.DictateActive -> dictation.onActive(ev.thread, ev.source)
           is RelayClient.Event.DictateEnd   -> dictation.onEnd(ev.thread)
-          is RelayClient.Event.SessionFocus -> dictation.onSessionFocus(ev.thread)
-          is RelayClient.Event.SessionBlur  -> dictation.onSessionBlur(ev.thread)
+          is RelayClient.Event.SessionFocus -> {
+            dictation.onSessionFocus(ev.thread)
+            p.onCompanionUi("session")
+          }
+          is RelayClient.Event.SessionBlur -> {
+            dictation.onSessionBlur(ev.thread)
+            p.onCompanionUi("list")
+          }
+          is RelayClient.Event.CompanionUi  -> p.onCompanionUi(ev.screen)
           is RelayClient.Event.Error        -> {
             _status.update { s -> if (!s.connected) s.copy(lastError = ev.msg) else s }
           }
@@ -330,6 +345,16 @@ class RelayService : Service() {
       state?.webDictation?.setBluetoothScoEnabled(on)
         ?: ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
           .edit().putBoolean(PREF_BLUETOOTH_SCO, on).apply()
+    }
+
+    fun pushCompanionConfig(ctx: Context) {
+      state?.client?.sendCompanionConfig(
+        UserPrefs.getQuickReplies(ctx),
+        UserPrefs.getSnoozeUntilMs(ctx),
+        UserPrefs.showContinueChip(ctx),
+        UserPrefs.showDictateChip(ctx),
+        UserPrefs.getDefaultAgent(ctx),
+      )
     }
 
     fun onHudDictationStart(thread: String) {

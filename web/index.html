@@ -8,13 +8,13 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=29">
-  <link rel="stylesheet" href="blocks/blocks.css?v=29">
-  <link rel="stylesheet" href="companion.css?v=29">
+  <link rel="stylesheet" href="styles.css?v=39">
+  <link rel="stylesheet" href="blocks/blocks.css?v=39">
+  <link rel="stylesheet" href="companion.css?v=39">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v29';
+      var BUILD = 'v39';
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', function () {
         // Self-heal: earlier installs left a stale service worker caching an old
@@ -48,21 +48,18 @@
     </header>
     <span id="relay-badge" class="relay-badge hidden" title="relay debug — auto cards suppressed">debug</span>
     <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
-    <p id="empty-hint" class="empty-hint blk-shelf-list-view__empty">no sessions</p>
-    <div id="threads" class="thread-list blk-shelf-list-view__list" role="list"></div>
-    <nav id="shelf" class="shelf blk-shelf-list-view__shelf" role="toolbar" aria-label="new session">
-      <div class="rbtn-row blk-rbtn-row">
-      <button type="button" class="rbtn focusable agent-launcher" data-agent="cursor" title="new cursor session" aria-label="new cursor session">
-        <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="cursor"></span><span class="rbtn-label">Cursor</span></span>
-      </button>
-      <button type="button" class="rbtn focusable agent-launcher" data-agent="claude" title="new claude session" aria-label="new claude session">
-        <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="claude"></span><span class="rbtn-label">Claude</span></span>
-      </button>
-      <button type="button" class="rbtn focusable agent-launcher" data-agent="codex" title="new codex session" aria-label="new codex session">
-        <span class="rbtn-pill"><span class="rbtn-icon" data-agent-icon="codex"></span><span class="rbtn-label">Codex</span></span>
-      </button>
+    <div id="list-scroll" class="list-scroll blk-shelf-list-view__scroll">
+      <div id="new-session-reveal" class="new-session-reveal" aria-hidden="true">
+        <button type="button" id="new-session-pill" class="compose-pill focusable" aria-label="new session">
+          <span class="compose-pill__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.75"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+          </span>
+          <span class="compose-pill__label">New session</span>
+        </button>
       </div>
-    </nav>
+      <p id="empty-hint" class="empty-hint blk-shelf-list-view__empty">no sessions</p>
+      <div id="threads" class="thread-list ig-list blk-shelf-list-view__list" role="list"></div>
+    </div>
   </section>
 
   <!-- SESSION COMPOSE -->
@@ -71,28 +68,41 @@
       <span id="t-title" class="title hdr-title">session</span>
     </header>
     <div class="compose-wrap blk-agent-view">
-      <p id="w-meta" class="widget-meta blk-agent-card__meta"></p>
-      <div id="w-card" class="widget-card hud-card blk-agent-card__body"></div>
-      <div id="w-chips" class="widget-chips blk-agent-card__actions" role="group" aria-label="quick actions"></div>
+      <p id="w-meta" class="widget-meta blk-agent-card__meta hidden"></p>
+      <div id="w-chat" class="blk-chat-thread compose-chat" role="log" aria-live="polite"></div>
     </div>
-    <div class="compose-field">
+    <div id="quick-replies" class="quick-replies hidden" role="toolbar" aria-label="quick replies"></div>
+    <div id="dictate-chrome" class="dictate-chrome hidden" aria-live="polite">
+      <div id="dictate-status" class="dictate-status hidden">
+        <span class="dictate-cursor" aria-hidden="true"></span>
+        <span id="dictate-status-text">Listening…</span>
+      </div>
+    </div>
+    <div class="compose-field" id="compose-field">
       <input id="prompt" type="text" placeholder="type your message…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" class="text-input focusable">
     </div>
     <nav id="thread-actions" class="thread-actions new-actions blk-form-view__actions" role="toolbar" aria-label="session actions">
-      <div class="rbtn-row blk-rbtn-row">
-        <button type="button" id="back" class="rbtn focusable" aria-label="back">
-          <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true">‹</span><span class="rbtn-label">Back</span></span>
+      <div class="rbtn-row blk-rbtn-row" id="thread-rbtn-row">
+        <button type="button" id="back" class="rbtn focusable rbtn-stroke" aria-label="back">
+          <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M15 5.5 8 12l7 6.5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rbtn-label">Back</span></span>
         </button>
-        <button type="button" id="dictate" class="rbtn focusable" title="dictate" aria-label="dictate">
+        <button type="button" id="dictate-redo" class="rbtn focusable rbtn-stroke hidden" aria-label="redo dictation">
+          <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0 1 13.7-5.7M20 4v5h-5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rbtn-label">Redo</span></span>
+        </button>
+        <button type="button" id="dictate" class="rbtn focusable rbtn-stroke" title="dictate" aria-label="dictate">
           <span class="rbtn-pill">
-            <span class="rbtn-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            <span class="rbtn-icon rbtn-icon--dictate" aria-hidden="true">
+              <svg class="icon-mic" viewBox="0 0 24 24" fill="none"><rect x="9" y="4" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.75"/><path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><path d="M12 18v3M8 21h8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+              <svg class="icon-wave hidden" viewBox="0 0 24 24" fill="none"><path d="M4 10v4M7 8v8M10 6v12M13 9v6M16 7v10M19 10v4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
             </span>
             <span class="rbtn-label">Dictate</span>
           </span>
         </button>
-        <button type="button" id="send" class="rbtn rbtn-primary focusable" title="send" aria-label="send">
-          <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true">↑</span><span class="rbtn-label">Send</span></span>
+        <button type="button" id="send" class="rbtn rbtn-primary focusable rbtn-stroke rbtn-send-review" title="send" aria-label="send">
+          <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/></svg></span><span class="rbtn-label">Send</span></span>
+        </button>
+        <button type="button" id="dictate-pause" class="rbtn focusable rbtn-stroke hidden" aria-label="pause dictation">
+          <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 7v10M15 7v10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></span><span class="rbtn-label">Pause</span></span>
         </button>
       </div>
     </nav>
@@ -124,7 +134,7 @@
       </button>
       <button type="button" id="new-start" class="rbtn focusable rbtn-primary" aria-label="start session">
         <span class="rbtn-pill">
-          <span class="rbtn-icon" aria-hidden="true">▶</span>
+          <span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.5 5.2v13.6c0 .8.9 1.3 1.6.9l10.2-6.2c.7-.4.7-1.4 0-1.8L9.1 4.3c-.7-.4-1.6.1-1.6.9Z"/></svg></span>
           <span class="rbtn-label">Start</span>
         </span>
       </button>
@@ -134,8 +144,9 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="chipset.js?v=29"></script>
-<script src="blocks/blocks.js?v=29"></script>
-<script src="app.js?v=29"></script>
+<script src="chipset.js?v=39"></script>
+<script src="content-pipeline.js?v=39"></script>
+<script src="blocks/blocks.js?v=39"></script>
+<script src="app.js?v=39"></script>
 </body>
 </html>

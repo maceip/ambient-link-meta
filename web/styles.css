@@ -35,8 +35,28 @@
   --hud-capsule: rgba(255, 255, 255, 0.24); /* focused = bright frosted capsule */
   --hud-capsule-edge: rgba(255, 255, 255, 0.4);
   --hud-glass: rgba(18, 20, 24, 0.42);    /* faint dark glass for cards/bubbles */
-  --hud-blur: blur(16px);
+  --hud-blur: blur(20px);
   --hud-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* legibility on transparent */
+  /* Meta Messages rbtn row (BUTTON_ANIMS.mov) — frosted glass + bold icon weight. */
+  --rbtn-size: 58px;
+  --rbtn-icon-size: 26px;
+  --rbtn-gap: 10px;
+  --rbtn-glass-top: rgba(255, 255, 255, 0.14);
+  --rbtn-glass-bot: rgba(255, 255, 255, 0.06);
+  --rbtn-glass-edge: rgba(255, 255, 255, 0.28);
+  --rbtn-stroke-width: 1.75px;
+  --rbtn-send-top: #25d366;
+  --rbtn-send-bot: #128c7e;
+  --rbtn-shadow-rest:
+    0 6px 20px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -2px 5px rgba(0, 0, 0, 0.22);
+  --rbtn-capsule-top: rgba(255, 255, 255, 0.94);
+  --rbtn-capsule-bot: rgba(255, 255, 255, 0.78);
+  --rbtn-shadow-focus:
+    0 12px 32px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.1);
   --radius-pill: 999px;                   /* fully-rounded capsule */
   --avatar-size: 46px;
   --font-sans: -apple-system, "SF Pro Display", "SF Pro Text", BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -49,8 +69,6 @@
   --dur-focus-out: 625ms;
   --dur-color-in: 300ms;
   --dur-color-out: 300ms;
-  --rbtn-size: 64px;
-  --rbtn-gap: 10px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

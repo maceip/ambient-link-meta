@@ -114,7 +114,7 @@ test('phone dictate: speak into glasses mic, partials land in composer', async (
   const deadline = Date.now() + SPEAK_WAIT_MS;
   while (Date.now() < deadline) {
     const promptVal = ((await page.locator('#prompt').inputValue()) || '').trim();
-    const cardText = ((await page.locator('#w-card').textContent()) || '').trim();
+    const cardText = ((await page.locator('#w-chat').textContent()) || '').trim();
     const toast = ((await page.locator('#toast').textContent()) || '').trim();
 
     if (promptVal.length >= 3 && !/^listening/i.test(promptVal)) heardText = promptVal;

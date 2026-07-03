@@ -19,9 +19,10 @@ echo "== node unit + protocol tests ==" >>"$LOG"
 
 ok "node test suite"
 
-html="$(curl -sf "$HOST/")"
+html="$(curl -sf "$HOST/ambient-link/")"
 echo "$html" | grep -q 'id="host-panel"' || fail "missing host panel"
-echo "$html" | grep -q 'id="btn-pull"' || fail "missing pull card button"
+echo "$html" | grep -q 'id="list-scroll"' || fail "missing session list scroll"
+echo "$html" | grep -q 'id="new-session-pill"' || fail "missing new session pill"
 ok "index.html structure"
 
 echo "web OK — $LOG"

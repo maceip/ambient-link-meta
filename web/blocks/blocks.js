@@ -5,8 +5,40 @@
   var AUTO_ADVANCE_SECS = 5;
 
   var MIC_SVG =
-    '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
-    '<path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>' +
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<rect x="9" y="4" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.75"/>' +
+    '<path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>' +
+    '<path d="M12 18v3M8 21h8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>' +
+    '</svg>';
+
+  var WAVE_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M4 10v4M7 8v8M10 6v12M13 9v6M16 7v10M19 10v4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>' +
+    '</svg>';
+
+  var CHEVRON_LEFT_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M15 5.5 8 12l7 6.5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '</svg>';
+
+  var SEND_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>' +
+    '</svg>';
+
+  var REDO_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M4 12a8 8 0 0 1 13.7-5.7M20 4v5h-5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '</svg>';
+
+  var PAUSE_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M9 7v10M15 7v10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>' +
+    '</svg>';
+
+  var PLAY_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M8 6v12l10-6-10-6Z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>' +
     '</svg>';
 
   /** Append partial dictation under agent body — mirrors HudWidgets.dictateCardBody. */
@@ -114,6 +146,13 @@
     }
     body.appendChild(name);
 
+    if (data.detail) {
+      var detail = document.createElement('div');
+      detail.className = 'blk-list-item__detail thread-detail';
+      detail.textContent = data.detail;
+      body.appendChild(detail);
+    }
+
     if (data.preview) {
       var preview = document.createElement('div');
       preview.className = 'blk-list-item__preview preview body-preview';
@@ -205,6 +244,68 @@
     if (agentBody != null) bodyEl.textContent = agentBody;
   }
 
+  /** WhatsApp-style chat bubble. role: user | agent */
+  function renderChatBubble(opts) {
+    opts = opts || {};
+    var wrap = document.createElement('div');
+    wrap.className = 'blk-chat-row blk-chat-row--' + (opts.role || 'agent');
+    if (opts.thinking) wrap.classList.add('blk-chat-row--thinking');
+    if (opts.listening) wrap.classList.add('blk-chat-row--listening');
+
+    var bubble = document.createElement('div');
+    bubble.className = 'blk-chat-bubble blk-chat-bubble--' + (opts.role || 'agent');
+    if (opts.truncated) bubble.classList.add('blk-chat-bubble--truncated');
+    if (opts.thinking) bubble.classList.add('blk-chat-bubble--thinking');
+    if (opts.listening) bubble.classList.add('blk-chat-bubble--listening');
+
+    var text = document.createElement('div');
+    text.className = 'blk-chat-bubble__text';
+    text.textContent = opts.text || '';
+    bubble.appendChild(text);
+
+    if (opts.truncated && opts.kind && opts.kind !== 'long') {
+      var note = document.createElement('div');
+      note.className = 'blk-chat-bubble__note';
+      note.textContent =
+        opts.kind === 'diff'
+          ? 'Large diff hidden on glasses — full context on Mac'
+          : opts.kind === 'code'
+            ? 'Large code block hidden on glasses'
+            : 'Long message collapsed for display';
+      bubble.appendChild(note);
+    }
+
+    wrap.appendChild(bubble);
+    return wrap;
+  }
+
+  /** Render turn-by-turn chat; opts.thinking / opts.listening append status bubbles. */
+  function renderChatThread(container, messages, opts) {
+    if (!container) return;
+    opts = opts || {};
+    container.innerHTML = '';
+    var prevRole = null;
+    (messages || []).forEach(function (m) {
+      var row = renderChatBubble(m);
+      if (prevRole === m.role) row.classList.add('blk-chat-row--follow');
+      prevRole = m.role;
+      container.appendChild(row);
+    });
+    if (opts.thinking) {
+      container.appendChild(renderChatBubble({ role: 'agent', text: 'thinking…', thinking: true }));
+    }
+    if (opts.listening) {
+      container.appendChild(renderChatBubble({
+        role: 'user',
+        text: opts.listening.trim() || 'listening…',
+        listening: true,
+      }));
+    }
+    requestAnimationFrame(function () {
+      container.scrollTop = container.scrollHeight;
+    });
+  }
+
   function renderActionChip(chip, handlers) {
     handlers = handlers || {};
     var btn = document.createElement('button');
@@ -284,6 +385,12 @@
   root.AmbientBlocks = {
     AUTO_ADVANCE_SECS: AUTO_ADVANCE_SECS,
     MIC_SVG: MIC_SVG,
+    WAVE_SVG: WAVE_SVG,
+    CHEVRON_LEFT_SVG: CHEVRON_LEFT_SVG,
+    SEND_SVG: SEND_SVG,
+    REDO_SVG: REDO_SVG,
+    PAUSE_SVG: PAUSE_SVG,
+    PLAY_SVG: PLAY_SVG,
     bodyWithListening: bodyWithListening,
     wireRbtnGroups: wireRbtnGroups,
     renderRbtn: renderRbtn,
@@ -293,6 +400,8 @@
     agentActionCard: agentActionCard,
     showListeningCard: showListeningCard,
     clearListeningCard: clearListeningCard,
+    renderChatBubble: renderChatBubble,
+    renderChatThread: renderChatThread,
     renderActionChip: renderActionChip,
     renderAgentActions: renderAgentActions,
     armPrimaryCountdown: armPrimaryCountdown,

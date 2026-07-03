@@ -42,6 +42,7 @@ class RelayClient(val url: String) {
     data class DictateEnd(val thread: String, val text: String, val source: String) : Event()
     data class SessionFocus(val thread: String, val source: String) : Event()
     data class SessionBlur(val thread: String, val source: String) : Event()
+    data class CompanionUi(val screen: String, val source: String) : Event()
     data class Error(val msg: String) : Event()
   }
   data class ThreadMeta(val id: String, val label: String, val agent: String)
@@ -136,6 +137,9 @@ class RelayClient(val url: String) {
             "session_blur" -> _events.tryEmit(
               Event.SessionBlur(obj.optString("thread"), obj.optString("source", "")),
             )
+            "companion_ui" -> _events.tryEmit(
+              Event.CompanionUi(obj.optString("screen", "idle"), obj.optString("source", "")),
+            )
           }
         } catch (e: Exception) { Log.w("RelayClient", "parse: ${e.message}") }
       }
@@ -201,5 +205,28 @@ class RelayClient(val url: String) {
   fun sendSpecial(thread: String, key: String) {
     ws?.send(JSONObject()
       .put("type", "special").put("thread", thread).put("key", key).toString())
+  }
+
+  /** Quick replies + snooze window — synced to web companion. */
+  fun sendCompanionConfig(
+    quickReplies: List<String>,
+    snoozeUntilMs: Long,
+    showContinue: Boolean,
+    showDictate: Boolean,
+    defaultAgent: String,
+  ) {
+    val arr = org.json.JSONArray()
+    quickReplies.forEach { arr.put(it) }
+    ws?.send(
+      JSONObject()
+        .put("type", "companion_config")
+        .put("quick_replies", arr)
+        .put("snooze_until", snoozeUntilMs)
+        .put("show_continue", showContinue)
+        .put("show_dictate", showDictate)
+        .put("default_agent", defaultAgent)
+        .put("source", "phone")
+        .toString(),
+    )
   }
 }

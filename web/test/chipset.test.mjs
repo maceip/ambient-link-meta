@@ -40,6 +40,23 @@ describe('AmbientChipSet', () => {
     assert.equal(chips.map((c) => c.label).join(','), 'continue,dictate');
   });
 
+  it('forYank done hides continue when configured off', () => {
+    const chips = CS.forYank(
+      { awaiting: CS.Awaiting.DONE },
+      { showContinue: false, showDictate: true, quickReplies: ['looks good'] },
+    );
+    assert.equal(chips.map((c) => c.label).join(','), 'dictate,looks good');
+  });
+
+  it('forYank merges quick replies up to three chips', () => {
+    const chips = CS.forYank(
+      { awaiting: CS.Awaiting.DONE },
+      { showContinue: false, showDictate: false, quickReplies: ['a', 'b', 'c', 'd'] },
+    );
+    assert.equal(chips.length, 3);
+    assert.equal(chips.map((c) => c.text).join(','), 'a,b,c');
+  });
+
   it('followUpChips adds agent-specific extras', () => {
     const codex = CS.followUpChips('codex').map((c) => c.label);
     assert.ok(codex.includes('fix errors'));

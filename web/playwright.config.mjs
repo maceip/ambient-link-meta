@@ -2,14 +2,11 @@ import { defineConfig } from '@playwright/test';
 
 /** Origin only — app is at /ambient-link/ (Playwright goto('/') would hit site root otherwise). */
 const DEPLOYED_ORIGIN = 'https://public.computer';
-
-const relayHost = (process.env.AMBIENT_RELAY_HOST || DEPLOYED_ORIGIN).replace(/\/$/, '');
 const baseURL = (process.env.AMBIENT_WEB_ORIGIN || DEPLOYED_ORIGIN).replace(/\/$/, '');
 
 export default defineConfig({
   testDir: './test',
   testMatch: '**/*.spec.mjs',
-  globalSetup: './test/global-setup.mjs',
   timeout: 600_000,
   fullyParallel: false,
   workers: 1,
@@ -21,4 +18,18 @@ export default defineConfig({
     colorScheme: 'dark',
     trace: 'retain-on-failure',
   },
+  projects: [
+    {
+      name: 'glasses',
+      testMatch: '**/glasses.spec.mjs',
+    },
+    {
+      name: 'integrated',
+      testMatch: '**/integrated.spec.mjs',
+    },
+    {
+      name: 'dictate',
+      testMatch: '**/dictate.spec.mjs',
+    },
+  ],
 });
