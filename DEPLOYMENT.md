@@ -66,7 +66,7 @@ script. Disk must always match `origin/main`.
 |---|---|---|
 | `PROD_SSH_PRIVATE_KEY` | `-----BEGIN OPENSSH PRIVATE KEY-----…` | Deploy key; public half in server `authorized_keys` |
 | `PROD_SSH_HOST` | `public.computer` | Production SSH host |
-| `PROD_SSH_USER` | `root` | SSH user (must be able to `sudo -u devuser`) |
+| `PROD_SSH_USER` | `devuser` | SSH user; must own `/home/devuser/ambient-link-meta` |
 | `PROD_SSH_PORT` | `22` | Optional; omit to use 22 |
 
 Generate a deploy-only key on your laptop:

@@ -32,7 +32,7 @@ jobs:
           repo=/home/devuser/ambient-link-meta
 
           ssh -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" \
-            "sudo -u devuser -H bash -lc 'cd ${repo} && git fetch origin && git checkout main && git reset --hard origin/main && git log -1 --oneline'"
+            "bash -lc 'cd ${repo} && git fetch origin && git checkout main && git reset --hard origin/main && git log -1 --oneline'"
 
       - name: Verify live site
         run: |
