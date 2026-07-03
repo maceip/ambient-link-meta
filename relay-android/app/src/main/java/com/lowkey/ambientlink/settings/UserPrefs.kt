@@ -83,6 +83,7 @@ object UserPrefs {
 
   private const val KEY_SHOW_CONTINUE = "chip_show_continue"
   private const val KEY_SHOW_DICTATE = "chip_show_dictate"
+  private const val KEY_AUTO_CONTINUE = "chip_auto_continue"
   private const val KEY_DEFAULT_AGENT = "default_agent"
 
   val DEFAULT_AGENTS = listOf("cursor", "claude", "codex")
@@ -110,5 +111,13 @@ object UserPrefs {
 
   fun setShowDictateChip(ctx: Context, on: Boolean) {
     prefs(ctx).edit().putBoolean(KEY_SHOW_DICTATE, on).apply()
+  }
+
+  /** When on, done-cards auto-tap the primary chip after a short countdown. */
+  fun autoContinueEnabled(ctx: Context): Boolean =
+    prefs(ctx).getBoolean(KEY_AUTO_CONTINUE, true)
+
+  fun setAutoContinueEnabled(ctx: Context, on: Boolean) {
+    prefs(ctx).edit().putBoolean(KEY_AUTO_CONTINUE, on).apply()
   }
 }

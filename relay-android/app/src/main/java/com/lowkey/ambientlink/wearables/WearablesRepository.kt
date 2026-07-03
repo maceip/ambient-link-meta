@@ -11,11 +11,13 @@ import com.meta.wearable.sdk.concurrency.coroutines.WearableCoroutineScopes
 import com.meta.wearable.sdk.concurrency.coroutines.WearableDispatchers
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "ambient.wearables"
 
@@ -34,6 +36,9 @@ class WearablesRepository(
 
   private val _devicesMetadata = MutableStateFlow<Map<DeviceIdentifier, Device>>(emptyMap())
   val devicesMetadata: StateFlow<Map<DeviceIdentifier, Device>> = _devicesMetadata.asStateFlow()
+
+  /** One collector per device — Meta DisplayAccess sample uses getOrPut, not "added only". */
+  private val metadataJobs = ConcurrentHashMap<DeviceIdentifier, Job>()
 
   private val monitoringExceptionHandler = CoroutineExceptionHandler { _, throwable ->
     Log.e(TAG, "Wearables monitoring failed", throwable)
@@ -61,21 +66,57 @@ class WearablesRepository(
     }
   }
 
+  /** Pull current SDK snapshots — call on resume so UI matches Meta AI immediately. */
+  fun refreshNow() {
+    val identifiers = Wearables.devices.value
+    Log.i(TAG, "refreshNow devices=${identifiers.size}")
+    _devices.value = identifiers
+    if (identifiers.isEmpty()) {
+      metadataJobs.values.forEach { it.cancel() }
+      metadataJobs.clear()
+      _devicesMetadata.value = emptyMap()
+      return
+    }
+    for (id in identifiers) {
+      Wearables.devicesMetadata[id]?.value?.let { updateMetadata(id, it) }
+      ensureMetadataWatch(id)
+    }
+    val removed = metadataJobs.keys.toSet() - identifiers
+    for (id in removed) {
+      metadataJobs.remove(id)?.cancel()
+    }
+    _devicesMetadata.update { it.filterKeys { key -> key in identifiers } }
+  }
+
   private fun updateDevices(identifiers: Set<DeviceIdentifier>) {
     Log.i(TAG, "devices=${identifiers.size}")
     _devices.value = identifiers
-    val current = _devicesMetadata.value
-    val removed = current.keys - identifiers
-    val added = identifiers - current.keys
 
+    val removed = metadataJobs.keys.toSet() - identifiers
+    for (id in removed) {
+      metadataJobs.remove(id)?.cancel()
+    }
     if (removed.isNotEmpty()) {
       _devicesMetadata.update { it.filterKeys { key -> key !in removed } }
     }
 
-    for (id in added) {
-      scope.launch(monitoringExceptionHandler) {
-        Wearables.devicesMetadata[id]?.collect { device -> updateMetadata(id, device) }
+    for (id in identifiers) {
+      ensureMetadataWatch(id)
+    }
+  }
+
+  private fun ensureMetadataWatch(id: DeviceIdentifier) {
+    val existing = metadataJobs[id]
+    if (existing != null && existing.isActive) return
+
+    metadataJobs[id] = scope.launch(monitoringExceptionHandler) {
+      val flow = Wearables.devicesMetadata[id]
+      if (flow == null) {
+        Log.w(TAG, "no metadata flow for id=$id")
+        return@launch
       }
+      updateMetadata(id, flow.value)
+      flow.collect { device -> updateMetadata(id, device) }
     }
   }
 

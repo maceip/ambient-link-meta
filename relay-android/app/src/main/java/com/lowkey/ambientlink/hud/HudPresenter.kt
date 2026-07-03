@@ -395,6 +395,7 @@ class HudPresenter(
   // question cards — those always require an explicit human choice.
   private fun armAutoAdvance() {
     autoJob?.cancel()
+    if (!UserPrefs.autoContinueEnabled(appContext)) return
     val y = current ?: return
     if (state != State.PEEKING || y.awaiting != Awaiting.DONE) return
     val primary = chipsFor(y).firstOrNull { it.kind == ChipKind.SEND } ?: return
@@ -708,7 +709,7 @@ class HudPresenter(
     dismissCard(showNext = false)
     state = State.AMBIENT
     RelayService.pushCompanionConfig(appContext)
-    Log.i("HudPresenter", "snooze ${duration / 1000}s — peeks discarded until expiry")
+    Log.i("HudPresenter", "snooze ${duration / 1000}s — agent cards discarded until expiry")
   }
 
   /** Hide current card; keep DAT session alive if more are queued. */

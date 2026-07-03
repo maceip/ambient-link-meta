@@ -61,6 +61,48 @@ import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 
+/** One filled button style for the whole phone app (settings, relay, debug). */
+@Composable
+fun AmbientPrimaryButton(
+  text: String,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier.fillMaxWidth(),
+  enabled: Boolean = true,
+  loading: Boolean = false,
+) {
+  FilledTonalButton(
+    onClick = onClick,
+    enabled = enabled && !loading,
+    modifier = modifier.defaultMinSize(minHeight = 44.dp),
+    contentPadding = PaddingValues(vertical = 10.dp, horizontal = 16.dp),
+    shape = RoundedCornerShape(12.dp),
+  ) {
+    if (loading) {
+      CircularProgressIndicator(
+        Modifier
+          .padding(end = 8.dp)
+          .size(18.dp),
+        strokeWidth = 2.dp,
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
+      )
+    }
+    Text(text, fontWeight = FontWeight.Medium)
+  }
+}
+
+data class ActionLine(val message: String, val ok: Boolean = true)
+
+@Composable
+fun InlineActionStatus(line: ActionLine?, modifier: Modifier = Modifier) {
+  if (line == null) return
+  Text(
+    line.message,
+    modifier = modifier.fillMaxWidth(),
+    style = MaterialTheme.typography.bodySmall,
+    color = if (line.ok) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
+  )
+}
+
 /** Frosted pill strip — single horizontal row (scrolls when needed). */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -120,6 +162,7 @@ fun QuickRepliesEditor(
   hazeState: HazeState,
   onChange: (List<String>) -> Unit,
   modifier: Modifier = Modifier,
+  addStatus: ActionLine? = null,
 ) {
   var draft by remember { mutableStateOf("") }
   Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -152,12 +195,16 @@ fun QuickRepliesEditor(
           }
         },
         enabled = draft.trim().isNotEmpty(),
-        modifier = Modifier.height(56.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        modifier = Modifier
+          .height(56.dp)
+          .defaultMinSize(minHeight = 44.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(12.dp),
       ) {
-        Text("Add")
+        Text("Add", fontWeight = FontWeight.Medium)
       }
     }
+    InlineActionStatus(addStatus)
   }
 }
 
@@ -385,29 +432,31 @@ fun FirstRunTipOverlay(
         lineHeight = 20.sp,
       )
       if (!probing && aiCore.tier == AiCoreProbe.Tier.NEEDS_MODEL && !aiCore.isDownloading) {
-        Button(
+        FilledTonalButton(
           onClick = onDownloadModel,
           enabled = !downloadBusy,
-          modifier = Modifier.fillMaxWidth(),
+          modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 44.dp),
+          contentPadding = PaddingValues(vertical = 10.dp),
+          shape = RoundedCornerShape(12.dp),
         ) {
           if (downloadBusy) {
             CircularProgressIndicator(
               Modifier.padding(end = 8.dp),
               strokeWidth = 2.dp,
-              color = MaterialTheme.colorScheme.onPrimary,
+              color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
-            Text("Downloading model…")
+            Text("Downloading model…", fontWeight = FontWeight.Medium)
           } else {
-            Text("Download Gemini Nano")
+            Text("Download Gemini Nano", fontWeight = FontWeight.Medium)
           }
         }
         TextButton(onClick = onOpenAiCore, modifier = Modifier.fillMaxWidth()) {
           Text("Open AI Core settings")
         }
       }
-      Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-        Text("Got it")
-      }
+      AmbientPrimaryButton(text = "Got it", onClick = onDismiss)
       TextButton(onClick = onDismiss) {
         Text("Tap outside to dismiss", color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
@@ -451,6 +500,7 @@ fun AiSnoozeSuggestions(
   suggestions: List<CompanionSuggest.SnoozeOption>,
   loading: Boolean,
   fromAi: Boolean,
+  selected: Set<String> = emptySet(),
   onPick: (CompanionSuggest.SnoozeOption) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -465,6 +515,7 @@ fun AiSnoozeSuggestions(
       FuzzyPillGrid(
         hazeState = hazeState,
         pills = suggestions.map { it.label },
+        selected = selected,
         onPillClick = { label -> suggestions.firstOrNull { it.label == label }?.let(onPick) },
       )
     }
@@ -479,4 +530,62 @@ private fun SuggestionHeader(title: String, loading: Boolean) {
     fontWeight = FontWeight.SemiBold,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
   )
+}
+
+@Composable
+fun AiCoreSettingsSection(
+  status: AiCoreProbe.Status,
+  probing: Boolean,
+  modifier: Modifier = Modifier,
+) {
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Text(
+      "AI Core",
+      style = MaterialTheme.typography.titleSmall,
+      fontWeight = FontWeight.SemiBold,
+    )
+    AiCoreStatusChip(status = status, probing = probing)
+    Text(
+      when (status.tier) {
+        AiCoreProbe.Tier.READY ->
+          "On-device model: ${status.modelName ?: "Gemini Nano"}"
+        AiCoreProbe.Tier.NEEDS_MODEL ->
+          "Eligible — download Gemini Nano in AI Core settings for smarter suggestions."
+        AiCoreProbe.Tier.UNSUPPORTED ->
+          "Not eligible on this device — pattern-based suggestions still work."
+      },
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      lineHeight = 18.sp,
+    )
+  }
+}
+
+@Composable
+fun SodaDebugPanel(context: android.content.Context) {
+  val rt = Runtime.getRuntime()
+  val memMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
+  val nativeOk = com.lowkey.ambientlink.soda.SodaRuntime.isAvailable(context)
+  val pack = com.lowkey.ambientlink.soda.SodaRuntime.preparePack(context)
+  val packLabel = when (pack) {
+    is com.google.research.air.cosmo.lib.soda.SodaPrepareResult.Available -> "lp_cpu ready"
+    is com.google.research.air.cosmo.lib.soda.SodaPrepareResult.Unavailable -> pack.reason
+    else -> "unknown"
+  }
+  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Text(
+      "Speech (SODA)",
+      style = MaterialTheme.typography.labelMedium,
+      fontWeight = FontWeight.SemiBold,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Text("Native: ${if (nativeOk) "loaded" else "missing"}", style = MaterialTheme.typography.bodySmall)
+    Text("Pack: $packLabel", style = MaterialTheme.typography.bodySmall)
+    Text(
+      "Capture: ${if (com.lowkey.ambientlink.dictation.DictationManager.isActive()) "active" else "idle"}",
+      style = MaterialTheme.typography.bodySmall,
+    )
+    Text("Heap ≈ ${memMb}MB", style = MaterialTheme.typography.bodySmall)
+    Text("WER: not tracked", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+  }
 }

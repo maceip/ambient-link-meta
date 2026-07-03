@@ -8,6 +8,10 @@
   var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ambient-link/ws';
 
   var connDot    = document.getElementById('conn-dot');
+  var connStatus = document.getElementById('conn-status');
+  var connLabel  = document.getElementById('conn-label');
+  var threadConn = document.getElementById('thread-conn');
+  var threadConnLabel = document.getElementById('thread-conn-label');
   var threadsUl  = document.getElementById('threads');
   var emptyHint  = document.getElementById('empty-hint');
   var viewList   = document.getElementById('view-threads');
@@ -38,6 +42,7 @@
   var relayBadge = document.getElementById('relay-badge');
   var newDictate = document.getElementById('new-dictate');
   var listScroll = document.getElementById('list-scroll');
+  var listBody   = document.getElementById('list-body');
   var newSessionReveal = document.getElementById('new-session-reveal');
   var newSessionPill = document.getElementById('new-session-pill');
 
@@ -55,7 +60,16 @@
   var dictatePhase = 'idle'; // idle | listening | review
   var dictateDraft = '';
   var pendingDeepLink = null;
-  var hostInfo = { relayDebug: false, journal: 0, now: 0, delivery: {}, defaultCwd: '', relayConnected: null };
+  var hostInfo = {
+    relayDebug: false,
+    journal: 0,
+    now: 0,
+    delivery: {},
+    defaultCwd: '',
+    relayConnected: null,
+    cloudPeer: false,
+    liveSessionCount: 0,
+  };
   var hostPanelOpen = false;
   var pendingInputs = loadPendingInputs();
   var deliveryStates = loadDeliveryStates();
@@ -236,6 +250,7 @@
         chatLog: [],
         lastEventAt: 0,
         deliverable: false,
+        sessionState: 'IDLE',
       };
       threadOrder.push(id);
     }
@@ -250,12 +265,60 @@
     row.lastEventAt = row.lastEventAt || clockNow();
   }
 
+  var wsConnState = 'off';
+
+  function wsConnected() {
+    return wsConnState === 'on';
+  }
+
+  function connectionState() {
+    return wsConnState;
+  }
+
+  function connectionCopy(state) {
+    var live = hostInfo.liveSessionCount || liveThreadCount();
+    if (state === 'warn') return 'Connecting to relay…';
+    if (state === 'off') {
+      return 'Not connected — open from your Mac relay or check network';
+    }
+    if (hostInfo.relayConnected === false) {
+      return 'Relay unreachable — reconnecting…';
+    }
+    if (live > 0) {
+      return 'Connected · ' + live + ' live session' + (live === 1 ? '' : 's');
+    }
+    if (hostInfo.cloudPeer) {
+      return 'Connected · Mac linked, no active agents';
+    }
+    return 'Connected · no Mac agents running';
+  }
+
+  function renderConnStatus() {
+    var state = connectionState();
+    var copy = connectionCopy(state);
+    if (connDot) {
+      connDot.classList.remove('on', 'off', 'warn');
+      connDot.classList.add(state);
+    }
+    if (connStatus) {
+      connStatus.classList.remove('on', 'off', 'warn');
+      connStatus.classList.add(state);
+    }
+    if (connLabel) connLabel.textContent = copy;
+    if (threadConn) {
+      threadConn.classList.remove('on', 'off', 'warn');
+      threadConn.classList.add(state);
+    }
+    if (threadConnLabel) {
+      threadConnLabel.textContent = state === 'on'
+        ? (hostInfo.liveSessionCount || liveThreadCount() > 0 ? 'Connected' : 'Connected · idle')
+        : (state === 'warn' ? 'Connecting…' : 'Not connected');
+    }
+  }
+
   function setStatus(state) {
-    if (!connDot) return;
-    connDot.classList.remove('on', 'off', 'warn');
-    connDot.classList.add(state);
-    connDot.setAttribute('title', 'relay ' + state);
-    connDot.setAttribute('aria-label', 'relay ' + state);
+    wsConnState = state || 'off';
+    renderConnStatus();
   }
 
   function sessionDeliverable(sessionId) {
@@ -305,6 +368,7 @@
     viewNew.classList.toggle('hidden', which !== 'new');
     sendCompanionUi(which);
     renderQuickReplies();
+    renderConnStatus();
   }
 
   function liveThreads() {
@@ -339,10 +403,66 @@
     return visibleThreads().filter(function (t) { return !t.ended; }).length;
   }
 
+  function expandHomePath(path) {
+    var p = (path || '').trim();
+    if (!p || p === '~') return '';
+    if (p.startsWith('~/')) return p.slice(2);
+    if (p.charAt(0) === '~') return p.slice(1).replace(/^[\\/]+/, '');
+    return p;
+  }
+
+  /** List card title — last folder name only, no ~ or full path. */
+  function folderTitle(t) {
+    var cwd = expandHomePath((t && t.cwd) || '');
+    if (!cwd && t && t.label) {
+      var bits = String(t.label).split(':');
+      if (bits.length > 1) cwd = expandHomePath(bits.slice(1).join(':').trim());
+    }
+    var leaf = shortName(cwd);
+    if (leaf) return leaf;
+    var agent = ((t && t.agent) || '').trim();
+    return agent || 'session';
+  }
+
   function displayLabel(t) {
+    var fromFolder = folderTitle(t);
+    if (fromFolder && fromFolder !== 'session') return fromFolder;
     var label = ((t && t.label) || '').trim();
     if (!label || /:\s*$/.test(label)) label = ((t && t.agent) || 'session').trim();
     return label || 'session';
+  }
+
+  /** List card preview — start of the most recent agent reply only. */
+  function listPreviewText(t) {
+    if (t.ended) return 'session ended';
+    if (t.busy) return 'thinking…';
+    var agentPrev = lastAgentPreview(t);
+    if (agentPrev) return previewFromText(agentPrev);
+    if (t.lastAssistant) return previewFromText(t.lastAssistant);
+    if (t.yank && t.yank.lastAssistant) return previewFromText(t.yank.lastAssistant);
+    return '';
+  }
+
+  function listTimeLabel(ms) {
+    if (!ms) return '';
+    var now = new Date(clockNow());
+    var d = new Date(ms);
+    if (now.toDateString() === d.toDateString()) {
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    var delta = Math.max(0, clockNow() - ms);
+    if (delta < 7 * 24 * 60 * 60 * 1000) {
+      return d.toLocaleDateString([], { weekday: 'short' });
+    }
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  function connectionDotState(t) {
+    var badge = statusBadge(t);
+    if (badge === 'offline') return 'offline';
+    if (badge === 'dead' || badge === 'unreachable') return 'dead';
+    if (badge === 'busy' || badge === 'permission') return 'busy';
+    return 'live';
   }
 
   function relativeTime(ms) {
@@ -375,13 +495,30 @@
   }
 
   function statusBadge(t) {
-    if (t.ended) return 'ended';
-    if (t.busy) return 'busy';
+    if (t.ended || t.sessionState === 'DEAD') return 'dead';
+    if (!wsConnected()) return 'offline';
+    if (t.sessionId && !t.deliverable && hostInfo.cloudPeer) return 'unreachable';
+    if (t.busy || t.sessionState === 'BUSY' || t.sessionState === 'STARTING') return 'busy';
     if (t.yank && t.yank.awaiting === CS.Awaiting.PERMISSION) return 'permission';
     if (t.yank && t.yank.awaiting === CS.Awaiting.QUESTION) return 'question';
     if (t.yank && t.yank.awaiting === CS.Awaiting.DONE) return 'done';
     if (t.yank) return 'idle';
+    if (t.sessionState === 'IDLE' || t.sessionState === 'BUSY') return 'online';
     return 'online';
+  }
+
+  function agentStatusLabel(state) {
+    switch (state) {
+      case 'dead': return 'crashed';
+      case 'unreachable': return 'unreachable';
+      case 'offline': return 'offline';
+      case 'busy': return 'working';
+      case 'permission': return 'permission';
+      case 'question': return 'question';
+      case 'done': return 'ready';
+      case 'idle': return 'idle';
+      default: return state;
+    }
   }
 
   function truncate(s, n) {
@@ -442,13 +579,32 @@
 
   function syncChatFromSessionFields(row, session) {
     if (!row || !session) return;
+    if (session.last_user_input) row.lastUserInput = session.last_user_input;
+    if (session.last_assistant) row.lastAssistant = session.last_assistant;
     if (session.last_user_input) upsertChatTurn(row, 'user', session.last_user_input);
     if (session.last_assistant) upsertChatTurn(row, 'agent', session.last_assistant);
   }
 
+  function chatAgentLabel(row) {
+    var agent = (row && row.agent) || 'agent';
+    var a = agent.toLowerCase();
+    if (a === 'cursor') return 'Cursor';
+    if (a === 'claude') return 'Claude';
+    if (a === 'codex' || a === 'openai') return 'Codex';
+    return agent.charAt(0).toUpperCase() + agent.slice(1);
+  }
+
   function chatMessagesForRender(row) {
     if (!row) return [];
-    if (!row.chatLog || !row.chatLog.length) syncChatFromYank(row);
+    if (!row.chatLog || !row.chatLog.length) {
+      syncChatFromYank(row);
+      if ((!row.chatLog || !row.chatLog.length) && (row.lastUserInput || row.lastAssistant)) {
+        syncChatFromSessionFields(row, {
+          last_user_input: row.lastUserInput,
+          last_assistant: row.lastAssistant,
+        });
+      }
+    }
     return row.chatLog || [];
   }
 
@@ -480,6 +636,11 @@
   var pullRevealPx = 0;
   var pullTouchStartY = 0;
 
+  function listAtTop() {
+    if (!listScroll) return true;
+    return listScroll.scrollTop <= 4;
+  }
+
   function setPullReveal(px, sticky) {
     if (!newSessionReveal) return;
     pullRevealPx = Math.max(0, Math.min(px, 88));
@@ -487,6 +648,8 @@
     newSessionReveal.classList.toggle('open', open);
     newSessionReveal.setAttribute('aria-hidden', open ? 'false' : 'true');
     newSessionReveal.style.setProperty('--pull', pullRevealPx + 'px');
+    if (listBody) listBody.style.setProperty('--list-shift', pullRevealPx + 'px');
+    if (listScroll) listScroll.style.setProperty('--pull', pullRevealPx + 'px');
   }
 
   function wireListPullReveal() {
@@ -497,7 +660,7 @@
     }, { passive: true });
 
     listScroll.addEventListener('touchmove', function (e) {
-      if (listScroll.scrollTop > 2) return;
+      if (!listAtTop()) return;
       var dy = e.touches[0].clientY - pullTouchStartY;
       if (dy > 0) setPullReveal(dy, false);
     }, { passive: true });
@@ -508,7 +671,7 @@
     });
 
     listScroll.addEventListener('wheel', function (e) {
-      if (listScroll.scrollTop > 2) return;
+      if (!listAtTop()) return;
       if (e.deltaY >= 0) return;
       var next = pullRevealPx + Math.abs(e.deltaY);
       setPullReveal(next, next >= PULL_REVEAL_THRESHOLD);
@@ -516,12 +679,32 @@
     }, { passive: false });
 
     listScroll.addEventListener('scroll', function () {
-      if (listScroll.scrollTop > 2 && pullRevealPx > 0) setPullReveal(0, false);
+      if (!listAtTop() && pullRevealPx > 0) setPullReveal(0, false);
     });
 
     newSessionPill.addEventListener('click', function () {
       setPullReveal(0, false);
       openNewSession();
+    });
+  }
+
+  function wireThemes() {
+    var bar = document.getElementById('theme-bar');
+    if (!bar) return;
+    var saved = '';
+    try { saved = localStorage.getItem('al_theme') || 'meta'; } catch (e) {}
+    function apply(name) {
+      document.documentElement.setAttribute('data-theme', name);
+      bar.querySelectorAll('.theme-chip').forEach(function (btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-theme') === name);
+      });
+      try { localStorage.setItem('al_theme', name); } catch (e) {}
+    }
+    apply(saved);
+    bar.addEventListener('click', function (e) {
+      var btn = e.target.closest('.theme-chip');
+      if (!btn) return;
+      apply(btn.getAttribute('data-theme') || 'meta');
     });
   }
 
@@ -553,29 +736,39 @@
     threadsUl.innerHTML = '';
     if (live.length === 0) {
       emptyHint.classList.remove('hidden');
-      emptyHint.textContent = hostInfo.relayConnected === false
-        ? 'relay offline — open this app from your Mac relay or reconnect cloud bridge'
-        : 'no live sessions — start an agent on your Mac (relay must be running)';
+      emptyHint.textContent = !wsConnected()
+        ? 'Relay offline — open this app from your Mac or wait for reconnect'
+        : (hostInfo.liveSessionCount > 0
+          ? 'Loading sessions…'
+          : (hostInfo.cloudPeer
+            ? 'No active agents — start Cursor, Claude, or Codex on your Mac'
+            : 'No sessions — start an agent on your Mac (relay must be running)'));
+      renderConnStatus();
       return;
     }
     emptyHint.classList.add('hidden');
     live.forEach(function (t) {
       var ac = agentClass(t.agent);
-      var preview = previewText(t);
+      var preview = listPreviewText(t);
+      var badgeState = statusBadge(t);
+      var connDot = connectionDotState(t);
       var li = BLK.renderListItem({
-        className: 'ig-row agent-' + ac + ' ' + statusBadge(t),
-        ariaLabel: displayLabel(t) + ', ' + (t.agent || 'agent') + ', ' + statusBadge(t),
-        label: displayLabel(t),
-        preview: preview || undefined,
-        time: relativeTime(t.lastEventAt),
+        className: 'dm-row agent-' + ac + ' ' + badgeState + (wsConnected() ? '' : ' session-offline'),
+        ariaLabel: folderTitle(t) + ', ' + (t.agent || 'agent') + ', ' + agentStatusLabel(badgeState),
+        label: folderTitle(t),
+        preview: preview || 'Waiting for agent…',
+        time: listTimeLabel(t.lastEventAt),
         avatarHtml: agentIcon(t.agent) || undefined,
-        avatarClass: 'agent-' + ac + ' ' + statusBadge(t),
+        avatarClass: 'agent-' + ac,
+        muted: isSnoozing(),
+        connectionState: connDot,
         onClick: function () { openThread(t.id, true); },
         onActivate: function () { openThread(t.id, true); },
       });
       threadsUl.appendChild(li);
     });
     scrollListToBottom();
+    renderConnStatus();
   }
 
   function renderCompose() {
@@ -593,13 +786,19 @@
       if (!t.chatLog || !t.chatLog.length) {
         upsertChatTurn(t, 'agent', t.yank ? agentTextFromYank(t.yank) : 'session ended');
       }
-      BLK.renderChatThread(wChat, chatMessagesForRender(t));
+      BLK.renderChatThread(wChat, chatMessagesForRender(t), {
+        agentLabel: chatAgentLabel(t),
+        emptyText: 'Session ended with no messages.',
+      });
       return;
     }
 
     syncChatFromYank(t);
 
-    if (thinking) {
+    if (!wsConnected()) {
+      wMeta.textContent = 'Not connected — messages will not send until relay reconnects';
+      wMeta.classList.remove('hidden');
+    } else if (thinking) {
       wMeta.textContent = 'thinking…';
       wMeta.classList.remove('hidden');
     } else if (t.yank) {
@@ -613,6 +812,8 @@
     BLK.renderChatThread(wChat, chatMessagesForRender(t), {
       thinking: thinking,
       listening: listening,
+      agentLabel: chatAgentLabel(t),
+      emptyText: 'No messages yet — type or dictate below.',
     });
     renderQuickReplies();
   }
@@ -697,7 +898,7 @@
     if (!t) { showToast('open a session first', 'error'); return; }
     if (!speechAvailable()) {
       startPhoneDictate(t);
-      showToast('listening — speak toward the phone', 'success');
+      if (dictateStatusText) dictateStatusText.textContent = 'Listening on phone…';
       renderCompose();
       return;
     }
@@ -776,6 +977,7 @@
     showView('thread');
     sendSessionSignal('session_focus', id);
     renderCompose();
+    syncFromHost();
     if (compose) {
       setTimeout(function () { promptEl.focus(); }, 50);
     }
@@ -819,7 +1021,7 @@
 
   function dictateIntoField(field, btn) {
     if (!speechAvailable()) {
-      showToast('speak toward your phone — Ambient Link app must be running', 'error');
+      field.placeholder = 'Type here — dictate needs an open session on glasses';
       field.focus();
       return;
     }
@@ -1182,6 +1384,9 @@
         // snapshots wipe rows we already have from live WS broadcasts.
         if (cloudPeer && !liveOnHost) {
           hostInfo.relayConnected = true;
+          hostInfo.cloudPeer = true;
+          hostInfo.liveSessionCount = 0;
+          renderConnStatus();
           renderThreadList();
           return;
         }
@@ -1215,6 +1420,7 @@
           if (s.agent) row.agent = s.agent;
           row.cwd = s.cwd || row.cwd || '';
           row.sessionId = s.session_id || row.sessionId;
+          row.sessionState = s.state || row.sessionState || 'IDLE';
           row.deliverable = sessionDeliverable(s.session_id);
           row.busy = s.state === 'BUSY' || s.state === 'STARTING';
           row.ended = s.state === 'DEAD';
@@ -1223,11 +1429,17 @@
         });
         reapDeadThreads();
         hostInfo.relayConnected = true;
+        hostInfo.cloudPeer = cloudPeer;
+        hostInfo.liveSessionCount = Object.keys(bestByThread).filter(function (id) {
+          return bestByThread[id].state !== 'DEAD';
+        }).length;
+        renderConnStatus();
         renderThreadList();
         if (activeThread) renderCompose();
       })
       .catch(function () {
         hostInfo.relayConnected = false;
+        renderConnStatus();
         renderThreadList();
       });
   }
@@ -1299,6 +1511,7 @@
         promptEl.value = msg.text;
         if (phoneDictateThread === msg.thread) {
           listeningPartial = msg.text;
+          if (dictateStatusText) dictateStatusText.textContent = msg.text;
           renderCompose();
         }
       } else if (msg.type === 'dictate_end' && activeThread === msg.thread) {
@@ -1340,6 +1553,7 @@
   backBtn.addEventListener('click', closeThreadView);
   newStart.addEventListener('click', startNewThread);
   wireListPullReveal();
+  wireThemes();
   sendBtn.addEventListener('click', function () {
     var text = (dictatePhase === 'review' ? dictateDraft : (promptEl.value || '')).trim();
     if (!text || !activeThread) return;

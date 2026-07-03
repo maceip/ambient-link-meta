@@ -5,10 +5,12 @@ import com.meta.wearable.dat.display.views.Alignment
 import com.meta.wearable.dat.display.views.ButtonStyle
 import com.meta.wearable.dat.display.views.Direction
 import com.meta.wearable.dat.display.views.FlexBoxBackground
+import com.meta.wearable.dat.display.views.FlexBoxScope
 import com.meta.wearable.dat.display.views.TextColor
 import com.meta.wearable.dat.display.views.TextStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // DAT display cards — up to three action chips on one row (primary first for focus ring).
@@ -44,6 +46,59 @@ object HudWidgets {
   private fun orderedChips(chips: List<Chip>): List<Chip> =
     chips.sortedByDescending { it.primary }.take(MAX_ACTIONS)
 
+  /** DAT buttons default to START-aligned labels; center chip text + row on the waveguide. */
+  private fun FlexBoxScope.hudChipButton(label: String, style: ButtonStyle, onClick: () -> Unit) {
+    button(label, style = style, onClick = onClick, alignSelf = Alignment.CENTER)
+  }
+
+  private fun FlexBoxScope.actionChipRow(block: FlexBoxScope.() -> Unit) {
+    flexBox(
+      direction = Direction.ROW,
+      gap = ACTION_GAP,
+      padding = 0,
+      alignment = Alignment.CENTER,
+      crossAlignment = Alignment.CENTER,
+      background = FlexBoxBackground.NONE,
+    ) {
+      block()
+    }
+  }
+
+  /** Blank waveguide then removeDisplay — same path as HudPresenter tearDownDisplay. */
+  suspend fun dismissWaveguide(display: Display, session: DatDisplaySession) {
+    try {
+      display.sendContent {
+        flexBox(gap = 0, padding = 0, background = FlexBoxBackground.NONE) {}
+      }
+      delay(180)
+    } catch (_: Throwable) {
+    }
+    session.sleepDisplay()
+  }
+
+  /** Debug card — same layout/chips as production HUD cards; OK dismisses the waveguide. */
+  fun sendDebugCard(
+    scope: CoroutineScope,
+    display: Display,
+    session: DatDisplaySession,
+  ) {
+    scope.launch {
+      display.sendContent {
+        flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
+          text("debug", style = TextStyle.META, color = TextColor.SECONDARY)
+          flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
+            text("Hello from ambient link debug.", style = TextStyle.BODY)
+          }
+          actionChipRow {
+            hudChipButton("ok", ButtonStyle.PRIMARY) {
+              scope.launch { dismissWaveguide(display, session) }
+            }
+          }
+        }
+      }
+    }
+  }
+
   fun sendPeek(
     scope: CoroutineScope,
     display: Display,
@@ -58,15 +113,9 @@ object HudWidgets {
           flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text(truncateBody(yank.bodyText), style = TextStyle.BODY)
           }
-          flexBox(
-            direction = Direction.ROW,
-            gap = ACTION_GAP,
-            padding = 0,
-            crossAlignment = Alignment.CENTER,
-            background = FlexBoxBackground.NONE,
-          ) {
+          actionChipRow {
             orderedChips(chips).forEach { c ->
-              button(c.label, style = chipStyle(c), onClick = { onChip(c) })
+              hudChipButton(c.label, chipStyle(c)) { onChip(c) }
             }
           }
         }
@@ -99,14 +148,8 @@ object HudWidgets {
           flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text(dictateCardBody(yank, partial), style = TextStyle.BODY)
           }
-          flexBox(
-            direction = Direction.ROW,
-            gap = ACTION_GAP,
-            padding = 0,
-            crossAlignment = Alignment.CENTER,
-            background = FlexBoxBackground.NONE,
-          ) {
-            button("cancel", style = ButtonStyle.SECONDARY, onClick = onCancel)
+          actionChipRow {
+            hudChipButton("cancel", ButtonStyle.SECONDARY) { onCancel() }
           }
         }
       }
@@ -146,15 +189,9 @@ object HudWidgets {
           flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text(yank.bodyText, style = TextStyle.BODY)
           }
-          flexBox(
-            direction = Direction.ROW,
-            gap = ACTION_GAP,
-            padding = 0,
-            crossAlignment = Alignment.CENTER,
-            background = FlexBoxBackground.NONE,
-          ) {
+          actionChipRow {
             orderedChips(chips).forEach { c ->
-              button(c.label, style = chipStyle(c), onClick = { onChip(c) })
+              hudChipButton(c.label, chipStyle(c)) { onChip(c) }
             }
           }
         }
@@ -194,15 +231,9 @@ object HudWidgets {
           flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text("pick a change to send", style = TextStyle.BODY)
           }
-          flexBox(
-            direction = Direction.ROW,
-            gap = ACTION_GAP,
-            padding = 0,
-            crossAlignment = Alignment.CENTER,
-            background = FlexBoxBackground.NONE,
-          ) {
+          actionChipRow {
             orderedChips(chips).forEach { c ->
-              button(c.label, style = chipStyle(c), onClick = { onChip(c) })
+              hudChipButton(c.label, chipStyle(c)) { onChip(c) }
             }
           }
         }
@@ -248,20 +279,17 @@ object HudWidgets {
             }
           } else {
             rows.takeLast(8).forEach { r ->
-              button("${agentPrefix(r.agent)} ${r.label} ${statusLabel(r.status)}", style = ButtonStyle.PRIMARY, onClick = { onRow(r.thread) })
+              hudChipButton(
+                "${agentPrefix(r.agent)} ${r.label} ${statusLabel(r.status)}",
+                ButtonStyle.PRIMARY,
+              ) { onRow(r.thread) }
             }
           }
-          flexBox(
-            direction = Direction.ROW,
-            gap = ACTION_GAP,
-            padding = 0,
-            crossAlignment = Alignment.CENTER,
-            background = FlexBoxBackground.NONE,
-          ) {
-            button("back", style = ButtonStyle.SECONDARY, onClick = { onBack() })
-            button(if (filter == null) "all" else "All", style = if (filter == null) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY, onClick = { onFilter("all") })
-            button("cursor", style = if (filter == "cursor") ButtonStyle.PRIMARY else ButtonStyle.SECONDARY, onClick = { onFilter("cursor") })
-            button("codex", style = if (filter == "codex") ButtonStyle.PRIMARY else ButtonStyle.SECONDARY, onClick = { onFilter("codex") })
+          actionChipRow {
+            hudChipButton("back", ButtonStyle.SECONDARY) { onBack() }
+            hudChipButton(if (filter == null) "all" else "All", if (filter == null) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY) { onFilter("all") }
+            hudChipButton("cursor", if (filter == "cursor") ButtonStyle.PRIMARY else ButtonStyle.SECONDARY) { onFilter("cursor") }
+            hudChipButton("codex", if (filter == "codex") ButtonStyle.PRIMARY else ButtonStyle.SECONDARY) { onFilter("codex") }
           }
         }
       }

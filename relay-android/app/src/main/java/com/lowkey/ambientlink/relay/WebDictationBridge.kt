@@ -90,6 +90,22 @@ class WebDictationBridge(
     stopAllQuietly()
   }
 
+  /** Web composer finished — stop mic; text already sent to relay by the browser. */
+  fun onCommitFromWeb(msgThread: String) {
+    if (msgThread != liveThread && msgThread != standbyThread) return
+    DictationManager.stop(commitPartial = false, notify = false)
+    liveThread = null
+    standbyThread = null
+    forwardPartials = false
+    standbyTimeoutJob?.cancel()
+    RelayService.setMicrophoneForeground(false)
+  }
+
+  fun onAbortFromWeb(msgThread: String) {
+    if (msgThread != liveThread && msgThread != standbyThread) return
+    abortLive()
+  }
+
   fun stop() {
     abortLive()
     stopStandby()

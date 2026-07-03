@@ -38,9 +38,9 @@
   --hud-blur: blur(20px);
   --hud-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* legibility on transparent */
   /* Meta Messages rbtn row (BUTTON_ANIMS.mov) — frosted glass + bold icon weight. */
-  --rbtn-size: 58px;
-  --rbtn-icon-size: 26px;
-  --rbtn-gap: 10px;
+  --rbtn-size: 68px;
+  --rbtn-icon-size: 30px;
+  --rbtn-gap: 6px;
   --rbtn-glass-top: rgba(255, 255, 255, 0.14);
   --rbtn-glass-bot: rgba(255, 255, 255, 0.06);
   --rbtn-glass-edge: rgba(255, 255, 255, 0.28);

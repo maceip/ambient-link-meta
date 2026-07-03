@@ -11,7 +11,8 @@ describe('static web shell', () => {
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     for (const id of [
       'view-threads', 'view-thread', 'view-new', 'host-panel',
-      'conn-dot', 'thread-actions', 'relay-badge', 'list-scroll', 'new-session-pill', 'new-start', 'w-chat',
+      'conn-dot', 'conn-status', 'conn-label', 'thread-conn', 'thread-conn-label',
+      'thread-actions', 'relay-badge', 'list-scroll', 'new-session-pill', 'new-start', 'w-chat',
     ]) {
       assert.ok(html.includes('id="' + id + '"'), 'missing #' + id);
     }
@@ -59,6 +60,8 @@ describe('static web shell', () => {
     assert.ok(js.includes('syncFromHost'));
     assert.ok(js.includes('companion_ui'));
     assert.ok(js.includes('host-panel'));
+    assert.ok(js.includes('renderConnStatus'));
+    assert.ok(js.includes('conn-status'));
     assert.ok(js.includes('renderChatThread'));
     assert.ok(js.includes('AmbientContentPipeline'));
     assert.ok(!js.includes('renderChips'));
@@ -78,8 +81,12 @@ describe('static web shell', () => {
     const js = readFileSync(join(root, 'app.js'), 'utf8');
     assert.ok(html.includes('id="new-session-pill"'));
     assert.ok(html.includes('id="list-scroll"'));
+    assert.ok(html.includes('id="list-body"'));
     assert.ok(!html.includes('id="shelf"'));
     assert.ok(js.includes('wireListPullReveal'));
+    assert.ok(js.includes('listAtTop'));
+    assert.ok(js.includes('folderTitle'));
+    assert.ok(js.includes('listPreviewText'));
     assert.ok(js.includes('default_agent'));
     assert.ok(js.includes('openNewSession'));
     assert.ok(js.includes('BLK.renderListItem'));
@@ -112,17 +119,22 @@ describe('static web shell', () => {
   it('interactive controls use the published Meta Display webapp component tokens', () => {
     const baseCss = readFileSync(join(root, 'styles.css'), 'utf8');
     const companionCss = readFileSync(join(root, 'companion.css'), 'utf8');
+    const blocksCss = readFileSync(join(root, 'blocks/blocks.css'), 'utf8');
     assert.ok(baseCss.includes('--bg-secondary: #0d0f13;'));
     assert.ok(baseCss.includes('--bg-tertiary: #1d2025;'));
     assert.ok(baseCss.includes('--accent-primary: #1c84ff;'));
-    assert.match(companionCss, /\.ig-list \.thread-row\s*\{[^}]*min-height: 68px;/s);
-    assert.match(companionCss, /\.status-tag::before\s*\{[^}]*border-radius: 50%;/s);
-    assert.match(baseCss, /--rbtn-size:\s*58px;/);
-    assert.match(baseCss, /--rbtn-icon-size:\s*26px;/);
+    assert.match(blocksCss, /\.dm-list \.thread-row/);
+    assert.match(blocksCss, /\.thread-conn-dot--live/);
+    assert.match(companionCss, /\.conn-status\.off/);
+    assert.match(companionCss, /\.status-tag\.offline/);
+    assert.match(baseCss, /--rbtn-size:\s*68px;/);
+    assert.match(baseCss, /--rbtn-icon-size:\s*30px;/);
+    assert.match(baseCss, /--rbtn-gap:\s*6px;/);
     assert.match(baseCss, /--rbtn-glass-top:/);
-    const blocksCss = readFileSync(join(root, 'blocks/blocks.css'), 'utf8');
     assert.match(blocksCss, /\.rbtn \.rbtn-icon svg\s*\{[^}]*var\(--rbtn-icon-size/);
     assert.match(blocksCss, /\.blk-chat-bubble--agent/);
+    assert.match(blocksCss, /\.blk-chat-bubble__label/);
+    assert.match(blocksCss, /\.blk-chat-empty/);
   });
 
   it('hidden toast does not occupy the session list viewport', () => {

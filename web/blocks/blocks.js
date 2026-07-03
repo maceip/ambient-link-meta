@@ -114,7 +114,7 @@
     return row;
   }
 
-  /** WhatsApp-style list card row. */
+  /** Meta glasses DMs list card (WhatsApp / Instagram shared pattern). */
   function renderListItem(data) {
     data = data || {};
     var li = document.createElement('button');
@@ -132,41 +132,53 @@
     var body = document.createElement('div');
     body.className = 'blk-list-item__body thread-body';
 
-    var name = document.createElement('div');
-    name.className = 'blk-list-item__name name';
+    var top = document.createElement('div');
+    top.className = 'blk-list-item__top thread-top';
+
     var label = document.createElement('span');
     label.className = 'blk-list-item__label thread-label';
     label.textContent = data.label || '';
-    name.appendChild(label);
-    if (data.badge) {
-      var badge = document.createElement('span');
-      badge.className = data.badgeClass || 'status-tag';
-      badge.textContent = data.badge;
-      name.appendChild(badge);
-    }
-    body.appendChild(name);
+    top.appendChild(label);
 
-    if (data.detail) {
-      var detail = document.createElement('div');
-      detail.className = 'blk-list-item__detail thread-detail';
-      detail.textContent = data.detail;
-      body.appendChild(detail);
-    }
+    var time = document.createElement('span');
+    time.className = 'blk-list-item__time thread-time';
+    time.textContent = data.time || '';
+    top.appendChild(time);
+    body.appendChild(top);
+
+    var bottom = document.createElement('div');
+    bottom.className = 'blk-list-item__bottom thread-bottom';
 
     if (data.preview) {
       var preview = document.createElement('div');
       preview.className = 'blk-list-item__preview preview body-preview';
       preview.textContent = data.preview;
-      body.appendChild(preview);
+      bottom.appendChild(preview);
     }
 
-    var time = document.createElement('div');
-    time.className = 'blk-list-item__time thread-time';
-    time.textContent = data.time || '';
+    if (data.muted || data.connectionState) {
+      var meta = document.createElement('div');
+      meta.className = 'blk-list-item__meta thread-meta';
+      if (data.muted) {
+        var mute = document.createElement('span');
+        mute.className = 'thread-mute-icon';
+        mute.setAttribute('aria-label', 'snoozed');
+        mute.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4.5c-4.1 0-7.5 3.4-7.5 7.5v3.8l-1.7 1.7a1 1 0 0 0 .7 1.7h17a1 1 0 0 0 .7-1.7L19.5 15.8V12c0-4.1-3.4-7.5-7.5-7.5Z" stroke="currentColor" stroke-width="1.5"/><path d="M10 20a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="m4 4 16 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+        meta.appendChild(mute);
+      }
+      if (data.connectionState) {
+        var dot = document.createElement('span');
+        dot.className = 'thread-conn-dot thread-conn-dot--' + data.connectionState;
+        dot.setAttribute('aria-label', data.connectionState);
+        meta.appendChild(dot);
+      }
+      bottom.appendChild(meta);
+    }
+
+    body.appendChild(bottom);
 
     li.appendChild(av);
     li.appendChild(body);
-    li.appendChild(time);
 
     if (data.onClick) li.addEventListener('click', data.onClick);
     if (data.onActivate) {
@@ -252,6 +264,18 @@
     if (opts.thinking) wrap.classList.add('blk-chat-row--thinking');
     if (opts.listening) wrap.classList.add('blk-chat-row--listening');
 
+    var stack = document.createElement('div');
+    stack.className = 'blk-chat-stack';
+
+    if (opts.showLabel !== false) {
+      var label = document.createElement('div');
+      label.className = 'blk-chat-bubble__label';
+      label.textContent = opts.role === 'user'
+        ? 'You'
+        : (opts.agentLabel || 'Agent');
+      stack.appendChild(label);
+    }
+
     var bubble = document.createElement('div');
     bubble.className = 'blk-chat-bubble blk-chat-bubble--' + (opts.role || 'agent');
     if (opts.truncated) bubble.classList.add('blk-chat-bubble--truncated');
@@ -275,7 +299,8 @@
       bubble.appendChild(note);
     }
 
-    wrap.appendChild(bubble);
+    stack.appendChild(bubble);
+    wrap.appendChild(stack);
     return wrap;
   }
 
@@ -284,21 +309,39 @@
     if (!container) return;
     opts = opts || {};
     container.innerHTML = '';
+    var agentLabel = opts.agentLabel || 'Agent';
     var prevRole = null;
-    (messages || []).forEach(function (m) {
-      var row = renderChatBubble(m);
+    var list = messages || [];
+    if (!list.length && !opts.thinking && !opts.listening) {
+      var empty = document.createElement('div');
+      empty.className = 'blk-chat-empty';
+      empty.textContent = opts.emptyText || 'No messages yet — type or dictate below.';
+      container.appendChild(empty);
+    }
+    list.forEach(function (m) {
+      var row = renderChatBubble(Object.assign({}, m, {
+        agentLabel: agentLabel,
+        showLabel: prevRole !== m.role,
+      }));
       if (prevRole === m.role) row.classList.add('blk-chat-row--follow');
       prevRole = m.role;
       container.appendChild(row);
     });
     if (opts.thinking) {
-      container.appendChild(renderChatBubble({ role: 'agent', text: 'thinking…', thinking: true }));
+      container.appendChild(renderChatBubble({
+        role: 'agent',
+        text: 'thinking…',
+        thinking: true,
+        agentLabel: agentLabel,
+        showLabel: prevRole !== 'agent',
+      }));
     }
     if (opts.listening) {
       container.appendChild(renderChatBubble({
         role: 'user',
         text: opts.listening.trim() || 'listening…',
         listening: true,
+        showLabel: prevRole !== 'user',
       }));
     }
     requestAnimationFrame(function () {

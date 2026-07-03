@@ -35,16 +35,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -52,6 +49,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -74,25 +72,27 @@ import com.lowkey.ambientlink.relay.RelayService
 import com.lowkey.ambientlink.settings.AiCoreProbe
 import com.lowkey.ambientlink.settings.CompanionSuggest
 import com.lowkey.ambientlink.settings.UserPrefs
+import com.lowkey.ambientlink.ui.AiCoreSettingsSection
 import com.lowkey.ambientlink.ui.AiQuickReplySuggestions
 import com.lowkey.ambientlink.ui.AiSnoozeSuggestions
+import com.lowkey.ambientlink.ui.ActionLine
+import com.lowkey.ambientlink.ui.AmbientPrimaryButton
+import com.lowkey.ambientlink.ui.InlineActionStatus
 import com.lowkey.ambientlink.ui.QuickRepliesEditor
+import com.lowkey.ambientlink.ui.SodaDebugPanel
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.lowkey.ambientlink.ui.FirstRunTipOverlay
 import com.lowkey.ambientlink.ui.formatSnoozeLabel
 import com.lowkey.ambientlink.wearables.WearablesRepository
 import com.lowkey.ambientlink.wearables.WearablesRuntime
 import com.meta.wearable.dat.core.types.LinkState
 import com.meta.wearable.dat.core.types.RegistrationState
-import com.meta.wearable.dat.display.views.Alignment as HudAlignment
-import com.meta.wearable.dat.display.views.ButtonStyle
-import com.meta.wearable.dat.display.views.Direction
-import com.meta.wearable.dat.display.views.FlexBoxBackground
-import com.meta.wearable.dat.display.views.TextColor
-import com.meta.wearable.dat.display.views.TextStyle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
@@ -159,6 +159,7 @@ class MainActivity : ComponentActivity() {
     super.onStart()
     if (WearablesRuntime.permissionsGranted(this)) {
       WearablesRuntime.initialize(this)
+      wearablesRepo.refreshNow()
       maybeRequestNotificationPermission()
       maybeRequestMicPermission()
       RelayService.start(this, null)
@@ -199,6 +200,17 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
   val scope = rememberCoroutineScope()
   var busy by remember { mutableStateOf(false) }
 
+  val lifecycleOwner = LocalLifecycleOwner.current
+  DisposableEffect(lifecycleOwner, wearablesRepo) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_RESUME) {
+        wearablesRepo.refreshNow()
+      }
+    }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+  }
+
   val displayDevice = devicesMeta.values.firstOrNull { it.isDisplayCapable() }
   val hazeState = remember { HazeState() }
   val scrollState = rememberScrollState()
@@ -225,6 +237,7 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
   var quickReplies by remember { mutableStateOf(UserPrefs.getQuickReplies(ctx)) }
   var showContinue by remember { mutableStateOf(UserPrefs.showContinueChip(ctx)) }
   var showDictate by remember { mutableStateOf(UserPrefs.showDictateChip(ctx)) }
+  var autoContinue by remember { mutableStateOf(UserPrefs.autoContinueEnabled(ctx)) }
   var defaultAgent by remember { mutableStateOf(UserPrefs.getDefaultAgent(ctx)) }
   var snoozeUntilMs by remember { mutableStateOf(UserPrefs.getSnoozeUntilMs(ctx)) }
   var showTipOverlay by remember { mutableStateOf(!UserPrefs.hasSeenCompanionTip(ctx)) }
@@ -233,9 +246,15 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
   var aiCoreStatus by remember { mutableStateOf(AiCoreProbe.Status(AiCoreProbe.Tier.UNSUPPORTED)) }
   var modelDownloadBusy by remember { mutableStateOf(false) }
   val hasUsageData = CompanionSuggest.hasData(ctx)
-  var relayExpanded by remember { mutableStateOf(false) }
-  var defaultsExpanded by remember { mutableStateOf(false) }
   var debugExpanded by remember { mutableStateOf(false) }
+  var addReplyStatus by remember { mutableStateOf<ActionLine?>(null) }
+  var cwdSaveStatus by remember { mutableStateOf<ActionLine?>(null) }
+  var cwdSaveLoading by remember { mutableStateOf(false) }
+  var debugWidgetLoading by remember { mutableStateOf(false) }
+  var debugWidgetStatus by remember { mutableStateOf<ActionLine?>(null) }
+  var relayActionStatus by remember { mutableStateOf<ActionLine?>(null) }
+  var selectedSnoozeLabel by remember { mutableStateOf<String?>(null) }
+  var snoozeActionStatus by remember { mutableStateOf<ActionLine?>(null) }
 
   LaunchedEffect(Unit) {
     RelayService.setPreWarmMicEnabled(ctx, true)
@@ -260,26 +279,34 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
     RelayService.pushCompanionConfig(ctx)
   }
 
-  fun persistChipToggles(continueOn: Boolean, dictateOn: Boolean) {
+  fun persistChipToggles(continueOn: Boolean, dictateOn: Boolean, autoContinueOn: Boolean = autoContinue) {
     showContinue = continueOn
     showDictate = dictateOn
+    autoContinue = autoContinueOn
     UserPrefs.setShowContinueChip(ctx, continueOn)
     UserPrefs.setShowDictateChip(ctx, dictateOn)
+    UserPrefs.setAutoContinueEnabled(ctx, autoContinueOn)
     RelayService.pushCompanionConfig(ctx)
   }
 
   fun activateSnoozeMinutes(minutes: Int) {
     UserPrefs.activateSnooze(ctx, minutes * 60_000L)
     snoozeUntilMs = UserPrefs.getSnoozeUntilMs(ctx)
+    selectedSnoozeLabel = formatSnoozeLabel(minutes)
+    snoozeActionStatus = ActionLine("Snooze ${formatSnoozeLabel(minutes)} — agent cards hidden", ok = true)
     RelayService.pushCompanionConfig(ctx)
-    Toast.makeText(ctx, "Snooze ${formatSnoozeLabel(minutes)} — agent peeks discarded", Toast.LENGTH_SHORT).show()
   }
 
   fun clearSnooze() {
     UserPrefs.clearSnooze(ctx)
     snoozeUntilMs = 0L
+    selectedSnoozeLabel = null
+    snoozeActionStatus = ActionLine("Snooze ended", ok = true)
     RelayService.pushCompanionConfig(ctx)
   }
+
+  val glassesTint = glassesIconColor(regState, displayDevice)
+  val cwdHint = validateCwdHint(cwd)
 
   Scaffold(
     modifier = Modifier.fillMaxSize(),
@@ -291,20 +318,34 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
           .hazeEffect(state = hazeState, style = hazeStyle)
           .padding(top = 8.dp, bottom = 6.dp),
       ) {
-        Text(
-          "ambient link",
-          style = MaterialTheme.typography.titleLarge,
-          fontWeight = FontWeight.SemiBold,
-          modifier = Modifier.padding(horizontal = 16.dp),
-        )
+        Row(
+          Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Text(
+            "ambient link",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+          )
+          Icon(
+            painter = painterResource(R.drawable.ic_meta_glasses),
+            contentDescription = "Glasses link",
+            tint = glassesTint,
+            modifier = Modifier
+              .size(26.dp)
+              .clickable {
+                if (regState != RegistrationState.REGISTERED && sdkReady) {
+                  wearablesRepo.startRegistration(activity)
+                }
+              },
+          )
+        }
         StatusRail(
-          pairLabel = regState.displayLabel(),
-          pairColor = regState.statusColor(),
-          linkLabel = displayDevice?.linkState?.displayLabel() ?: "—",
-          linkColor = displayDevice?.linkState?.let { linkStatusColor(it) }
-            ?: MaterialTheme.colorScheme.onSurfaceVariant,
-          relayLabel = relayLabel(svcStatus),
-          relayColor = relayStatusColor(svcStatus),
+          metaAiColor = regState.statusColor(),
+          proxyColor = relayStatusColor(svcStatus),
         )
       }
     },
@@ -325,10 +366,82 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
       if (!sdkReady) {
         HintBanner("Grant Bluetooth permissions to initialize the glasses SDK.")
       }
+      if (regState != RegistrationState.REGISTERED && sdkReady) {
+        HintBanner("Tap the glasses icon to connect Meta AI.")
+      }
 
-      SectionCard(title = "Quick replies") {
+      SectionCard(title = "Auto-responder") {
+        Text(
+          "Default agent",
+          style = MaterialTheme.typography.labelLarge,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          UserPrefs.DEFAULT_AGENTS.forEach { agent ->
+            FilterChip(
+              selected = defaultAgent == agent,
+              onClick = {
+                defaultAgent = agent
+                UserPrefs.setDefaultAgent(ctx, agent)
+                RelayService.pushCompanionConfig(ctx)
+              },
+              label = { Text(agent.replaceFirstChar { it.uppercase() }) },
+              colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                selectedLabelColor = MaterialTheme.colorScheme.onSurface,
+              ),
+            )
+          }
+        }
+        OutlinedTextField(
+          value = cwd,
+          onValueChange = { cwd = it; cwdSaveStatus = null },
+          label = { Text("Working directory") },
+          placeholder = { Text("~/Projects/my-app") },
+          supportingText = {
+            Text(
+              cwdHint.message,
+              color = when (cwdHint.ok) {
+                true -> MaterialTheme.colorScheme.secondary
+                false -> MaterialTheme.colorScheme.error
+                null -> MaterialTheme.colorScheme.onSurfaceVariant
+              },
+            )
+          },
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth(),
+        )
+        AmbientPrimaryButton(
+          text = "Save directory",
+          loading = cwdSaveLoading,
+          enabled = cwdHint.ok != false,
+          onClick = {
+            val v = cwd.trim()
+            cwdSaveLoading = true
+            cwdSaveStatus = null
+            ctx.getSharedPreferences("ambient-link-meta", Context.MODE_PRIVATE)
+              .edit().putString("default_cwd", v).apply()
+            scope.launch {
+              val ok = pushDefaultCwd(url, v)
+              cwdSaveStatus = if (ok) {
+                ActionLine("Saved on Mac relay", ok = true)
+              } else {
+                ActionLine("Saved on phone — Mac relay offline", ok = false)
+              }
+              cwdSaveLoading = false
+            }
+          },
+        )
+        InlineActionStatus(cwdSaveStatus)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
         CompactToggle("Continue button", showContinue) {
           persistChipToggles(it, showDictate)
+        }
+        CompactToggle("5s auto-continue countdown", autoContinue) {
+          persistChipToggles(showContinue, showDictate, it)
         }
         CompactToggle("Dictate button", showDictate) {
           persistChipToggles(showContinue, it)
@@ -351,17 +464,33 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
         QuickRepliesEditor(
           replies = quickReplies,
           hazeState = hazeState,
-          onChange = { persistQuickReplies(it) },
+          addStatus = addReplyStatus,
+          onChange = { list ->
+            val added = list.size > quickReplies.size
+            persistQuickReplies(list)
+            if (added) addReplyStatus = ActionLine("Quick reply added", ok = true)
+          },
         )
       }
 
       SectionCard(title = "Snooze") {
         val snoozing = System.currentTimeMillis() < snoozeUntilMs
         Text(
-          if (snoozing) "Active — agent messages are discarded until snooze ends."
-          else "Hide agent peeks for a while. Messages are discarded, not saved for later.",
+          if (snoozing) "Active — agent cards are discarded until snooze ends."
+          else "Hide agent cards for a while. Messages are discarded, not saved for later.",
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        com.lowkey.ambientlink.ui.FuzzyPillGrid(
+          hazeState = hazeState,
+          pills = UserPrefs.SUGGESTED_SNOOZE_MINUTES.map { formatSnoozeLabel(it) },
+          selected = buildSet {
+            selectedSnoozeLabel?.let { add(it) }
+          },
+          onPillClick = { label ->
+            val mins = UserPrefs.SUGGESTED_SNOOZE_MINUTES.firstOrNull { formatSnoozeLabel(it) == label }
+            if (mins != null) activateSnoozeMinutes(mins)
+          },
         )
         if (hasUsageData) {
           AiSnoozeSuggestions(
@@ -369,74 +498,32 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
             suggestions = suggestions.snooze,
             loading = suggestionsLoading,
             fromAi = suggestions.fromAi,
+            selected = buildSet { selectedSnoozeLabel?.let { add(it) } },
             onPick = { s -> activateSnoozeMinutes(s.minutes) },
           )
         }
+        InlineActionStatus(snoozeActionStatus)
         if (snoozing) {
-          OutlinedButton(
-            onClick = { clearSnooze() },
-            modifier = Modifier.fillMaxWidth(),
-          ) {
-            Text("End snooze now")
-          }
-        }
-      }
-
-      SectionCard(
-        title = "Glasses",
-        trailing = {
-          Icon(
-            painter = painterResource(R.drawable.ic_meta_glasses),
-            contentDescription = "Smart glasses",
-            tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(22.dp),
-          )
-        },
-      ) {
-        if (displayDevice != null) {
-          Text(
-            "${displayDevice.name} · ${displayDevice.compatibility.name.replace('_', ' ').lowercase()}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-          )
-        } else if (sdkReady) {
-          Text(
-            "No display-capable glasses found.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
-        }
-        if (regState != RegistrationState.REGISTERED && sdkReady) {
-          FilledTonalButton(
-            onClick = { wearablesRepo.startRegistration(activity) },
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(vertical = 10.dp),
-          ) {
-            Text("Pair glasses")
-          }
-        }
-        if (displayDevice != null && displayDevice.linkState != LinkState.CONNECTED) {
-          HintBanner("Connect glasses in Meta AI until Link is green.")
+          AmbientPrimaryButton(text = "End snooze now", onClick = { clearSnooze() })
         }
       }
 
       CollapsibleSectionCard(
-        title = "Relay",
-        expanded = relayExpanded,
-        onToggle = { relayExpanded = !relayExpanded },
+        title = "Debug",
+        expanded = debugExpanded,
+        onToggle = { debugExpanded = !debugExpanded },
       ) {
-        if (svcStatus.url.isNotBlank()) {
-          InlineMono("Host", svcStatus.url)
-        }
-        if (svcStatus.threads.isNotEmpty()) {
-          InlineMono("Threads", svcStatus.threads.joinToString(", "))
-        }
+        Text(
+          "Cloud proxy",
+          style = MaterialTheme.typography.labelMedium,
+          fontWeight = FontWeight.SemiBold,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (svcStatus.url.isNotBlank()) InlineMono("Host", svcStatus.url)
+        if (svcStatus.threads.isNotEmpty()) InlineMono("Threads", svcStatus.threads.joinToString(", "))
         svcStatus.lastError?.takeIf { !svcStatus.running }?.let {
           Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2)
         }
-
         CompactToggle("Pre-load speech model", preloadSoda) {
           preloadSoda = it
           RelayService.setSodaPreloadEnabled(ctx, it)
@@ -445,7 +532,6 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
           bluetoothSco = it
           RelayService.setBluetoothScoEnabled(ctx, it)
         }
-
         OutlinedTextField(
           value = url,
           onValueChange = { url = it },
@@ -455,133 +541,91 @@ private fun ControlScreen(activity: ComponentActivity, wearablesRepo: WearablesR
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
           modifier = Modifier.fillMaxWidth(),
         )
-
         DaemonActions(
           busy = busy,
           daemonRunning = svcStatus.running,
           onStart = {
             busy = true
+            relayActionStatus = null
             scope.launch {
               var target = url.trim()
               if (!isUsableRelayUrl(target)) {
-                Toast.makeText(ctx, "Discovering host…", Toast.LENGTH_SHORT).show()
+                relayActionStatus = ActionLine("Discovering host…", ok = true)
                 target = RelayService.discoverUrl(ctx) ?: ""
               }
               if (!isUsableRelayUrl(target)) {
-                Toast.makeText(ctx, "No host found — start ambient-link on your Mac", Toast.LENGTH_LONG).show()
+                relayActionStatus = ActionLine("No host — start ambient-link on your Mac", ok = false)
                 busy = false
                 return@launch
               }
               url = target
               RelayService.start(ctx, target)
-              Toast.makeText(ctx, "Connecting to $target", Toast.LENGTH_SHORT).show()
+              relayActionStatus = ActionLine("Connecting to $target", ok = true)
               busy = false
             }
           },
           onStop = {
             RelayService.stop(ctx)
-            Toast.makeText(ctx, "Daemon stopped", Toast.LENGTH_SHORT).show()
+            relayActionStatus = ActionLine("Daemon stopped", ok = true)
           },
           onDiscover = {
             busy = true
+            relayActionStatus = null
             scope.launch {
-              Toast.makeText(ctx, "Discovering…", Toast.LENGTH_SHORT).show()
+              relayActionStatus = ActionLine("Discovering…", ok = true)
               val found = RelayService.discoverUrl(ctx)
               if (found != null) {
                 url = found
                 RelayService.start(ctx, found, force = true)
-                Toast.makeText(ctx, "Connecting to $found", Toast.LENGTH_SHORT).show()
+                relayActionStatus = ActionLine("Connecting to $found", ok = true)
               } else {
-                Toast.makeText(ctx, "No host on LAN", Toast.LENGTH_SHORT).show()
+                relayActionStatus = ActionLine("No host on LAN", ok = false)
               }
               busy = false
             }
           },
         )
-      }
-
-      CollapsibleSectionCard(
-        title = "Defaults",
-        expanded = defaultsExpanded,
-        onToggle = { defaultsExpanded = !defaultsExpanded },
-      ) {
-        Text(
-          "Default agent",
-          style = MaterialTheme.typography.labelLarge,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(6.dp))
-        FlowRow(
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-          verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          UserPrefs.DEFAULT_AGENTS.forEach { agent ->
-            val selected = defaultAgent == agent
-            FilterChip(
-              selected = selected,
-              onClick = {
-                defaultAgent = agent
-                UserPrefs.setDefaultAgent(ctx, agent)
-                RelayService.pushCompanionConfig(ctx)
-              },
-              label = {
-                Text(agent.replaceFirstChar { it.uppercase() })
-              },
-              colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                selectedLabelColor = MaterialTheme.colorScheme.onSurface,
-              ),
-            )
-          }
-        }
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-          value = cwd,
-          onValueChange = { cwd = it },
-          label = { Text("Working directory") },
-          placeholder = { Text("/path/to/project") },
-          singleLine = true,
-          modifier = Modifier.fillMaxWidth(),
-        )
-        Button(
-          onClick = {
-            val v = cwd.trim()
-            ctx.getSharedPreferences("ambient-link-meta", Context.MODE_PRIVATE)
-              .edit().putString("default_cwd", v).apply()
-            scope.launch {
-              val ok = pushDefaultCwd(url, v)
-              Toast.makeText(
-                ctx,
-                if (ok) "Default directory saved" else "Saved locally (host offline)",
-                Toast.LENGTH_SHORT,
-              ).show()
-            }
-          },
-          modifier = Modifier.fillMaxWidth(),
-          contentPadding = PaddingValues(vertical = 10.dp),
-        ) {
-          Text("Save directory")
-        }
-      }
-
-      CollapsibleSectionCard(
-        title = "Debug",
-        expanded = debugExpanded,
-        onToggle = { debugExpanded = !debugExpanded },
-      ) {
+        InlineActionStatus(relayActionStatus)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+        SodaDebugPanel(ctx)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
         val debugSession = GlassesDisplay.session
         val canDebug = sdkReady && displayDevice != null && displayDevice.linkState == LinkState.CONNECTED
-        OutlinedButton(
+        AmbientPrimaryButton(
+          text = if (debugWidgetLoading) "Sending…" else "Fire test widget on glasses",
+          enabled = canDebug && !debugWidgetLoading,
+          loading = debugWidgetLoading,
           onClick = {
-            val id = devicesMeta.entries.firstOrNull { it.value == displayDevice }?.key ?: return@OutlinedButton
-            scope.launch { debugFireWidget(debugSession, id) }
+            val id = devicesMeta.entries.firstOrNull { it.value == displayDevice }?.key
+            if (id == null) {
+              debugWidgetStatus = ActionLine("No display device", ok = false)
+              return@AmbientPrimaryButton
+            }
+            debugWidgetLoading = true
+            debugWidgetStatus = null
+            scope.launch {
+              try {
+                debugFireWidget(scope, debugSession, id)
+                debugWidgetStatus = ActionLine("Test card sent — tap OK on glasses", ok = true)
+              } catch (e: Exception) {
+                debugWidgetStatus = ActionLine("Failed: ${e.message ?: "unknown"}", ok = false)
+              }
+              debugWidgetLoading = false
+            }
           },
-          enabled = canDebug,
-          modifier = Modifier.fillMaxWidth(),
-          contentPadding = PaddingValues(vertical = 10.dp),
-        ) {
-          Text("Fire test widget")
+        )
+        InlineActionStatus(debugWidgetStatus)
+        if (!canDebug) {
+          Text(
+            "Requires Meta AI registered and glasses connected.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
         }
+      }
+
+      SectionCard(title = "AI Core") {
+        AiCoreSettingsSection(status = aiCoreStatus, probing = suggestionsLoading)
       }
 
       Spacer(Modifier.height(8.dp))
@@ -696,64 +740,79 @@ private fun CollapsibleSectionCard(
 
 @Composable
 private fun StatusRail(
-  pairLabel: String,
-  pairColor: Color,
-  linkLabel: String,
-  linkColor: Color,
-  relayLabel: String,
-  relayColor: Color,
+  metaAiColor: Color,
+  proxyColor: Color,
 ) {
   Row(
     Modifier
       .fillMaxWidth()
       .padding(horizontal = 16.dp, vertical = 4.dp),
-    horizontalArrangement = Arrangement.SpaceBetween,
+    horizontalArrangement = Arrangement.spacedBy(24.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    StatusRailCell("Pair", pairLabel, pairColor, Modifier.weight(1f))
-    StatusRailCell("Link", linkLabel, linkColor, Modifier.weight(1f))
-    StatusRailCell("Relay", relayLabel, relayColor, Modifier.weight(1f))
+    StatusRailCell("Meta AI", metaAiColor)
+    StatusRailCell("cloud proxy", proxyColor)
   }
 }
 
 @Composable
 private fun StatusRailCell(
   label: String,
-  value: String,
   dotColor: Color,
-  modifier: Modifier = Modifier,
 ) {
   Row(
-    modifier.defaultMinSize(minHeight = 28.dp),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(5.dp),
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     Box(
       Modifier
-        .size(6.dp)
+        .size(7.dp)
         .clip(CircleShape)
         .background(dotColor),
     )
     Text(
       label,
       style = MaterialTheme.typography.labelSmall,
-      fontSize = 10.sp,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Text(
-      value,
-      style = MaterialTheme.typography.labelSmall,
-      fontWeight = FontWeight.SemiBold,
+      fontWeight = FontWeight.Medium,
       fontSize = 11.sp,
       maxLines = 1,
-      overflow = TextOverflow.Ellipsis,
     )
   }
 }
 
 @Composable
+private fun glassesIconColor(
+  regState: RegistrationState,
+  displayDevice: com.meta.wearable.dat.core.types.Device?,
+): Color = when {
+  regState != RegistrationState.REGISTERED -> Color(0xFFF0A93C)
+  displayDevice == null -> MaterialTheme.colorScheme.onSurfaceVariant
+  displayDevice.linkState == LinkState.CONNECTED -> MaterialTheme.colorScheme.secondary
+  displayDevice.linkState == LinkState.CONNECTING -> Color(0xFFF0A93C)
+  else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+private data class CwdHint(val ok: Boolean?, val message: String)
+
+private fun validateCwdHint(raw: String): CwdHint {
+  val v = raw.trim()
+  if (v.isEmpty()) {
+    return CwdHint(null, "Path on your Mac (where the relay runs). ~ = home folder.")
+  }
+  if (v.contains("://") || v.startsWith("ftp:", ignoreCase = true)) {
+    return CwdHint(false, "Use a Mac folder path, not a URL or FTP address.")
+  }
+  if (v.startsWith("/") || v.startsWith("~")) {
+    return CwdHint(true, "Valid path format")
+  }
+  return CwdHint(false, "Start with / or ~")
+}
+
+@Composable
 private fun linkStatusColor(state: LinkState): Color = when (state) {
   LinkState.CONNECTED -> MaterialTheme.colorScheme.secondary
+  LinkState.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant
+  LinkState.CONNECTING -> Color(0xFFF0A93C)
   else -> Color(0xFFF0A93C)
 }
 
@@ -821,31 +880,25 @@ private fun DaemonActions(
     val stack = maxWidth < 420.dp
     if (stack) {
       Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Button(
-          onClick = onStart,
+        AmbientPrimaryButton(
+          text = if (busy) "Starting…" else "Start daemon",
           enabled = !busy,
-          modifier = Modifier.fillMaxWidth(),
-          contentPadding = PaddingValues(vertical = 10.dp),
-        ) {
-          Text(if (busy) "Starting…" else "Start daemon")
-        }
+          loading = busy,
+          onClick = onStart,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-          OutlinedButton(
-            onClick = onStop,
+          AmbientPrimaryButton(
+            text = "Stop",
             enabled = daemonRunning && !busy,
+            onClick = onStop,
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(vertical = 10.dp),
-          ) {
-            Text("Stop")
-          }
-          OutlinedButton(
-            onClick = onDiscover,
+          )
+          AmbientPrimaryButton(
+            text = "Discover",
             enabled = !busy,
+            onClick = onDiscover,
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(vertical = 10.dp),
-          ) {
-            Text("Discover")
-          }
+          )
         }
       }
     } else {
@@ -853,30 +906,25 @@ private fun DaemonActions(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
       ) {
-        Button(
+        AmbientPrimaryButton(
+          text = if (busy) "Starting…" else "Start",
+          enabled = !busy,
+          loading = busy,
           onClick = onStart,
-          enabled = !busy,
           modifier = Modifier.weight(1f),
-          contentPadding = PaddingValues(vertical = 10.dp),
-        ) {
-          Text(if (busy) "Starting…" else "Start")
-        }
-        OutlinedButton(
-          onClick = onStop,
+        )
+        AmbientPrimaryButton(
+          text = "Stop",
           enabled = daemonRunning && !busy,
+          onClick = onStop,
           modifier = Modifier.weight(1f),
-          contentPadding = PaddingValues(vertical = 10.dp),
-        ) {
-          Text("Stop")
-        }
-        OutlinedButton(
-          onClick = onDiscover,
+        )
+        AmbientPrimaryButton(
+          text = "Discover",
           enabled = !busy,
+          onClick = onDiscover,
           modifier = Modifier.weight(1f),
-          contentPadding = PaddingValues(vertical = 10.dp),
-        ) {
-          Text("Discover")
-        }
+        )
       }
     }
   }
@@ -899,6 +947,8 @@ private fun RegistrationState.statusColor(): Color = when (this) {
 
 private fun LinkState.displayLabel(): String = when (this) {
   LinkState.CONNECTED -> "Connected"
+  LinkState.DISCONNECTED -> "Disconnected"
+  LinkState.CONNECTING -> "Connecting"
   else -> name.lowercase().replaceFirstChar { it.titlecase() }
 }
 
@@ -919,34 +969,15 @@ private fun relayStatusColor(s: RelayService.Status): Color = when {
 }
 
 private suspend fun debugFireWidget(
+  scope: kotlinx.coroutines.CoroutineScope,
   session: com.lowkey.ambientlink.hud.DatDisplaySession,
   deviceId: com.meta.wearable.dat.core.types.DeviceIdentifier,
 ) {
   val TAG = "ambient.debug"
   Log.i(TAG, "prepareDisplay id=$deviceId")
-  session.prepareDisplay(deviceId, onReady = { d ->
-    kotlinx.coroutines.GlobalScope.launch {
-      d.sendContent {
-        flexBox(gap = 10, padding = 16) {
-          text("debug", style = TextStyle.META, color = TextColor.SECONDARY)
-          flexBox(padding = 14, background = FlexBoxBackground.CARD) {
-            text("Hello from ambient link debug.", style = TextStyle.BODY)
-          }
-          flexBox(
-            direction = Direction.ROW,
-            gap = 12,
-            padding = 0,
-            crossAlignment = HudAlignment.CENTER,
-            background = FlexBoxBackground.NONE,
-          ) {
-            button("ok", style = ButtonStyle.PRIMARY, onClick = { Log.i(TAG, "button tapped") })
-          }
-        }
-      }.fold(
-        onSuccess = { Log.i(TAG, "sendContent SUCCESS — widget should be on HUD now") },
-        onFailure = { e, _ -> Log.e(TAG, "sendContent FAIL: ${e.description}") },
-      )
-    }
+  session.prepareDisplay(deviceId, onReady = { display ->
+    Log.i(TAG, "display ready — sending debug card")
+    com.lowkey.ambientlink.hud.HudWidgets.sendDebugCard(scope, display, session)
   })
 }
 

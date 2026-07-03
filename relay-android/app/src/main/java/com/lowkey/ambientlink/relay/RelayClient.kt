@@ -38,6 +38,8 @@ class RelayClient(val url: String) {
     data class HudYank(val yank: AgentYank) : Event()
     data class ThreadBusy(val thread: String) : Event()
     data class DictateActive(val thread: String, val source: String) : Event()
+    data class DictateCommit(val thread: String, val text: String, val source: String) : Event()
+    data class DictateAbort(val thread: String, val source: String) : Event()
     data class DictatePartial(val thread: String, val text: String, val source: String) : Event()
     data class DictateEnd(val thread: String, val text: String, val source: String) : Event()
     data class SessionFocus(val thread: String, val source: String) : Event()
@@ -120,6 +122,29 @@ class RelayClient(val url: String) {
             "dictate_active" -> _events.tryEmit(
               Event.DictateActive(obj.optString("thread"), obj.optString("source", "")),
             )
+            "dictate_begin" -> {
+              if (obj.optString("source") == "web") {
+                _events.tryEmit(
+                  Event.DictateActive(obj.optString("thread"), "web"),
+                )
+              }
+            }
+            "dictate_commit" -> {
+              if (obj.optString("source") == "web") {
+                _events.tryEmit(
+                  Event.DictateCommit(
+                    obj.optString("thread"),
+                    obj.optString("text", ""),
+                    "web",
+                  ),
+                )
+              }
+            }
+            "dictate_abort" -> {
+              if (obj.optString("source") == "web") {
+                _events.tryEmit(Event.DictateAbort(obj.optString("thread"), "web"))
+              }
+            }
             "dictate_partial" -> {
               val text = obj.optString("text", "")
               if (text.isNotBlank()) {

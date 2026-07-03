@@ -223,6 +223,8 @@ class RelayService : Service() {
           }
           is RelayClient.Event.ThreadBusy   -> p.cancelIfFor(ev.thread)
           is RelayClient.Event.DictateActive -> dictation.onActive(ev.thread, ev.source)
+          is RelayClient.Event.DictateCommit -> dictation.onCommitFromWeb(ev.thread)
+          is RelayClient.Event.DictateAbort -> dictation.onAbortFromWeb(ev.thread)
           is RelayClient.Event.DictateEnd   -> dictation.onEnd(ev.thread)
           is RelayClient.Event.SessionFocus -> {
             dictation.onSessionFocus(ev.thread)

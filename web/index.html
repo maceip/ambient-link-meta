@@ -8,13 +8,14 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=39">
-  <link rel="stylesheet" href="blocks/blocks.css?v=39">
-  <link rel="stylesheet" href="companion.css?v=39">
+  <link rel="stylesheet" href="styles.css?v=45">
+  <link rel="stylesheet" href="blocks/blocks.css?v=45">
+  <link rel="stylesheet" href="companion.css?v=45">
+  <link rel="stylesheet" href="themes.css?v=45">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v39';
+      var BUILD = 'v45';
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', function () {
         // Self-heal: earlier installs left a stale service worker caching an old
@@ -44,8 +45,18 @@
   <section id="view-threads" class="view blk-shelf-list-view">
     <header class="list-hdr blk-shelf-list-view__hdr">
       <span class="list-title blk-shelf-list-view__title">sessions</span>
-      <span id="conn-dot" class="conn-dot off" title="relay connection" aria-label="relay connection"></span>
     </header>
+    <div id="conn-status" class="conn-status off" role="status" aria-live="polite">
+      <span id="conn-dot" class="conn-dot off" aria-hidden="true"></span>
+      <span id="conn-label" class="conn-label">Not connected to relay</span>
+    </div>
+    <div id="theme-bar" class="theme-bar" role="toolbar" aria-label="color theme">
+      <button type="button" class="theme-chip active" data-theme="meta">Meta</button>
+      <button type="button" class="theme-chip" data-theme="dracula">Dracula</button>
+      <button type="button" class="theme-chip" data-theme="tokyo-night">Tokyo Night</button>
+      <button type="button" class="theme-chip" data-theme="catppuccin">Catppuccin</button>
+      <button type="button" class="theme-chip" data-theme="nord">Nord</button>
+    </div>
     <span id="relay-badge" class="relay-badge hidden" title="relay debug — auto cards suppressed">debug</span>
     <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
     <div id="list-scroll" class="list-scroll blk-shelf-list-view__scroll">
@@ -57,14 +68,20 @@
           <span class="compose-pill__label">New session</span>
         </button>
       </div>
-      <p id="empty-hint" class="empty-hint blk-shelf-list-view__empty">no sessions</p>
-      <div id="threads" class="thread-list ig-list blk-shelf-list-view__list" role="list"></div>
+      <div id="list-body" class="list-body">
+        <p id="empty-hint" class="empty-hint blk-shelf-list-view__empty">no sessions</p>
+        <div id="threads" class="thread-list dm-list blk-shelf-list-view__list" role="list"></div>
+      </div>
     </div>
   </section>
 
   <!-- SESSION COMPOSE -->
   <section id="view-thread" class="view hidden blk-agent-screen">
     <header class="thread-hdr">
+      <div id="thread-conn" class="thread-conn off" role="status" aria-live="polite">
+        <span class="thread-conn-dot" aria-hidden="true"></span>
+        <span id="thread-conn-label" class="thread-conn-label">Not connected</span>
+      </div>
       <span id="t-title" class="title hdr-title">session</span>
     </header>
     <div class="compose-wrap blk-agent-view">
@@ -117,8 +134,8 @@
       </div>
     </header>
     <div class="new-body blk-form-view__body">
-      <label class="field-label" for="new-cwd">working directory</label>
-      <input id="new-cwd" class="text-input focusable" type="text" placeholder="/path/to/project">
+      <label class="field-label" for="new-cwd">working directory (on your Mac)</label>
+      <input id="new-cwd" class="text-input focusable" type="text" placeholder="~/Projects/my-app">
       <label class="field-label" for="new-prompt">prompt</label>
       <textarea id="new-prompt" class="text-input focusable" rows="5" placeholder="what should the agent do?"></textarea>
     </div>

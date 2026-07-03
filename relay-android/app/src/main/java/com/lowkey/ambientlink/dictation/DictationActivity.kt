@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.lowkey.ambientlink.soda.SodaDictationEngine
 import com.lowkey.ambientlink.soda.SodaRuntime
+import com.lowkey.ambientlink.ui.AmbientPrimaryButton
 
 /**
  * Phone-side dictate capture. Primary path: on-device SODA (~/neural stack).
@@ -67,10 +68,7 @@ class DictationActivity : ComponentActivity() {
             )
             if (useSoda) {
               Spacer(Modifier.height(20.dp))
-              Button(
-                onClick = { finishWithPartial() },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00D4FF)),
-              ) { Text("send", color = Color.Black) }
+              AmbientPrimaryButton(text = "Send", onClick = { finishWithPartial() })
             }
           }
         }
