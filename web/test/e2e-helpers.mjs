@@ -74,6 +74,19 @@ export async function waitForRelayConnected(page, timeoutMs = 60_000) {
   );
 }
 
+/** Open new-session form via pull-reveal pill (glasses path). */
+export async function openNewSessionForm(page) {
+  await page.evaluate(() => {
+    var el = document.getElementById('new-session-reveal');
+    if (el) {
+      el.classList.add('open');
+      el.setAttribute('aria-hidden', 'false');
+    }
+  });
+  await page.locator('#new-session-pill').click();
+  await expect(page.locator('#view-new')).toBeVisible();
+}
+
 /** Click #new-start; retries when WS reconnect races the create form. */
 export async function clickNewStart(page) {
   const start = page.locator('#new-start');

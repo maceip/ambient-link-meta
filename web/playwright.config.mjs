@@ -32,6 +32,10 @@ export default defineConfig({
       testMatch: '**/core-session-flow.spec.mjs',
     },
     {
+      name: 'dpad',
+      testMatch: '**/dpad-navigation.spec.mjs',
+    },
+    {
       name: 'dictate',
       testMatch: '**/dictate.spec.mjs',
     },

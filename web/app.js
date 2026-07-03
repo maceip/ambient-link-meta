@@ -350,6 +350,81 @@
     sendCompanionUi(which);
     renderQuickReplies();
     renderConnStatus();
+    focusInitialInView(which);
+  }
+
+  function viewRootFor(name) {
+    if (name === 'list') return viewList;
+    if (name === 'thread') return viewThread;
+    if (name === 'new') return viewNew;
+    return null;
+  }
+
+  function isTextEntry(el) {
+    if (!el) return false;
+    var tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+  }
+
+  function focusablesInView(name) {
+    var root = viewRootFor(name);
+    if (!root || root.classList.contains('hidden')) return [];
+    return Array.prototype.slice.call(
+      root.querySelectorAll('.focusable:not([disabled])')
+    ).filter(function (el) {
+      return !el.classList.contains('hidden') && el.offsetParent !== null;
+    });
+  }
+
+  function focusInitialInView(which) {
+    if (which === 'list') {
+      var row = threadsUl && threadsUl.querySelector('.thread-row');
+      if (row) setTimeout(function () { row.focus(); }, 0);
+      return;
+    }
+    if (which === 'new' && newPrompt) {
+      setTimeout(function () { newPrompt.focus(); }, 50);
+    }
+  }
+
+  function moveFocus(direction) {
+    var items = focusablesInView(activeView);
+    if (!items.length) return;
+    var idx = items.indexOf(document.activeElement);
+    if (idx === -1) {
+      items[0].focus();
+      return;
+    }
+    var next = idx;
+    if (direction === 'up' || direction === 'left') {
+      next = idx > 0 ? idx - 1 : items.length - 1;
+    } else {
+      next = idx < items.length - 1 ? idx + 1 : 0;
+    }
+    items[next].focus();
+    if (items[next].scrollIntoView) {
+      items[next].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  function wireDpadNavigation() {
+    document.addEventListener('keydown', function (e) {
+      if (isTextEntry(document.activeElement)) return;
+      var key = e.key;
+      if (key === 'ArrowUp') { e.preventDefault(); moveFocus('up'); return; }
+      if (key === 'ArrowDown') { e.preventDefault(); moveFocus('down'); return; }
+      if (key === 'ArrowLeft') { e.preventDefault(); moveFocus('left'); return; }
+      if (key === 'ArrowRight') { e.preventDefault(); moveFocus('right'); return; }
+      if (key === 'Enter' && document.activeElement.classList.contains('focusable')) {
+        e.preventDefault();
+        document.activeElement.click();
+      }
+      if (key === 'Escape' && activeView !== 'list') {
+        e.preventDefault();
+        if (activeView === 'thread') closeThreadView();
+        else if (activeView === 'new') showView('list');
+      }
+    });
   }
 
   function liveThreads() {
@@ -726,7 +801,7 @@
         ariaLabel: folderTitle(t) + ', ' + (t.agent || 'agent') + ', ' + agentStatusLabel(badgeState),
         label: folderTitle(t),
         preview: preview || 'Waiting for agent…',
-        time: relativeTime(t.lastEventAt) || listTimeLabel(t.lastEventAt),
+        time: listTimeLabel(t.lastEventAt) || relativeTime(t.lastEventAt),
         avatarHtml: agentIcon(t.agent) || undefined,
         avatarClass: 'agent-' + ac,
         muted: snoozed,
@@ -738,6 +813,10 @@
     });
     scrollListToBottom();
     renderConnStatus();
+    if (activeView === 'list') {
+      var focused = document.activeElement;
+      if (!threadsUl.contains(focused)) focusInitialInView('list');
+    }
   }
 
   function renderCompose() {
@@ -1523,6 +1602,7 @@
   newStart.addEventListener('click', startNewThread);
   wireListPullReveal();
   wireThemes();
+  wireDpadNavigation();
   sendBtn.addEventListener('click', function () {
     var text = (dictatePhase === 'review' ? dictateDraft : (promptEl.value || '')).trim();
     if (!text || !activeThread) return;

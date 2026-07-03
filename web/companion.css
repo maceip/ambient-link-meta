@@ -460,6 +460,60 @@
   position: relative;
 }
 
+.ig-list.dm-list .blk-list-item__body,
+.ig-list.dm-list .thread-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ig-list.dm-list .blk-list-item__top,
+.ig-list.dm-list .thread-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ig-list.dm-list .blk-list-item__bottom,
+.ig-list.dm-list .thread-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ig-list.dm-list .blk-list-item__label,
+.ig-list.dm-list .thread-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ig-list.dm-list .blk-list-item__preview,
+.ig-list.dm-list .thread-row .preview {
+  flex: 1;
+  min-width: 0;
+}
+
+.ig-list.dm-list .blk-list-item__meta,
+.ig-list.dm-list .thread-meta {
+  flex: none;
+  margin-left: auto;
+}
+
+.ig-list.dm-list .blk-list-item__time,
+.ig-list.dm-list .thread-time {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 .ig-list.dm-list .blk-list-item__time,
 .ig-list.dm-list .thread-time {
   color: #25d366;

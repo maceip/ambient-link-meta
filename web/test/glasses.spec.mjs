@@ -14,6 +14,7 @@ import {
   expectSessionListMatchesRelay,
   postSession,
   waitForToastHidden,
+  openNewSessionForm,
   clickNewStart,
 } from './e2e-helpers.mjs';
 
@@ -44,7 +45,7 @@ test.describe('deployed companion — glasses path', () => {
     const { errors } = await openCompanion(page);
     await waitForRelayConnected(page);
 
-    await page.locator('[data-agent="cursor"]').click();
+    await openNewSessionForm(page);
     await expect(page.locator('#view-new')).toBeVisible();
     await page.fill('#new-cwd', FRESH_CWD);
     await page.fill('#new-prompt', 'playwright create probe');
@@ -106,7 +107,7 @@ test.describe('deployed companion — glasses path', () => {
     await waitForRelayConnected(page);
 
     if (live.length === 0) {
-      await page.locator('[data-agent="cursor"]').click();
+      await openNewSessionForm(page);
       await expect(page.locator('#new-start')).toBeVisible();
       const startBox = await page.locator('#new-start').boundingBox();
       expect(startBox).toBeTruthy();
