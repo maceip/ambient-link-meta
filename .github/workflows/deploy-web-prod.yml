@@ -34,10 +34,18 @@ jobs:
           ssh -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" \
             "bash -lc 'cd ${repo} && git fetch origin && git checkout main && git reset --hard origin/main && git log -1 --oneline'"
 
-      - name: Verify live site
+      - name: Verify deploy on server
+        env:
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
         run: |
           set -euo pipefail
-          curl -sfI https://public.computer/ambient-link/ >/dev/null
-          curl -sf https://public.computer/ambient-link/sw.js | grep -q 'const CACHE'
-          curl -sf https://public.computer/ambient-link/index.html | grep -q 'new-session-pill'
-          echo "production web deploy verified"
+          host="${PROD_SSH_HOST:?PROD_SSH_HOST secret is required}"
+          user="${PROD_SSH_USER:?PROD_SSH_USER secret is required}"
+          port="${PROD_SSH_PORT:-22}"
+          repo=/home/devuser/ambient-link-meta
+
+          ssh -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" \
+            "grep -q 'new-session-pill' ${repo}/web/index.html && grep -q 'ambient-link-meta-v39' ${repo}/web/sw.js && git -C ${repo} log -1 --oneline"
+          echo "production web deploy verified on server"
