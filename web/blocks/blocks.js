@@ -71,6 +71,20 @@
     });
   }
 
+  /** Glasses browsers often focus on first tap and click on second — fire click on touchend. */
+  function wireImmediateTap(scope) {
+    var rootEl = scope && scope.querySelectorAll ? scope : document;
+    rootEl.querySelectorAll('.rbtn, .quick-reply-pill, .thread-row, .compose-pill').forEach(function (el) {
+      if (el.dataset.tapWired) return;
+      el.dataset.tapWired = '1';
+      el.addEventListener('touchend', function (e) {
+        if (el.disabled) return;
+        e.preventDefault();
+        el.click();
+      }, { passive: false });
+    });
+  }
+
   /** Round HUD pill button (icon + expanding label on focus). */
   function renderRbtn(opts) {
     opts = opts || {};
@@ -308,6 +322,9 @@
   function renderChatThread(container, messages, opts) {
     if (!container) return;
     opts = opts || {};
+    var pinBottom = opts.pinBottom !== false;
+    var distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    var wasNearBottom = distFromBottom <= 48;
     container.innerHTML = '';
     var agentLabel = opts.agentLabel || 'Agent';
     var prevRole = null;
@@ -345,7 +362,13 @@
       }));
     }
     requestAnimationFrame(function () {
-      container.scrollTop = container.scrollHeight;
+      requestAnimationFrame(function () {
+        if (pinBottom && (opts.forceScrollBottom || wasNearBottom)) {
+          container.scrollTop = container.scrollHeight;
+        } else {
+          container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight - distFromBottom);
+        }
+      });
     });
   }
 
@@ -436,6 +459,7 @@
     PLAY_SVG: PLAY_SVG,
     bodyWithListening: bodyWithListening,
     wireRbtnGroups: wireRbtnGroups,
+    wireImmediateTap: wireImmediateTap,
     renderRbtn: renderRbtn,
     renderRbtnRow: renderRbtnRow,
     renderListItem: renderListItem,

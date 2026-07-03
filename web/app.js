@@ -19,6 +19,7 @@
   var quickRepliesEl = document.getElementById('quick-replies');
   var promptEl   = document.getElementById('prompt');
   var dictateBtn = document.getElementById('dictate');
+  var debugSendBtn = document.getElementById('debug-send');
   var sendBtn     = document.getElementById('send');
   var threadActions = document.getElementById('thread-actions');
   var composeField = document.getElementById('compose-field');
@@ -57,6 +58,7 @@
   var listeningPartial = '';
   var dictatePhase = 'idle'; // idle | listening | review
   var dictateDraft = '';
+  var chatPinBottom = true;
   var pendingDeepLink = null;
   var hostInfo = {
     relayDebug: false,
@@ -370,14 +372,32 @@
     return Array.prototype.slice.call(
       root.querySelectorAll('.focusable:not([disabled])')
     ).filter(function (el) {
+      if (name === 'thread' && el.id === 'prompt') return false;
       return !el.classList.contains('hidden') && el.offsetParent !== null;
     });
+  }
+
+  /** Glasses can't type — land on Dictate (mic), expanded and ready. */
+  function focusSessionPrimary() {
+    if (!dictateBtn || activeView !== 'thread') return;
+    setTimeout(function () {
+      if (dictateBtn.disabled) {
+        var items = focusablesInView('thread');
+        if (items.length) items[0].focus();
+        return;
+      }
+      dictateBtn.focus();
+    }, 60);
   }
 
   function focusInitialInView(which) {
     if (which === 'list') {
       var row = threadsUl && threadsUl.querySelector('.thread-row');
       if (row) setTimeout(function () { row.focus(); }, 0);
+      return;
+    }
+    if (which === 'thread') {
+      focusSessionPrimary();
       return;
     }
     if (which === 'new' && newPrompt) {
@@ -409,6 +429,12 @@
     document.addEventListener('keydown', function (e) {
       if (isTextEntry(document.activeElement)) return;
       var key = e.key;
+      if (activeView === 'thread' && (key === 'ArrowUp' || key === 'ArrowDown')) {
+        if (tryScrollChat(key === 'ArrowUp' ? 'up' : 'down')) {
+          e.preventDefault();
+          return;
+        }
+      }
       if (key === 'ArrowUp') { e.preventDefault(); moveFocus('up'); return; }
       if (key === 'ArrowDown') { e.preventDefault(); moveFocus('down'); return; }
       if (key === 'ArrowLeft') { e.preventDefault(); moveFocus('left'); return; }
@@ -612,6 +638,26 @@
     return (yank.lastAssistant || '').trim();
   }
 
+  function chatHasUserText(row, rawText) {
+    if (!rawText || !String(rawText).trim()) return false;
+    var disp = filterText(rawText).display;
+    var log = row && row.chatLog;
+    if (!log || !log.length) return false;
+    for (var i = 0; i < log.length; i++) {
+      if (log[i].role === 'user' && log[i].text === disp) return true;
+    }
+    return false;
+  }
+
+  function lastChatIndex(log, role) {
+    if (!log || !log.length) return -1;
+    for (var i = log.length - 1; i >= 0; i--) {
+      if (log[i].role === role) return i;
+    }
+    return -1;
+  }
+
+  /** User turns always append; agent turns coalesce while streaming. */
   function upsertChatTurn(row, role, rawText) {
     if (!rawText || !String(rawText).trim()) return;
     var filtered = filterText(rawText);
@@ -625,7 +671,7 @@
     };
     var last = log[log.length - 1];
     if (last && last.role === role && last.text === entry.text) return;
-    if (last && last.role === role) {
+    if (role === 'agent' && last && last.role === 'agent') {
       log[log.length - 1] = entry;
       return;
     }
@@ -633,9 +679,27 @@
     if (log.length > 48) row.chatLog = log.slice(-48);
   }
 
+  function syncUserInputIfNeeded(row, rawText) {
+    var ui = (rawText || '').trim();
+    if (!ui || chatHasUserText(row, ui)) return;
+    var log = ensureChatLog(row);
+    var lastUserIdx = lastChatIndex(log, 'user');
+    if (lastUserIdx < 0) {
+      upsertChatTurn(row, 'user', ui);
+      return;
+    }
+    var lastAgentIdx = lastChatIndex(log, 'agent');
+    if (lastAgentIdx >= lastUserIdx) upsertChatTurn(row, 'user', ui);
+  }
+
+  function syncUserFromYank(row) {
+    if (!row || !row.yank) return;
+    syncUserInputIfNeeded(row, row.yank.lastUserInput);
+  }
+
   function syncChatFromYank(row) {
     if (!row || !row.yank) return;
-    if (row.yank.lastUserInput) upsertChatTurn(row, 'user', row.yank.lastUserInput);
+    syncUserFromYank(row);
     var agentText = agentTextFromYank(row.yank);
     if (agentText) upsertChatTurn(row, 'agent', agentText);
   }
@@ -644,7 +708,7 @@
     if (!row || !session) return;
     if (session.last_user_input) row.lastUserInput = session.last_user_input;
     if (session.last_assistant) row.lastAssistant = session.last_assistant;
-    if (session.last_user_input) upsertChatTurn(row, 'user', session.last_user_input);
+    if (session.last_user_input) syncUserInputIfNeeded(row, session.last_user_input);
     if (session.last_assistant) upsertChatTurn(row, 'agent', session.last_assistant);
   }
 
@@ -826,6 +890,54 @@
     }
   }
 
+  function wireChatScroll() {
+    if (!wChat || wChat.dataset.scrollWired) return;
+    wChat.dataset.scrollWired = '1';
+    wChat.setAttribute('tabindex', '-1');
+    var touchStartY = 0;
+    wChat.addEventListener('scroll', function () {
+      var dist = wChat.scrollHeight - wChat.scrollTop - wChat.clientHeight;
+      chatPinBottom = dist <= 48;
+    }, { passive: true });
+    wChat.addEventListener('touchstart', function (e) {
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    wChat.addEventListener('touchmove', function (e) {
+      if (Math.abs(e.touches[0].clientY - touchStartY) > 10) chatPinBottom = false;
+    }, { passive: true });
+    wChat.addEventListener('wheel', function () {
+      chatPinBottom = false;
+    }, { passive: true });
+    wChat.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (wChat.scrollHeight <= wChat.clientHeight + 2) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var step = 56;
+      if (e.key === 'ArrowUp') wChat.scrollTop = Math.max(0, wChat.scrollTop - step);
+      else wChat.scrollTop = Math.min(wChat.scrollHeight - wChat.clientHeight, wChat.scrollTop + step);
+      var dist = wChat.scrollHeight - wChat.scrollTop - wChat.clientHeight;
+      chatPinBottom = dist <= 48;
+    });
+  }
+
+  function tryScrollChat(direction) {
+    if (!wChat || activeView !== 'thread') return false;
+    if (wChat.scrollHeight <= wChat.clientHeight + 2) return false;
+    var step = 56;
+    if (direction === 'up') {
+      if (wChat.scrollTop <= 0) return false;
+      wChat.scrollTop = Math.max(0, wChat.scrollTop - step);
+    } else {
+      var max = wChat.scrollHeight - wChat.clientHeight;
+      if (wChat.scrollTop >= max - 1) return false;
+      wChat.scrollTop = Math.min(max, wChat.scrollTop + step);
+    }
+    var dist = wChat.scrollHeight - wChat.scrollTop - wChat.clientHeight;
+    chatPinBottom = dist <= 48;
+    return true;
+  }
+
   function renderCompose() {
     var t = activeThread ? threads[activeThread] : null;
     if (!t || !wChat) return;
@@ -846,6 +958,7 @@
       BLK.renderChatThread(wChat, chatMessagesForRender(t), {
         agentLabel: chatAgentLabel(t),
         emptyText: 'Session ended with no messages.',
+        pinBottom: chatPinBottom,
       });
       return;
     }
@@ -871,6 +984,7 @@
       listening: listening,
       agentLabel: chatAgentLabel(t),
       emptyText: 'No messages yet — type or dictate below.',
+      pinBottom: chatPinBottom,
     });
     renderQuickReplies();
   }
@@ -917,6 +1031,7 @@
       row.busy = true;
       row.lastEventAt = clockNow();
     }
+    chatPinBottom = true;
     promptEl.value = '';
     showToast('sent', 'success');
     renderCompose();
@@ -1011,6 +1126,16 @@
     rec.start();
   }
 
+  function debugPingText() {
+    var now = new Date(clockNow());
+    var local = now.toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    return 'debug ping ' + local + ' · ' + now.toISOString();
+  }
+
   function sendPrompt(thread, text) {
     var row = threads[thread];
     if (row && row.ended) {
@@ -1028,6 +1153,7 @@
       row.lastEventAt = clockNow();
       row.busy = true;
     }
+    chatPinBottom = true;
     promptEl.value = '';
     resetDictateUi();
     showToast('sent', 'success');
@@ -1038,6 +1164,7 @@
   function openThread(id, compose) {
     if (activeThread && activeThread !== id) sendSessionSignal('session_blur', activeThread);
     activeThread = id;
+    chatPinBottom = true;
     setUrlForSession(id, !!compose);
     showView('thread');
     var cached = threads[id];
@@ -1048,9 +1175,7 @@
       ws.send(JSON.stringify({ type: 'hud_yank', thread: id }));
     }
     syncFromHost();
-    if (compose) {
-      setTimeout(function () { promptEl.focus(); }, 50);
-    }
+    if (compose) focusSessionPrimary();
   }
 
   function closeThreadView() {
@@ -1139,7 +1264,10 @@
 
   // Meta HUD button row: exactly one expanded pill — the focused control only.
   function wireRbtnGroups() {
-    if (BLK) BLK.wireRbtnGroups(document);
+    if (BLK) {
+      BLK.wireRbtnGroups(document);
+      if (BLK.wireImmediateTap) BLK.wireImmediateTap(document);
+    }
   }
 
   function pickAgent(agent) {
@@ -1257,6 +1385,7 @@
       }));
       trackDelivery(item.id, {
         thread: item.thread,
+        text: item.text,
         status: 'sent',
         at: item.at || clockNow(),
       });
@@ -1306,6 +1435,7 @@
     pendingInputs.push(item);
     trackDelivery(item.id, {
       thread: item.thread,
+      text: item.text,
       status: 'local_pending',
       at: item.at,
     });
@@ -1391,7 +1521,29 @@
       error: msg.error || '',
       pendingCount: msg.pending_count || 0,
       relayAt: msg.at || 0,
+      text: msg.text || '',
     });
+    var status = msg.status || '';
+    if (status !== 'delivered' && status !== 'landed') return;
+    var row = msg.thread ? threads[msg.thread] : null;
+    if (!row) return;
+    var text = (msg.text || '').trim();
+    if (!text) {
+      var st = deliveryStates[msg.id];
+      if (st && st.text) text = String(st.text).trim();
+    }
+    if (!text) {
+      for (var i = pendingInputs.length - 1; i >= 0; i--) {
+        if (pendingInputs[i].id === msg.id) {
+          text = String(pendingInputs[i].text || '').trim();
+          break;
+        }
+      }
+    }
+    if (text && !chatHasUserText(row, text)) {
+      upsertChatTurn(row, 'user', text);
+      if (row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: text });
+    }
   }
 
   function applyOutboxStatus(outbox) {
@@ -1593,6 +1745,8 @@
         applyDictateResult(msg.thread, msg.text || '');
       } else if (msg.type === 'input_status') {
         applyInputStatus(msg);
+        if (activeThread === msg.thread) renderCompose();
+        else renderThreadList();
         return;
       } else {
         return;
@@ -1640,6 +1794,7 @@
   backBtn.addEventListener('click', closeThreadView);
   newStart.addEventListener('click', startNewThread);
   wireListPullReveal();
+  wireChatScroll();
   wireThemes();
   wireDpadNavigation();
   sendBtn.addEventListener('click', function () {
@@ -1662,6 +1817,15 @@
     }
     startDictate();
   });
+  if (debugSendBtn) {
+    debugSendBtn.addEventListener('click', function () {
+      if (!activeThread) {
+        showToast('open a session first', 'error');
+        return;
+      }
+      sendPrompt(activeThread, debugPingText());
+    });
+  }
   if (dictatePause) dictatePause.addEventListener('click', function () { pauseDictate(); });
   if (dictateRedo) dictateRedo.addEventListener('click', function () {
     resetDictateUi();

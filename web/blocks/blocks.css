@@ -941,10 +941,12 @@ textarea.text-input {
 .compose-chat {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: block;
+  overflow-x: hidden;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   padding: 8px 6px 10px;
   scrollbar-width: none;
 }
@@ -958,6 +960,7 @@ textarea.text-input {
   display: flex;
   width: 100%;
   margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .blk-chat-row--agent {
@@ -998,10 +1001,7 @@ textarea.text-input {
 }
 
 .blk-chat-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   padding: 24px 20px;
   color: var(--text-muted, rgba(255, 255, 255, 0.45));
   font-size: 14px;

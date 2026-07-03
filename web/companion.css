@@ -874,6 +874,15 @@
   color: var(--danger);
   box-shadow: 0 0 16px rgba(240, 86, 110, 0.45);
 }
+.rbtn-debug {
+  border-color: rgba(255, 180, 60, 0.55);
+  color: rgba(255, 210, 120, 0.95);
+}
+.rbtn-debug:focus-visible,
+.rbtn-debug.rbtn-active {
+  border-color: rgba(255, 200, 80, 0.95);
+  color: #101216;
+}
 
 .thread-body {
   width: 100%;
@@ -1005,6 +1014,9 @@
 .compose-chat {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 .widget-card {
   display: none;
