@@ -44,43 +44,32 @@ ownership clean and avoid git "dubious ownership" errors.
 
 ## 2. Update the WEB APP (the common case)
 
-### Path A — git pull (preferred, reproducible)
+**Git only.** The server checkout at `/home/devuser/ambient-link-meta` is the
+source of truth on disk. Caddy serves those tracked files. Do **not** rsync,
+scp, or edit `web/` on the server — that puts bytes on disk without moving
+`HEAD`, and the next `git pull` will fail or require a destructive reset.
 
-From the laptop, in this repo (`ambient-link-meta`):
+From the laptop:
 
 ```bash
 git add -A && git commit -m "web: <what changed>"
 git push origin main
+bash scripts/deploy-web-prod.sh
 ```
 
-Then on the server:
+Or manually on the server:
 
 ```bash
 ssh root@public.computer 'sudo -u devuser -H git -C /home/devuser/ambient-link-meta pull --ff-only'
 ```
 
-That's it — Caddy serves the new files immediately. Go to §4 to verify and §5 to
-bust the cache.
+Caddy serves the new files immediately. Go to §4 to verify and §5 to bust the
+cache. No service restart is ever needed for web-app changes.
 
-### Path B — rsync (fast, for uncommitted/iterating changes)
-
-When you don't want to commit yet, push the local `web/` straight to the server:
-
-```bash
-# from the ambient-link-meta repo root (laptop)
-rsync -az --delete ./web/ root@public.computer:/home/devuser/ambient-link-meta/web/
-ssh root@public.computer 'chown -R devuser:devuser /home/devuser/ambient-link-meta/web'
-```
-
-`--delete` makes the server mirror local exactly (removes stale files). Drop it
-if you want additive-only. **Always reconcile back to git** (Path A) afterwards so
-the server checkout doesn't drift.
-
-> Windows note: rsync ships with Git-Bash/MSYS or WSL. If unavailable, use
-> `scp -r ./web/* root@public.computer:/home/devuser/ambient-link-meta/web/`
-> then the same `chown` line.
-
-No service restart is ever needed for web-app changes.
+> **train.public.computer** and other vhosts on the same machine use different
+> roots (`/opt/train`, etc.). Ambient Link is only
+> `https://public.computer/ambient-link/` → `…/ambient-link-meta/web`. They do
+> not share that directory.
 
 ---
 
@@ -163,8 +152,11 @@ When a change doesn't show:
    evicts the old cache. Commit it with the web change.
 2. Hard refresh / unregister: in DevTools → Application → Service Workers →
    *Unregister*, then reload. On glasses, reinstall the web app entry.
-3. If you bypassed git (Path B rsync), double-check `--delete` didn't leave a
-   stale hashed asset.
+3. If `git pull` fails with "local changes would be overwritten", the checkout
+   drifted (someone copied files outside git). As `devuser`:
+   `git fetch origin && git reset --hard origin/main`. Then fix ownership if
+   needed: `chown -R devuser:devuser /home/devuser/ambient-link-meta`. **Do not
+   rsync to prod again** — commit locally and pull.
 
 ---
 
@@ -199,6 +191,7 @@ not reach the relay — this is the #1 cause of `404` on a new API path.
 | git "dubious ownership" | running git as root on devuser repo | run as `sudo -u devuser -H git …` |
 | `go build` fails on server | server Go too old for `go.mod` | cross-compile on laptop (§3 Path B) |
 | relay up but no sessions | sessions run on the **laptop**, not the server | needs the cloud bridge (laptop → `wss://public.computer/ambient-link/relay`); separate feature |
+| `git pull` blocked on server | disk changed outside git (rsync/scp/manual edit) | `git reset --hard origin/main` as devuser; deploy via git only (§2) |
 | `502` on `/ambient-link/ws` | relay down | `systemctl restart ambient-link-host` + check `journalctl -u ambient-link-host` |
 
 ---
@@ -206,7 +199,10 @@ not reach the relay — this is the #1 cause of `404` on a new API path.
 ## 8. One-shot quick reference
 
 ```bash
-# WEB: push then pull
+# WEB: commit, push, pull (preferred)
+bash scripts/deploy-web-prod.sh
+
+# WEB: manual
 git push origin main && \
 ssh root@public.computer 'sudo -u devuser -H git -C /home/devuser/ambient-link-meta pull --ff-only'
 
