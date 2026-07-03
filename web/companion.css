@@ -499,6 +499,10 @@
 .ig-list.dm-list .thread-row .preview {
   flex: 1;
   min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
 }
 
 .ig-list.dm-list .blk-list-item__meta,

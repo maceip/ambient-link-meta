@@ -9,7 +9,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VALIDATION = Path('/Users/mac/Desktop/Screenshot 2026-07-03 at 01.14.53.png')
-DEFAULT_CAPTURE = ROOT / 'web/test/output/session-list-v52-600.png'
+DEFAULT_CAPTURE = ROOT / 'web/test/output/session-list-v53-600.png'
 DEFAULT_OUT = ROOT / 'web/test/output/validation-overlay-50pct.png'
 
 
@@ -17,8 +17,8 @@ def composite(base_path: Path, overlay_path: Path, out_path: Path, opacity: floa
     base = Image.open(base_path).convert('RGBA')
     overlay = Image.open(overlay_path).convert('RGBA')
 
-    # Scale overlay to ~42% of base width — aligns list area with WhatsApp cards in gate image.
-    target_w = int(base.width * 0.42)
+    # Scale overlay to align with WhatsApp card stack in gate image.
+    target_w = int(base.width * 0.44)
     scale = target_w / overlay.width
     target_h = int(overlay.height * scale)
     overlay = overlay.resize((target_w, target_h), Image.Resampling.LANCZOS)
@@ -27,9 +27,8 @@ def composite(base_path: Path, overlay_path: Path, out_path: Path, opacity: floa
     alpha = alpha.point(lambda p: int(p * opacity))
     overlay.putalpha(alpha)
 
-    # Position over the WhatsApp card stack (tuned for gate screenshot layout).
-    x = int(base.width * 0.08)
-    y = int(base.height * 0.22)
+    x = int(base.width * 0.075)
+    y = int(base.height * 0.205)
     x = max(0, min(x, base.width - target_w))
     y = max(0, min(y, base.height - target_h))
 

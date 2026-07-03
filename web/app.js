@@ -488,14 +488,23 @@
     return label || 'session';
   }
 
-  /** List card preview — start of the most recent agent reply only. */
+  /** List card preview — one short line (validation gate). */
+  function listPreviewPlain(raw) {
+    var s = String(raw || '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return truncate(s, 64);
+  }
+
   function listPreviewText(t) {
     if (t.ended) return 'session ended';
     if (t.busy) return 'thinking…';
     var agentPrev = lastAgentPreview(t);
-    if (agentPrev) return previewFromText(agentPrev);
-    if (t.lastAssistant) return previewFromText(t.lastAssistant);
-    if (t.yank && t.yank.lastAssistant) return previewFromText(t.yank.lastAssistant);
+    if (agentPrev) return listPreviewPlain(agentPrev);
+    if (t.lastAssistant) return listPreviewPlain(t.lastAssistant);
+    if (t.yank && t.yank.lastAssistant) return listPreviewPlain(t.yank.lastAssistant);
     return '';
   }
 
