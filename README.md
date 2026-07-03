@@ -100,3 +100,9 @@ open the app cold, the web app stands alone.
    [`relay-android/`](relay-android) or [`relay-ios/`](relay-ios)).
 3. Add the web app to your glasses launcher (see [`web/`](web)).
 4. Configure both phone relay and web app to point at your host's WS URL.
+
+## Production deploy
+
+Web app deploys automatically via GitHub Actions on every push to `main`
+(`.github/workflows/deploy-web-prod.yml` → `git reset --hard origin/main` on
+`public.computer`). CI verify: deploy-trigger-1.
