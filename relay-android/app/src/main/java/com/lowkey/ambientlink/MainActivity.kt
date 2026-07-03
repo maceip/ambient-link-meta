@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lowkey.ambientlink.hud.GlassesDisplay
 import com.lowkey.ambientlink.relay.RelayConfig
+import com.lowkey.ambientlink.relay.RelayLanStore
 import com.lowkey.ambientlink.relay.RelayService
 import com.lowkey.ambientlink.relay.CwdSaveOutcome
 import com.lowkey.ambientlink.settings.AiCoreProbe
@@ -262,6 +263,7 @@ private fun ControlScreen(
   var debugWidgetStatus by remember { mutableStateOf<ActionLine?>(null) }
   var relayActionStatus by remember { mutableStateOf<ActionLine?>(null) }
   var lanOnly by remember { mutableStateOf(RelayService.isLanOnlyEnabled(ctx)) }
+  var macIp by remember { mutableStateOf(RelayLanStore.lastLanIp(ctx) ?: "") }
   var selectedSnoozeLabel by remember { mutableStateOf<String?>(null) }
   var snoozeActionStatus by remember { mutableStateOf<ActionLine?>(null) }
 
@@ -642,6 +644,33 @@ private fun ControlScreen(
           },
         )
         OutlinedTextField(
+          value = macIp,
+          onValueChange = { macIp = it },
+          label = { Text("Mac IP (if Discover fails)") },
+          placeholder = { Text("192.168.1.33") },
+          singleLine = true,
+          textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+          modifier = Modifier.fillMaxWidth(),
+        )
+        AmbientPrimaryButton(
+          text = if (busy) "Connecting…" else "Connect to Mac IP",
+          enabled = !busy && macIp.trim().contains('.'),
+          loading = busy,
+          onClick = {
+            busy = true
+            relayActionStatus = null
+            scope.launch {
+              val ip = macIp.trim()
+              val target = com.lowkey.ambientlink.relay.RelayDiscovery.defaultWsUrl(ip)
+              url = target
+              RelayService.start(ctx, target, force = true)
+              relayActionStatus = ActionLine("Connecting to $target", ok = true)
+              busy = false
+            }
+          },
+        )
+        OutlinedTextField(
           value = url,
           onValueChange = { url = it },
           label = { Text("Relay URL") },
@@ -691,9 +720,9 @@ private fun ControlScreen(
                 val cached = com.lowkey.ambientlink.relay.RelayLanStore.lastLanWs(ctx)
                 relayActionStatus = ActionLine(
                   if (cached != null) {
-                    "Mac not found — last seen $cached (same Wi‑Fi? relay running?)"
+                    "Discover failed — try Mac IP field (last seen $cached)"
                   } else {
-                    "No host on LAN — start ambient-link on your Mac"
+                    "Discover failed — enter Mac IP above (mDNS often blocked on Wi‑Fi)"
                   },
                   ok = false,
                 )

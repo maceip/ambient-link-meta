@@ -6,15 +6,24 @@ import android.content.Context
 object RelayLanStore {
   private const val PREFS = "ambient-link-meta"
   private const val KEY_LAN_WS = "last_lan_relay_ws"
+  private const val KEY_LAN_IP = "last_lan_relay_ip"
 
   fun rememberLanWs(ctx: Context, wsUrl: String) {
     val trimmed = wsUrl.trim()
     if (!trimmed.startsWith("ws://")) return
+    val ip = trimmed.removePrefix("ws://").substringBefore(':').substringBefore('/')
     ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
       .edit()
       .putString(KEY_LAN_WS, trimmed)
+      .putString(KEY_LAN_IP, ip)
       .apply()
   }
+
+  fun lastLanIp(ctx: Context): String? =
+    ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .getString(KEY_LAN_IP, null)
+      ?.trim()
+      ?.takeIf { it.contains('.') }
 
   fun lastLanWs(ctx: Context): String? =
     ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

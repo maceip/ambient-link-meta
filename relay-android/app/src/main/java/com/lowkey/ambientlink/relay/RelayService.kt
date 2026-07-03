@@ -134,21 +134,10 @@ class RelayService : Service() {
   }
 
   private suspend fun resolveLanRelayUrl(): String? {
-    RelayDiscovery.discover(applicationContext, timeoutMs = if (isLanOnlyEnabled(applicationContext)) 6_000 else 4_000)
-      ?.let { found ->
-        Log.i(TAG, "relay: using LAN $found")
-        RelayLanStore.rememberLanWs(applicationContext, found)
-        return found
-      }
-    RelayLanStore.lastLanWs(applicationContext)?.let { cached ->
-      if (RelayConfig.isReachableWs(cached)) {
-        Log.i(TAG, "relay: using cached LAN $cached")
-        return cached
-      }
-      if (isLanOnlyEnabled(applicationContext)) {
-        Log.i(TAG, "relay: LAN-only trying cached $cached")
-        return cached
-      }
+    RelayDiscovery.discoverOrDirect(applicationContext)?.let { found ->
+      Log.i(TAG, "relay: using LAN $found")
+      RelayLanStore.rememberLanWs(applicationContext, found)
+      return found
     }
     return null
   }
@@ -447,18 +436,7 @@ class RelayService : Service() {
       ctx.stopService(Intent(ctx, RelayService::class.java))
     }
 
-    suspend fun discoverUrl(ctx: Context): String? {
-      RelayDiscovery.discover(ctx, timeoutMs = 10_000)?.let { found ->
-        RelayLanStore.rememberLanWs(ctx, found)
-        return found
-      }
-      RelayLanStore.lastLanWs(ctx)?.let { cached ->
-        if (RelayConfig.isReachableWs(cached)) {
-          Log.i(TAG, "discover: using cached LAN $cached")
-          return cached
-        }
-      }
-      return null
-    }
+    suspend fun discoverUrl(ctx: Context): String? =
+      RelayDiscovery.discoverOrDirect(ctx, timeoutMs = 12_000)
   }
 }

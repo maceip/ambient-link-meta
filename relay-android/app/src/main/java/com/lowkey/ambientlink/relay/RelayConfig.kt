@@ -42,7 +42,7 @@ object RelayConfig {
     }
     RelayLanStore.lastLanHttp(ctx)?.let { candidates.add(it) }
     if (discoverIfNeeded) {
-      RelayDiscovery.discover(ctx, timeoutMs = 10_000)?.let { found ->
+      RelayDiscovery.discoverOrDirect(ctx, timeoutMs = 8_000)?.let { found ->
         RelayLanStore.rememberLanWs(ctx, found)
         wsToHttp(found)?.let { candidates.add(it) }
       }
@@ -67,7 +67,7 @@ object RelayConfig {
     val normalized = normalizeCwdInput(cwd)
     val base = resolveHostHttpBase(ctx, relayWsUrl, daemonWsUrl, discoverIfNeeded = true)
       ?: return@withContext CwdSaveOutcome.Unreachable(
-        "Can't reach your Mac on Wi‑Fi. In Debug, set Relay URL to ws://YOUR_MAC_IP:5181/ambient-link/ws",
+        "Can't reach your Mac on Wi‑Fi. In Debug, enter your Mac IP below or set Relay URL to ws://YOUR_MAC_IP:5181/ambient-link/ws",
       )
     postConfig(base, normalized, create)
   }
@@ -94,7 +94,7 @@ object RelayConfig {
     } catch (e: Exception) {
       Log.w(TAG, "saveDefaultCwd failed: ${e.message}")
       return CwdSaveOutcome.Unreachable(
-        "Can't reach your Mac on Wi‑Fi. In Debug, set Relay URL to ws://YOUR_MAC_IP:5181/ambient-link/ws",
+        "Can't reach your Mac on Wi‑Fi. In Debug, enter your Mac IP below or set Relay URL to ws://YOUR_MAC_IP:5181/ambient-link/ws",
       )
     }
   }
