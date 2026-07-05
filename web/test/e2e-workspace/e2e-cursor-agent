@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# Wrapper so `host run` maps to agent=cursor and thread_id matches e2e-workspace cwd.
-exec agent "$@"

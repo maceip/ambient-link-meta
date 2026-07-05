@@ -71,26 +71,6 @@
     });
   }
 
-  /** Glasses browsers often focus on first tap and click on second — activate on touchend. */
-  function wireImmediateTap(scope) {
-    var rootEl = scope && scope.querySelectorAll ? scope : document;
-    rootEl.querySelectorAll('.rbtn, .quick-reply-pill, .thread-row, .compose-pill').forEach(function (el) {
-      if (el.dataset.tapWired) return;
-      el.dataset.tapWired = '1';
-      el.addEventListener('touchend', function (e) {
-        if (el.disabled) return;
-        e.preventDefault();
-        if (el.focus) el.focus({ preventScroll: true });
-        el.click();
-      }, { passive: false });
-      el.addEventListener('pointerup', function (e) {
-        if (e.pointerType !== 'touch' || el.disabled) return;
-        e.preventDefault();
-        el.click();
-      });
-    });
-  }
-
   /** Round HUD pill button (icon + expanding label on focus). */
   function renderRbtn(opts) {
     opts = opts || {};
@@ -320,26 +300,34 @@
       bubble.appendChild(note);
     }
 
+    if (opts.at) {
+      var timeEl = document.createElement('div');
+      timeEl.className = 'blk-chat-bubble__time';
+      var d = new Date(opts.at);
+      timeEl.textContent = d.toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+      bubble.appendChild(timeEl);
+    }
+
     stack.appendChild(bubble);
     wrap.appendChild(stack);
     return wrap;
   }
 
-  /** Render turn-by-turn chat; opts.thinking / opts.listening append status bubbles. */
   function renderChatThread(container, messages, opts) {
     if (!container) return;
     opts = opts || {};
-    var pinBottom = opts.pinBottom !== false;
-    var distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    var wasNearBottom = distFromBottom <= 48;
     container.innerHTML = '';
     var agentLabel = opts.agentLabel || 'Agent';
     var prevRole = null;
     var list = messages || [];
-    if (!list.length && !opts.thinking && !opts.listening) {
+    if (!list.length && !opts.thinking) {
       var empty = document.createElement('div');
       empty.className = 'blk-chat-empty';
-      empty.textContent = opts.emptyText || 'No messages yet — type or dictate below.';
+      empty.textContent = opts.emptyText || 'No messages yet.';
       container.appendChild(empty);
     }
     list.forEach(function (m) {
@@ -360,23 +348,6 @@
         showLabel: prevRole !== 'agent',
       }));
     }
-    if (opts.listening) {
-      container.appendChild(renderChatBubble({
-        role: 'user',
-        text: opts.listening.trim() || 'listening…',
-        listening: true,
-        showLabel: prevRole !== 'user',
-      }));
-    }
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        if (pinBottom && (opts.forceScrollBottom || wasNearBottom)) {
-          container.scrollTop = container.scrollHeight;
-        } else {
-          container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight - distFromBottom);
-        }
-      });
-    });
   }
 
   function renderActionChip(chip, handlers) {

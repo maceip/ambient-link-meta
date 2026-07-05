@@ -1048,6 +1048,24 @@ textarea.text-input {
 
 .blk-chat-bubble__text {
   white-space: pre-wrap;
+  max-height: min(38vh, 240px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.blk-chat-bubble__time {
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  opacity: 0.65;
+  text-align: right;
+}
+
+.blk-chat-bubble--agent .blk-chat-bubble__time {
+  text-align: left;
 }
 
 .blk-chat-bubble__note {

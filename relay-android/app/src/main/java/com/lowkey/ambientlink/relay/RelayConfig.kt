@@ -103,7 +103,8 @@ object RelayConfig {
     return try {
       http.newCall(Request.Builder().url("$base/healthz").get().build())
         .execute().use { it.isSuccessful }
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+      Log.w(TAG, "health probe failed for $base: ${e.message}")
       false
     }
   }
@@ -127,11 +128,11 @@ object RelayConfig {
 
   private fun wsToHttp(ws: String): String? = RelayLanStore.wsToHttp(ws)
 
-  /** True when the Mac relay HTTP API responds (LAN only — never cloud). */
-  fun isReachableWs(ws: String): Boolean {
-    val base = wsToHttp(ws.trim()) ?: return false
-    if (isCloudRelay(base)) return false
-    return probeHealth(base)
+  /** True when the Mac relay HTTP API responds (LAN only — never cloud). Must run off main thread. */
+  suspend fun isReachableWs(ws: String): Boolean = withContext(Dispatchers.IO) {
+    val base = wsToHttp(ws.trim()) ?: return@withContext false
+    if (isCloudRelay(base)) return@withContext false
+    probeHealth(base)
   }
 
   private fun isCloudRelay(httpBase: String): Boolean {

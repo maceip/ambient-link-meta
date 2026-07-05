@@ -19,8 +19,8 @@ android {
     applicationId = "com.lowkey.ambientlink"
     minSdk = 31
     targetSdk = 35
-    versionCode = 2
-    versionName = "0.1.1-hud"
+    versionCode = 3
+    versionName = "0.1.2-hud"
 
     manifestPlaceholders["mwdat_application_id"] =
       providers.gradleProperty("mwdat_application_id").orNull

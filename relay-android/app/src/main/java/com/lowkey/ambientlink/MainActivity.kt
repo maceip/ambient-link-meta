@@ -136,7 +136,7 @@ class MainActivity : ComponentActivity() {
       val btOk = WearablesRuntime.PERMISSIONS.all { results[it] == true }
       if (btOk) {
         WearablesRuntime.initialize(this)
-        RelayService.start(this, null)
+        RelayService.start(this, savedLanRelayUrl())
       } else {
         Toast.makeText(this, "Bluetooth permissions are required for glasses HUD", Toast.LENGTH_LONG).show()
       }
@@ -163,7 +163,7 @@ class MainActivity : ComponentActivity() {
       wearablesRepo.refreshNow()
       maybeRequestNotificationPermission()
       maybeRequestMicPermission()
-      RelayService.start(this, null)
+      RelayService.start(this, savedLanRelayUrl())
     } else {
       permissionsLauncher.launch(WearablesRuntime.PERMISSIONS)
     }
@@ -187,6 +187,17 @@ class MainActivity : ComponentActivity() {
     ) {
       notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
+  }
+
+  /** Reuse last LAN relay on cold start so LAN-only mode does not require re-entering Mac IP. */
+  private fun savedLanRelayUrl(): String? {
+    val saved = getSharedPreferences("ambient-link-meta", MODE_PRIVATE)
+      .getString("relay_url", null)
+      ?.trim()
+      ?: return null
+    if (!RelayService.isLanOnlyEnabled(this)) return null
+    if (!saved.startsWith("ws://") || !saved.contains('.')) return null
+    return saved
   }
 }
 
@@ -264,6 +275,11 @@ private fun ControlScreen(
   var relayActionStatus by remember { mutableStateOf<ActionLine?>(null) }
   var lanOnly by remember { mutableStateOf(RelayService.isLanOnlyEnabled(ctx)) }
   var macIp by remember { mutableStateOf(RelayLanStore.lastLanIp(ctx) ?: "") }
+
+  LaunchedEffect(svcStatus.url, lanOnly) {
+    if (svcStatus.url.isNotBlank()) url = svcStatus.url
+    else if (lanOnly) url = ""
+  }
   var selectedSnoozeLabel by remember { mutableStateOf<String?>(null) }
   var snoozeActionStatus by remember { mutableStateOf<ActionLine?>(null) }
 
@@ -636,13 +652,20 @@ private fun ControlScreen(
         )
         CompactToggle(
           label = "Glasses Bluetooth mic (in-call UI)",
-          description = "Triggers in-call UI on glasses — leave off unless testing.",
+          description = "Uses glasses mic for web companion dictate (brief in-call UI on glasses). Auto-on for web dictate.",
           checked = bluetoothSco,
           onCheckedChange = {
             bluetoothSco = it
             RelayService.setBluetoothScoEnabled(ctx, it)
           },
         )
+        if (lanOnly && (svcStatus.url.isBlank() || svcStatus.url.startsWith("wss://"))) {
+          Text(
+            "LAN-only: not connected to Mac — enter Mac IP below and tap Connect.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+          )
+        }
         OutlinedTextField(
           value = macIp,
           onValueChange = { macIp = it },
@@ -686,18 +709,22 @@ private fun ControlScreen(
             busy = true
             relayActionStatus = null
             scope.launch {
-              var target = url.trim()
-              if (!isUsableRelayUrl(target)) {
-                relayActionStatus = ActionLine("Discovering host…", ok = true)
+              var target = if (lanOnly) "" else url.trim()
+              if (lanOnly || !isUsableRelayUrl(target)) {
+                relayActionStatus = ActionLine("Discovering Mac…", ok = true)
                 target = RelayService.discoverUrl(ctx) ?: ""
               }
               if (!isUsableRelayUrl(target)) {
-                relayActionStatus = ActionLine("No host — start ambient-link on your Mac", ok = false)
+                relayActionStatus = ActionLine(
+                  if (lanOnly) "LAN-only — enter Mac IP above (Discover failed)"
+                  else "No host — start ambient-link on your Mac",
+                  ok = false,
+                )
                 busy = false
                 return@launch
               }
               url = target
-              RelayService.start(ctx, target)
+              RelayService.start(ctx, target, force = true)
               relayActionStatus = ActionLine("Connecting to $target", ok = true)
               busy = false
             }

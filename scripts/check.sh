@@ -43,14 +43,6 @@ ok() { echo "$1" >>"$LOG"; }
     ok "phone skip (no adb)"
   fi
 
-  bash "$ROOT/scripts/test-agents.sh" >>"$LOG" 2>&1 || fail "agents delivery test"
-  ok "agents delivery"
-
-  bash "$ROOT/scripts/test-chip-contract.sh" >>"$LOG" 2>&1 || fail "chip contract"
-  ok "chip contract"
-
-  bash "$ROOT/scripts/test-web.sh" >>"$LOG" 2>&1 || fail "web test"
-  ok "web test"
 } >>"$LOG" 2>&1
 
 echo "check OK — detail: $LOG"

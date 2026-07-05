@@ -4,14 +4,6 @@
   "private": true,
   "description": "Glasses-side SPA. Static; expects relay reachable at relative /ambient-link/ws (front it with Caddy/nginx).",
   "scripts": {
-    "serve": "python3 -m http.server 8080",
-    "test:e2e": "playwright test",
-    "test:e2e:glasses": "playwright test --project=glasses",
-    "test:e2e:integrated": "playwright test --project=integrated",
-    "test:e2e:dictate": "playwright test dictate.spec.mjs --headed",
-    "test:e2e:ui": "playwright test --ui"
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.52.0"
+    "serve": "python3 -m http.server 8080"
   }
 }

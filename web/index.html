@@ -8,13 +8,13 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=58">
-  <link rel="stylesheet" href="blocks/blocks.css?v=58">
-  <link rel="stylesheet" href="companion.css?v=58">
+  <link rel="stylesheet" href="styles.css?v=65">
+  <link rel="stylesheet" href="blocks/blocks.css?v=65">
+  <link rel="stylesheet" href="companion.css?v=65">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v58';
+      var BUILD = 'v65';
       if (!('serviceWorker' in navigator)) return;
       var reloadedForSw = false;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -64,18 +64,6 @@
         <div id="threads" class="thread-list dm-list ig-list blk-shelf-list-view__list" role="list"></div>
       </div>
     </div>
-    <nav id="list-actions" class="list-actions" role="toolbar" aria-label="session list actions">
-      <div class="rbtn-row blk-rbtn-row">
-        <button type="button" id="list-new-session" class="rbtn focusable rbtn-primary" aria-label="new session">
-          <span class="rbtn-pill">
-            <span class="rbtn-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.75"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
-            </span>
-            <span class="rbtn-label">New session</span>
-          </span>
-        </button>
-      </div>
-    </nav>
   </section>
 
   <!-- SESSION COMPOSE -->
@@ -172,9 +160,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="chipset.js?v=58"></script>
-<script src="content-pipeline.js?v=58"></script>
-<script src="blocks/blocks.js?v=58"></script>
-<script src="app.js?v=58"></script>
+<script src="log.js?v=65"></script>
+<script src="chipset.js?v=65"></script>
+<script src="content-pipeline.js?v=65"></script>
+<script src="blocks/blocks.js?v=65"></script>
+<script src="app.js?v=65"></script>
 </body>
 </html>

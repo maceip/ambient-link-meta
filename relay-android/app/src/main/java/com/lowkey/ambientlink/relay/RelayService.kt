@@ -1,6 +1,8 @@
 package com.lowkey.ambientlink.relay
 
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -32,6 +34,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 // Foreground service. Keeps a WS connection to the relay alive while the app is
 // backgrounded, and bridges relay events into the HudPresenter.
@@ -46,6 +49,7 @@ class RelayService : Service() {
   private var eventsJob: Job? = null
   private var activeUrl: String = ""
   private var microphoneForeground = false
+  private var foregroundStarted = false
   private val restartMutex = Mutex()
 
   override fun onBind(intent: Intent?): IBinder? = null
@@ -108,7 +112,21 @@ class RelayService : Service() {
 
   private fun applyForeground(text: String) {
     val notification = buildNotification(text)
-    ServiceCompat.startForeground(this, NOTIF_ID, notification, foregroundServiceType())
+    if (!foregroundStarted) {
+      try {
+        ServiceCompat.startForeground(this, NOTIF_ID, notification, foregroundServiceType())
+        foregroundStarted = true
+      } catch (e: Exception) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && e is ForegroundServiceStartNotAllowedException) {
+          Log.w(TAG, "FGS start blocked — stopping relay to avoid crash", e)
+          stopSelf()
+          return
+        }
+        throw e
+      }
+      return
+    }
+    getSystemService(NotificationManager::class.java).notify(NOTIF_ID, notification)
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -117,6 +135,13 @@ class RelayService : Service() {
     scope.launch {
       val url = resolveRelayUrl(explicit)
       if (url == null) {
+        eventsJob?.cancel()
+        client?.stop()
+        webDictation?.stop()
+        client = null
+        presenter = null
+        webDictation = null
+        activeUrl = ""
         _status.update {
           it.copy(
             running = true,
@@ -149,14 +174,34 @@ class RelayService : Service() {
       if (!lanOnly || normalized.startsWith("ws://")) return normalized
       Log.w(TAG, "relay: LAN-only — ignoring cloud URL $normalized")
     }
+    savedRelayUrlFromPrefs()?.takeIf { it.startsWith("ws://") }?.let { saved ->
+      if (withContext(Dispatchers.IO) { RelayConfig.isReachableWs(saved) }) {
+        Log.i(TAG, "relay: using saved LAN $saved")
+        return saved
+      }
+      if (lanOnly) {
+        Log.i(TAG, "relay: trying saved LAN $saved")
+        return saved
+      }
+    }
     resolveLanRelayUrl()?.let { return it }
     if (lanOnly) {
       Log.w(TAG, "relay: LAN-only — no Mac relay found")
       return null
     }
+    savedRelayUrlFromPrefs()?.takeIf { it.startsWith("wss://") }?.let { return it }
     val cloud = cloudRelayUrl()
     Log.i(TAG, "relay: using cloud $cloud")
     return cloud
+  }
+
+  private fun savedRelayUrlFromPrefs(): String? {
+    val raw = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .getString("relay_url", null)
+      ?.trim()
+      ?.takeIf { isUsableRelayUrl(it) }
+      ?: return null
+    return normalizeRelayUrl(raw)
   }
 
   private fun cloudRelayUrl(): String {
@@ -280,6 +325,7 @@ class RelayService : Service() {
     webDictation?.stop()
     client?.stop()
     scope.cancel()
+    foregroundStarted = false
     state = null
     _status.update { Status() }
     super.onDestroy()
@@ -408,7 +454,11 @@ class RelayService : Service() {
       val cur = _status.value
       val sameUrl = url != null && (url == cur.url || url == cur.url.ifBlank { null })
       if (cur.running && url == null) {
-        ctx.startForegroundService(Intent(ctx, RelayService::class.java))
+        try {
+          ctx.startForegroundService(Intent(ctx, RelayService::class.java))
+        } catch (e: IllegalStateException) {
+          Log.w(TAG, "FGS ping blocked from background", e)
+        }
         return
       }
       if (!force && cur.running && cur.connected && (url == null || sameUrl)) {
@@ -429,7 +479,12 @@ class RelayService : Service() {
       val i = Intent(ctx, RelayService::class.java)
       if (url != null) i.putExtra(EXTRA_URL, url)
       if (force) i.putExtra(EXTRA_FORCE, true)
-      ctx.startForegroundService(i)
+      try {
+        ctx.startForegroundService(i)
+      } catch (e: IllegalStateException) {
+        Log.w(TAG, "FGS start blocked from background — open app once", e)
+        _status.update { it.copy(lastError = "Open ambient link once to reconnect") }
+      }
     }
     fun stop(ctx: Context) {
       _status.update { Status() }

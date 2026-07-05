@@ -19,24 +19,25 @@ object RelayDiscovery {
   private const val DEFAULT_PATH = "/ambient-link/ws"
 
   /** mDNS, then cached LAN URL, then last-known Mac IP on :5181. */
-  suspend fun discoverOrDirect(ctx: Context, timeoutMs: Long = 10_000): String? {
-    discover(ctx, timeoutMs)?.let { return it }
-    RelayLanStore.lastLanWs(ctx)?.let { cached ->
-      if (RelayConfig.isReachableWs(cached)) {
-        Log.i(TAG, "direct: cached LAN $cached")
-        return cached
+  suspend fun discoverOrDirect(ctx: Context, timeoutMs: Long = 10_000): String? =
+    withContext(Dispatchers.IO) {
+      discover(ctx, timeoutMs)?.let { return@withContext it }
+      RelayLanStore.lastLanWs(ctx)?.let { cached ->
+        if (RelayConfig.isReachableWs(cached)) {
+          Log.i(TAG, "direct: cached LAN $cached")
+          return@withContext cached
+        }
       }
-    }
-    RelayLanStore.lastLanIp(ctx)?.let { ip ->
-      val url = defaultWsUrl(ip)
-      if (RelayConfig.isReachableWs(url)) {
-        Log.i(TAG, "direct: probed $url")
-        RelayLanStore.rememberLanWs(ctx, url)
-        return url
+      RelayLanStore.lastLanIp(ctx)?.let { ip ->
+        val url = defaultWsUrl(ip)
+        if (RelayConfig.isReachableWs(url)) {
+          Log.i(TAG, "direct: probed $url")
+          RelayLanStore.rememberLanWs(ctx, url)
+          return@withContext url
+        }
       }
+      null
     }
-    return null
-  }
 
   fun defaultWsUrl(host: String, port: Int = DEFAULT_PORT): String {
     val h = host.trim().removePrefix("ws://").removePrefix("wss://")

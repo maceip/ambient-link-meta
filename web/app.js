@@ -2,6 +2,7 @@
 (function () {
   'use strict';
 
+  var LOG = window.AmbientLog || { log: function () {} };
   var CS = window.AmbientChipSet;
   var BLK = window.AmbientBlocks;
   var PIPE = window.AmbientContentPipeline;
@@ -60,9 +61,14 @@
   var listeningPartial = '';
   var dictatePhase = 'idle'; // idle | listening | review
   var dictateDraft = '';
-  var chatPinBottom = true;
-  var listPinBottom = true;
+  var chatPinBottom = false;
+  var chatForceScrollOnce = false;
+  var chatScrollToUser = false;
+  var lastChatRenderSig = '';
+  var dictateWatchdog = null;
+  var listPinBottom = false;
   var listFocusedThreadId = null;
+  var lastListSig = '';
   var pendingDeepLink = null;
   var hostInfo = {
     relayDebug: false,
@@ -267,7 +273,7 @@
     row.lastEventAt = row.lastEventAt || clockNow();
   }
 
-  var wsConnState = 'off';
+  var wsConnState = 'connecting';
 
   function wsConnected() {
     return wsConnState === 'on';
@@ -354,7 +360,6 @@
     sendCompanionUi(which);
     renderQuickReplies();
     renderConnStatus();
-    focusInitialInView(which);
   }
 
   function viewRootFor(name) {
@@ -389,7 +394,8 @@
     var pick = listFocusedThreadId
       ? threadsUl.querySelector('.thread-row[data-thread-id="' + listFocusedThreadId + '"]')
       : null;
-    (pick || rows[rows.length - 1]).focus();
+    var target = pick || rows[rows.length - 1];
+    if (target) target.focus({ preventScroll: true });
   }
 
   /** Glasses can't type — land on Dictate (mic), expanded and ready. */
@@ -442,9 +448,6 @@
       next = idx < items.length - 1 ? idx + 1 : 0;
     }
     items[next].focus();
-    if (items[next].scrollIntoView) {
-      items[next].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
   }
 
   function wireDpadNavigation() {
@@ -665,78 +668,114 @@
     return (yank.lastAssistant || '').trim();
   }
 
-  function chatHasUserText(row, rawText) {
+  function chatHasRoleText(row, role, rawText) {
     if (!rawText || !String(rawText).trim()) return false;
     var disp = filterText(rawText).display;
     var log = row && row.chatLog;
     if (!log || !log.length) return false;
     for (var i = 0; i < log.length; i++) {
-      if (log[i].role === 'user' && log[i].text === disp) return true;
+      if (log[i].role === role && log[i].text === disp) return true;
     }
     return false;
   }
 
-  function lastChatIndex(log, role) {
-    if (!log || !log.length) return -1;
-    for (var i = log.length - 1; i >= 0; i--) {
-      if (log[i].role === role) return i;
-    }
-    return -1;
+  function chatHasUserText(row, rawText) {
+    return chatHasRoleText(row, 'user', rawText);
   }
 
-  /** User turns always append; agent turns coalesce while streaming. */
-  function upsertChatTurn(row, role, rawText) {
+  function chatLogKey() {
+    return 'ambient-link:chat-logs-v3';
+  }
+
+  function loadChatLogs() {
+    try {
+      var raw = localStorage.getItem(chatLogKey());
+      if (!raw) return;
+      var data = JSON.parse(raw);
+      if (!data || typeof data !== 'object') return;
+      Object.keys(data).forEach(function (id) {
+        if (!Array.isArray(data[id]) || !data[id].length) return;
+        var row = threadRow(id);
+        if (!row.chatLog || !row.chatLog.length) row.chatLog = data[id];
+      });
+    } catch (e) {}
+  }
+
+  function saveChatLogs() {
+    try {
+      var data = {};
+      Object.keys(threads).forEach(function (id) {
+        var log = threads[id].chatLog;
+        if (log && log.length) data[id] = log;
+      });
+      localStorage.setItem(chatLogKey(), JSON.stringify(data));
+    } catch (e) {}
+  }
+
+  /** Immutable append-only chat log. Never edit or replace entries. */
+  function appendChatMessage(row, role, rawText) {
     if (!rawText || !String(rawText).trim()) return;
+    if (chatHasRoleText(row, role, rawText)) return;
     var filtered = filterText(rawText);
     var log = ensureChatLog(row);
-    var entry = {
+    log.push({
       role: role,
       text: filtered.display,
       kind: filtered.kind,
       truncated: filtered.truncated,
       at: clockNow(),
-    };
-    var last = log[log.length - 1];
-    if (last && last.role === role && last.text === entry.text) return;
-    if (role === 'agent' && last && last.role === 'agent') {
-      log[log.length - 1] = entry;
-      return;
-    }
-    log.push(entry);
+    });
     if (log.length > 48) row.chatLog = log.slice(-48);
+    saveChatLogs();
   }
 
-  function syncUserInputIfNeeded(row, rawText) {
-    var ui = (rawText || '').trim();
-    if (!ui || chatHasUserText(row, ui)) return;
-    var log = ensureChatLog(row);
-    var lastUserIdx = lastChatIndex(log, 'user');
-    if (lastUserIdx < 0) {
-      upsertChatTurn(row, 'user', ui);
-      return;
-    }
-    var lastAgentIdx = lastChatIndex(log, 'agent');
-    if (lastAgentIdx >= lastUserIdx) upsertChatTurn(row, 'user', ui);
+  function appendUserMessage(row, text) {
+    if (!row || !text || !String(text).trim()) return;
+    appendChatMessage(row, 'user', text);
+    LOG.log('chat', 'user', { thread: row.id, n: (row.chatLog || []).length });
   }
 
-  function syncUserFromYank(row) {
+  function recordAgentReply(row, rawText) {
+    if (!row || row.busy) return;
+    appendChatMessage(row, 'agent', rawText);
+  }
+
+  function mergeAgentFromYank(row) {
     if (!row || !row.yank) return;
-    syncUserInputIfNeeded(row, row.yank.lastUserInput);
-  }
-
-  function syncChatFromYank(row) {
-    if (!row || !row.yank) return;
-    syncUserFromYank(row);
-    var agentText = agentTextFromYank(row.yank);
-    if (agentText) upsertChatTurn(row, 'agent', agentText);
+    recordAgentReply(row, agentTextFromYank(row.yank));
   }
 
   function syncChatFromSessionFields(row, session) {
     if (!row || !session) return;
     if (session.last_user_input) row.lastUserInput = session.last_user_input;
     if (session.last_assistant) row.lastAssistant = session.last_assistant;
-    if (session.last_user_input) syncUserInputIfNeeded(row, session.last_user_input);
-    if (session.last_assistant) upsertChatTurn(row, 'agent', session.last_assistant);
+  }
+
+  function replayDeliveredUserMessages(row) {
+    if (!row) return;
+    Object.keys(deliveryStates).forEach(function (id) {
+      var st = deliveryStates[id];
+      if (!st || st.thread !== row.id) return;
+      if (st.status !== 'delivered' && st.status !== 'landed') return;
+      var text = (st.text || '').trim();
+      if (text) appendUserMessage(row, text);
+    });
+    pendingInputs.forEach(function (item) {
+      if (item.thread !== row.id) return;
+      var text = (item.text || '').trim();
+      if (text) appendUserMessage(row, text);
+    });
+  }
+
+  function hydrateChatIfEmpty(row) {
+    if (!row || (row.chatLog && row.chatLog.length)) return;
+    replayDeliveredUserMessages(row);
+    if (!row.busy) {
+      mergeAgentFromYank(row);
+      if ((!row.chatLog || !row.chatLog.length) && row.lastAssistant) {
+        recordAgentReply(row, row.lastAssistant);
+      }
+    }
   }
 
   function chatAgentLabel(row) {
@@ -749,17 +788,7 @@
   }
 
   function chatMessagesForRender(row) {
-    if (!row) return [];
-    if (!row.chatLog || !row.chatLog.length) {
-      syncChatFromYank(row);
-      if ((!row.chatLog || !row.chatLog.length) && (row.lastUserInput || row.lastAssistant)) {
-        syncChatFromSessionFields(row, {
-          last_user_input: row.lastUserInput,
-          last_assistant: row.lastAssistant,
-        });
-      }
-    }
-    return row.chatLog || [];
+    return (row && row.chatLog) ? row.chatLog.slice() : [];
   }
 
   function lastAgentPreview(row) {
@@ -879,13 +908,21 @@
     return AGENT_ICONS[agentClass(agent)] || '';
   }
 
-  function renderThreadList() {
+  function threadListSignature(live) {
+    return live.map(function (t) {
+      return t.id + '|' + (t.lastEventAt || 0) + '|' + (t.busy ? 1 : 0) + '|' + (t.ended ? 1 : 0)
+        + '|' + listPreviewPlain(listPreviewText(t));
+    }).join(';');
+  }
+
+  function renderThreadList(force) {
     var live = liveThreads();
+    var sig = threadListSignature(live);
+    if (!force && sig === lastListSig && threadsUl && threadsUl.childElementCount === live.length && live.length > 0) {
+      return;
+    }
+    lastListSig = sig;
     var scrollEl = listScroll || threadsUl;
-    var distFromBottom = scrollEl
-      ? scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight
-      : 0;
-    var wasNearBottom = distFromBottom <= 48;
     var scrollTopBefore = scrollEl ? scrollEl.scrollTop : 0;
     var activeRow = threadsUl && threadsUl.querySelector('.thread-row:focus');
     if (activeRow && activeRow.dataset.threadId) {
@@ -899,13 +936,17 @@
     threadsUl.innerHTML = '';
     if (live.length === 0) {
       emptyHint.classList.remove('hidden');
-      emptyHint.textContent = !wsConnected()
-        ? 'Relay offline — open this app from your Mac or wait for reconnect'
-        : (hostInfo.liveSessionCount > 0
-          ? 'Loading sessions…'
-          : (hostInfo.laptopPeerConnected
-            ? 'No active agents — start Cursor, Claude, or Codex on your Mac'
-            : 'No sessions — tap New session below'));
+      if (wsConnState === 'warn' || wsConnState === 'connecting') {
+        emptyHint.textContent = 'Loading sessions…';
+      } else if (!wsConnected()) {
+        emptyHint.textContent = 'Relay offline — open this app from your Mac or wait for reconnect';
+      } else if (hostInfo.liveSessionCount > 0) {
+        emptyHint.textContent = 'Loading sessions…';
+      } else if (hostInfo.laptopPeerConnected) {
+        emptyHint.textContent = 'No active agents — start Cursor, Claude, or Codex on your Mac';
+      } else {
+        emptyHint.textContent = 'No sessions — tap New session below';
+      }
       renderConnStatus();
       wireRbtnGroups();
       return;
@@ -939,17 +980,8 @@
       });
       threadsUl.appendChild(li);
     });
-    requestAnimationFrame(function () {
-      if (!scrollEl) return;
-      if (listPinBottom && wasNearBottom) scrollEl.scrollTop = scrollEl.scrollHeight;
-      else scrollEl.scrollTop = scrollTopBefore;
-    });
     renderConnStatus();
     wireRbtnGroups();
-    if (activeView === 'list') {
-      var focused = document.activeElement;
-      if (!threadsUl.contains(focused)) focusLastListRow();
-    }
   }
 
   function wireChatScroll() {
@@ -1006,26 +1038,18 @@
     titleEl.textContent = displayLabel(t);
     setComposerEnabled(!t.ended);
 
-    var listening = (dictatePhase === 'listening' || phoneDictateThread === t.id || dictRec)
-      ? (listeningPartial || promptEl.value || 'Listening… speak now')
-      : '';
     var thinking = t.busy && !t.ended;
 
     if (t.ended) {
       wMeta.textContent = displayLabel(t) + ' · ended';
       wMeta.classList.remove('hidden');
-      if (!t.chatLog || !t.chatLog.length) {
-        upsertChatTurn(t, 'agent', t.yank ? agentTextFromYank(t.yank) : 'session ended');
-      }
+      hydrateChatIfEmpty(t);
       BLK.renderChatThread(wChat, chatMessagesForRender(t), {
         agentLabel: chatAgentLabel(t),
         emptyText: 'Session ended with no messages.',
-        pinBottom: chatPinBottom,
       });
       return;
     }
-
-    syncChatFromYank(t);
 
     if (!wsConnected()) {
       wMeta.textContent = 'Not connected — messages will not send until relay reconnects';
@@ -1043,10 +1067,8 @@
 
     BLK.renderChatThread(wChat, chatMessagesForRender(t), {
       thinking: thinking,
-      listening: listening,
       agentLabel: chatAgentLabel(t),
-      emptyText: 'No messages yet — type or dictate below.',
-      pinBottom: chatPinBottom,
+      emptyText: 'No messages yet.',
     });
     renderQuickReplies();
   }
@@ -1065,6 +1087,7 @@
     stopDictRec(null);
     phoneDictateThread = t.id;
     dictateDraft = '';
+    sendSessionSignal('session_focus', t.id);
     sendDictate('dictate_begin', t.id);
     listeningPartial = '';
     setDictatePhase('listening');
@@ -1079,7 +1102,6 @@
       dictRec = null;
     }
     if (dictateBtn) dictateBtn.classList.remove('recording');
-    promptEl.placeholder = 'type your message…';
     resetDictateUi();
     var trimmed = (text || '').trim();
     if (!trimmed) {
@@ -1088,16 +1110,15 @@
     }
     var row = threads[thread];
     if (row) {
-      upsertChatTurn(row, 'user', trimmed);
+      appendUserMessage(row, trimmed);
       if (row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: trimmed });
       row.busy = true;
       row.lastEventAt = clockNow();
     }
-    chatPinBottom = true;
     promptEl.value = '';
     showToast('sent', 'success');
     renderCompose();
-    renderThreadList();
+    if (activeView === 'list') renderThreadList();
     setTimeout(syncFromHost, 400);
   }
 
@@ -1125,6 +1146,10 @@
   function startDictate() {
     var t = activeThread ? threads[activeThread] : null;
     if (!t) { showToast('open a session first', 'error'); return; }
+    if (!wsConnected()) {
+      showToast('relay not connected — wait for reconnect', 'error');
+      return;
+    }
     stopDictRec(null);
     startPhoneDictate(t);
     if (dictateStatusText) dictateStatusText.textContent = 'Listening on phone…';
@@ -1153,34 +1178,34 @@
       queueInput(item);
     }
     if (row) {
-      upsertChatTurn(row, 'user', text);
+      appendUserMessage(row, text);
+      LOG.log('send', 'prompt', { thread: thread, ok: sent });
       if (row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: text });
       row.lastEventAt = clockNow();
       row.busy = true;
     }
-    chatPinBottom = true;
     promptEl.value = '';
     resetDictateUi();
     showToast('sent', 'success');
     renderCompose();
-    renderThreadList();
+    if (activeView === 'list') renderThreadList();
   }
 
   function openThread(id, compose) {
     if (activeThread && activeThread !== id) sendSessionSignal('session_blur', activeThread);
     activeThread = id;
-    chatPinBottom = true;
+    listFocusedThreadId = id;
     setUrlForSession(id, !!compose);
     showView('thread');
     var cached = threads[id];
     titleEl.textContent = cached ? displayLabel(cached) : 'loading…';
     sendSessionSignal('session_focus', id);
+    hydrateChatIfEmpty(threads[id]);
     renderCompose();
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: 'hud_yank', thread: id }));
     }
     syncFromHost();
-    if (compose) focusSessionPrimary();
   }
 
   function closeThreadView() {
@@ -1281,10 +1306,7 @@
 
   // Meta HUD button row: exactly one expanded pill — the focused control only.
   function wireRbtnGroups() {
-    if (BLK) {
-      BLK.wireRbtnGroups(document);
-      if (BLK.wireImmediateTap) BLK.wireImmediateTap(document);
-    }
+    if (BLK) BLK.wireRbtnGroups(document);
   }
 
   function pickAgent(agent) {
@@ -1557,10 +1579,7 @@
         }
       }
     }
-    if (text && !chatHasUserText(row, text)) {
-      upsertChatTurn(row, 'user', text);
-      if (row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: text });
-    }
+    if (text) appendUserMessage(row, text);
   }
 
   function applyOutboxStatus(outbox) {
@@ -1593,7 +1612,7 @@
     row.ended = false;
     row.yank = yank;
     row.lastEventAt = msg.at || clockNow();
-    syncChatFromYank(row);
+    mergeAgentFromYank(row);
   }
 
   function syncFromHost() {
@@ -1753,11 +1772,9 @@
         promptEl.placeholder = 'listening…';
       } else if (msg.type === 'dictate_partial' && activeThread === msg.thread && msg.text) {
         promptEl.value = msg.text;
-        if (phoneDictateThread === msg.thread) {
-          listeningPartial = msg.text;
-          if (dictateStatusText) dictateStatusText.textContent = msg.text;
-          renderCompose();
-        }
+        listeningPartial = msg.text;
+        if (dictateStatusText) dictateStatusText.textContent = msg.text;
+        renderCompose();
       } else if (msg.type === 'dictate_end' && activeThread === msg.thread) {
         applyDictateResult(msg.thread, msg.text || '');
       } else if (msg.type === 'input_status') {
@@ -1810,11 +1827,8 @@
 
   backBtn.addEventListener('click', closeThreadView);
   if (newBack) newBack.addEventListener('click', closeNewSessionView);
-  if (listNewSession) listNewSession.addEventListener('click', openNewSession);
+  if (newSessionPill) newSessionPill.addEventListener('click', openNewSession);
   newStart.addEventListener('click', startNewThread);
-  wireListPullReveal();
-  wireListScroll();
-  wireChatScroll();
   wireThemes();
   wireDpadNavigation();
   sendBtn.addEventListener('click', function () {
@@ -1855,6 +1869,7 @@
       if (row && row.chatLog && row.chatLog.length) {
         var last = row.chatLog[row.chatLog.length - 1];
         if (last && last.role === 'user') row.chatLog.pop();
+        saveChatLogs();
       }
       renderCompose();
     }
@@ -1868,8 +1883,9 @@
   });
   pickAgent(pickedAgent);
   wireRbtnGroups();
-  renderThreadList();
-  setStatus('off');
+  loadChatLogs();
+  renderThreadList(true);
+  setStatus('connecting');
   window.__ambientOpenNew = openNewSession;
   if (window.__AMBIENT_TEST__) {
     window.__AmbientWebTest = {
