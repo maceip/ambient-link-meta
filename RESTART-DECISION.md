@@ -1,8 +1,12 @@
 # Restart vs. surgical-fix — decision brief
 
-Status: **nothing deleted, no server changes made.** This is a prep doc so the
-decision and (if chosen) the restart are fast next time. Read top to bottom; it's
-short.
+Status: **RESOLVED 2026-07-06 — Option A executed.** The cloud box now runs the
+relay binary in `AMBIENT_LINK_ROLE=proxy` (core `49b8395`): no tailers, no proc
+watcher, no reaper, no local ingestion, state under `/run` (wiped on restart).
+Stale journal/db/outbox archived to `~devuser/ambient-link-state-backup-20260706.tar.gz`
+and removed. Verified: laptop connected → its live sessions on the hosted web
+app; laptop offline → zero sessions; reconnect → sessions return. The unit file
+is `/etc/systemd/system/ambient-link-host.service`. Historical context below.
 
 ## The one-paragraph situation
 
