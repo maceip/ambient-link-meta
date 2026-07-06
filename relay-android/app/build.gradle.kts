@@ -19,8 +19,8 @@ android {
     applicationId = "com.lowkey.ambientlink"
     minSdk = 31
     targetSdk = 35
-    versionCode = 3
-    versionName = "0.1.2-hud"
+    versionCode = 4
+    versionName = "0.1.3-agent-voice"
 
     manifestPlaceholders["mwdat_application_id"] =
       providers.gradleProperty("mwdat_application_id").orNull
@@ -33,7 +33,7 @@ android {
     resValue("string", "mwdat_application_id", manifestPlaceholders["mwdat_application_id"] as String)
     resValue("string", "mwdat_client_token", manifestPlaceholders["mwdat_client_token"] as String)
     val defaultRelay = providers.gradleProperty("relay_url").orNull
-      ?: localProperties.getProperty("relay_url", "wss://example.com/ambient-link/ws")
+      ?: localProperties.getProperty("relay_url", "wss://agent.public.computer/ambient-link/ws")
     buildConfigField("String", "DEFAULT_RELAY_URL", "\"" + defaultRelay + "\"")
     buildConfigField("String", "SODA_PACK_CPU_SHA256", "\"fac23ca956f473c5025621784a1657a1663a16b0754886b975f3cde3f1345f04\"")
     buildConfigField("long", "SODA_PACK_CPU_SIZE_BYTES", "56458465L")

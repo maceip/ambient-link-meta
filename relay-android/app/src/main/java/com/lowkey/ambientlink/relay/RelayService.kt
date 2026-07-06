@@ -46,6 +46,7 @@ class RelayService : Service() {
   private var client: RelayClient? = null
   private var presenter: HudPresenter? = null
   private var webDictation: WebDictationBridge? = null
+  private var agentVoiceClient: AgentSessionVoiceClient? = null
   private var eventsJob: Job? = null
   private var activeUrl: String = ""
   private var microphoneForeground = false
@@ -245,6 +246,7 @@ class RelayService : Service() {
     eventsJob?.cancel()
     client?.stop()
     webDictation?.stop()
+    agentVoiceClient?.stop()
     val c = RelayClient(url)
     val p = HudPresenter(applicationContext, c, WearablesRepository.getInstance(applicationContext))
     val dictation = WebDictationBridge(
@@ -256,6 +258,11 @@ class RelayService : Service() {
     client = c
     presenter = p
     webDictation = dictation
+    agentVoiceClient = AgentSessionVoiceClient.baseUrlFromRelayUrl(url)?.let { base ->
+      AgentSessionVoiceClient(applicationContext, base, scope) { active ->
+        setMicrophoneForeground(active)
+      }.also { it.start() }
+    }
     _status.update { it.copy(url = url, connected = false, lastError = null) }
 
     eventsJob = scope.launch {
@@ -323,6 +330,7 @@ class RelayService : Service() {
   override fun onDestroy() {
     eventsJob?.cancel()
     webDictation?.stop()
+    agentVoiceClient?.stop()
     client?.stop()
     scope.cancel()
     foregroundStarted = false
