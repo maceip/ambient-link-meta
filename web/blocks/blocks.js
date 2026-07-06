@@ -71,6 +71,20 @@
     });
   }
 
+  /** Glasses browsers often focus on first tap and click on second — fire click on touchend. */
+  function wireImmediateTap(scope) {
+    var rootEl = scope && scope.querySelectorAll ? scope : document;
+    rootEl.querySelectorAll('.rbtn, .quick-reply-pill, .thread-row, .compose-pill').forEach(function (el) {
+      if (el.dataset.tapWired) return;
+      el.dataset.tapWired = '1';
+      el.addEventListener('touchend', function (e) {
+        if (el.disabled) return;
+        e.preventDefault();
+        el.click();
+      }, { passive: false });
+    });
+  }
+
   /** Round HUD pill button (icon + expanding label on focus). */
   function renderRbtn(opts) {
     opts = opts || {};
