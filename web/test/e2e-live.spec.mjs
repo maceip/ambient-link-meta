@@ -248,6 +248,58 @@ test('dictation: begin on glasses, partials + commit from phone, lands in agent'
   phone.close();
 });
 
+test('glasses economy: ~3.5 session cards visible at most (scroll for more)', async ({ page }) => {
+  // Product rule (WhatsApp/IG/Messenger on-glasses precedent): the list never
+  // shows more than ~3.5 cards; the half-card peek is the scroll affordance.
+  await page.goto(BASE);
+  const row = page.locator('#threads .thread-row').first();
+  await expect(row).toBeVisible();
+  const m = await page.evaluate(() => {
+    const list = document.getElementById('threads');
+    const r = list.querySelector('.thread-row').getBoundingClientRect();
+    const cs = getComputedStyle(list);
+    return {
+      listTop: list.getBoundingClientRect().top,
+      rowH: r.height,
+      gap: parseFloat(cs.rowGap) || 0,
+      vh: window.innerHeight,
+    };
+  });
+  const fit = (m.vh - m.listTop) / (m.rowH + m.gap);
+  const detail = `fit=${fit.toFixed(2)} cards (row ${m.rowH.toFixed(0)}px + gap ${m.gap}px, list top ${m.listTop.toFixed(0)}px, viewport ${m.vh}px)`;
+  expect(fit, detail).toBeLessThanOrEqual(3.6);
+  expect(fit, detail).toBeGreaterThanOrEqual(2.8);
+});
+
+test('swipe up on the top card reveals create-session above the list', async ({ page }) => {
+  await page.goto(BASE);
+  await expect(page.locator('#threads .thread-row').first()).toBeVisible();
+  const reveal = page.locator('#new-session-reveal');
+  await expect(reveal).toHaveAttribute('aria-hidden', 'true');
+  // The band/glasses "swipe up at the top of the list" arrives as an upward
+  // scroll gesture; past the threshold the reveal sticks open. Use a real
+  // wheel event (dispatchEvent builds a plain Event with no deltaY).
+  const box = await page.locator('#list-scroll').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -80);
+  await expect(reveal).toHaveAttribute('aria-hidden', 'false');
+  await expect(page.locator('#new-session-pill')).toBeVisible();
+});
+
+test.describe('touch', () => {
+  test.use({ hasTouch: true });
+  test('a single tap opens a session — no double-tap dance', async ({ page }) => {
+    // The glasses browser focuses on first tap and clicks on second;
+    // wireImmediateTap synthesizes the click on a true tap (finger didn't
+    // move). One physical tap must navigate.
+    await page.goto(BASE);
+    const row = page.locator('#threads .thread-row').first();
+    await expect(row).toBeVisible();
+    await row.tap();
+    await expect(page.locator('#view-thread')).toBeVisible();
+  });
+});
+
 test('creating a session fails honestly — no fake success, no phantom row', async ({ page }) => {
   await page.goto(BASE);
   // The pill sits in a scroll-reveal container that stays hidden until the

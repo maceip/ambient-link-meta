@@ -71,14 +71,29 @@
     });
   }
 
-  /** Glasses browsers often focus on first tap and click on second — fire click on touchend. */
+  /** Glasses browsers focus on first tap and click on second, which reads as
+      "I have to double-tap everything" plus click-delay lag. Synthesize the
+      click on touchend instead — but ONLY for a true tap (finger didn't move,
+      short press), so scrolling across a card never opens it and never loses
+      momentum to preventDefault. */
   function wireImmediateTap(scope) {
     var rootEl = scope && scope.querySelectorAll ? scope : document;
-    rootEl.querySelectorAll('.rbtn, .quick-reply-pill, .thread-row, .compose-pill').forEach(function (el) {
+    rootEl.querySelectorAll('.rbtn, .quick-reply-pill, .thread-row, .compose-pill, .theme-chip').forEach(function (el) {
       if (el.dataset.tapWired) return;
       el.dataset.tapWired = '1';
+      var startX = 0, startY = 0, startedAt = 0;
+      el.addEventListener('touchstart', function (e) {
+        var t = e.touches[0];
+        startX = t.clientX;
+        startY = t.clientY;
+        startedAt = Date.now();
+      }, { passive: true });
       el.addEventListener('touchend', function (e) {
         if (el.disabled) return;
+        var t = e.changedTouches && e.changedTouches[0];
+        if (!t) return;
+        var moved = Math.hypot(t.clientX - startX, t.clientY - startY);
+        if (moved > 12 || Date.now() - startedAt > 700) return; // scroll or hold — not a tap
         e.preventDefault();
         el.click();
       }, { passive: false });

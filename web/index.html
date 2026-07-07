@@ -8,14 +8,14 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=67">
-  <link rel="stylesheet" href="blocks/blocks.css?v=67">
-  <link rel="stylesheet" href="companion.css?v=67">
-  <link rel="stylesheet" href="themes.css?v=67">
+  <link rel="stylesheet" href="styles.css?v=68">
+  <link rel="stylesheet" href="blocks/blocks.css?v=68">
+  <link rel="stylesheet" href="companion.css?v=68">
+  <link rel="stylesheet" href="themes.css?v=68">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v67';
+      var BUILD = 'v68';
       if (!('serviceWorker' in navigator)) return;
       var reloadedForSw = false;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -51,19 +51,18 @@
        behavior stays in current app.js, only presentation came back. -->
   <section id="view-threads" class="view blk-shelf-list-view">
     <span id="relay-badge" class="relay-badge hidden" title="relay debug — auto cards suppressed">debug</span>
+    <!-- Glasses vertical economy (WhatsApp/IG precedent): chrome is ONE header
+         line so ≥3 session cards stay visible. The connection banner only
+         occupies a row when something is wrong; connected = dot only. -->
     <header class="list-hdr blk-shelf-list-view__hdr">
       <span class="list-title blk-shelf-list-view__title">sessions</span>
+      <span class="list-hdr-right">
+        <span id="conn-dot" class="conn-dot off" aria-hidden="true"></span>
+        <button type="button" id="theme-cycle" class="theme-chip focusable" aria-label="cycle color theme">Meta</button>
+      </span>
     </header>
-    <div id="conn-status" class="conn-status off" role="status" aria-live="polite">
-      <span id="conn-dot" class="conn-dot off" aria-hidden="true"></span>
+    <div id="conn-status" class="conn-status off hidden" role="status" aria-live="polite">
       <span id="conn-label" class="conn-label">Not connected to relay</span>
-    </div>
-    <div id="theme-bar" class="theme-bar" role="toolbar" aria-label="color theme">
-      <button type="button" class="theme-chip active" data-theme="meta">Meta</button>
-      <button type="button" class="theme-chip" data-theme="dracula">Dracula</button>
-      <button type="button" class="theme-chip" data-theme="tokyo-night">Tokyo Night</button>
-      <button type="button" class="theme-chip" data-theme="catppuccin">Catppuccin</button>
-      <button type="button" class="theme-chip" data-theme="nord">Nord</button>
     </div>
     <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
     <div id="list-scroll" class="list-scroll blk-shelf-list-view__scroll">
@@ -171,10 +170,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="log.js?v=67"></script>
-<script src="chipset.js?v=67"></script>
-<script src="content-pipeline.js?v=67"></script>
-<script src="blocks/blocks.js?v=67"></script>
-<script src="app.js?v=67"></script>
+<script src="log.js?v=68"></script>
+<script src="chipset.js?v=68"></script>
+<script src="content-pipeline.js?v=68"></script>
+<script src="blocks/blocks.js?v=68"></script>
+<script src="app.js?v=68"></script>
 </body>
 </html>

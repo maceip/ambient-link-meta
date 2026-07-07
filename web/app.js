@@ -154,6 +154,7 @@
       });
       quickRepliesEl.appendChild(btn);
     });
+    wireTaps();
   }
 
   function parseDeepLink() {
@@ -319,6 +320,9 @@
       connStatus.classList.add(state);
     }
     if (connLabel) connLabel.textContent = connectionCopy(state);
+    // Vertical economy: the banner earns a row only when something is wrong;
+    // connected state is the header dot.
+    if (connStatus) connStatus.classList.toggle('hidden', state === 'on');
     if (threadConn) {
       threadConn.classList.remove('on', 'off', 'warn');
       threadConn.classList.add(state);
@@ -896,25 +900,31 @@
     });
   }
 
+  var THEMES = ['meta', 'dracula', 'tokyo-night', 'catppuccin', 'nord'];
+  var THEME_LABELS = {
+    meta: 'Meta', dracula: 'Dracula', 'tokyo-night': 'Tokyo Night',
+    catppuccin: 'Catppuccin', nord: 'Nord',
+  };
+
   function wireThemes() {
-    // Theme chips (shell restored from c100fd9; wiring written fresh).
+    // Era themes, glasses-economy form: one header chip cycles through the
+    // presets instead of a pill row (which cost a whole card of height).
     // Contract: themes.css keys off data-theme on <html>.
-    var bar = document.getElementById('theme-bar');
-    if (!bar) return;
+    var chip = document.getElementById('theme-cycle');
+    if (!chip) return;
     function apply(name) {
       document.documentElement.dataset.theme = name;
-      bar.querySelectorAll('.theme-chip').forEach(function (chip) {
-        chip.classList.toggle('active', chip.dataset.theme === name);
-      });
+      chip.textContent = THEME_LABELS[name] || name;
       try { localStorage.setItem('ambient-link:theme', name); } catch (e) {}
     }
-    bar.addEventListener('click', function (e) {
-      var chip = e.target && e.target.closest ? e.target.closest('.theme-chip') : null;
-      if (chip && chip.dataset.theme) apply(chip.dataset.theme);
+    chip.addEventListener('click', function () {
+      var cur = document.documentElement.dataset.theme || 'meta';
+      var i = THEMES.indexOf(cur);
+      apply(THEMES[(i + 1) % THEMES.length]);
     });
     var saved = '';
     try { saved = localStorage.getItem('ambient-link:theme') || ''; } catch (e) {}
-    if (saved && bar.querySelector('[data-theme="' + saved + '"]')) apply(saved);
+    apply(THEMES.indexOf(saved) >= 0 ? saved : 'meta');
   }
 
   function wireListScroll() {
@@ -991,6 +1001,7 @@
       }
       renderConnStatus();
       wireRbtnGroups();
+      wireTaps();
       return;
     }
     emptyHint.classList.add('hidden');
@@ -1024,6 +1035,15 @@
     });
     renderConnStatus();
     wireRbtnGroups();
+    wireTaps();
+  }
+
+
+  /** Single-tap fix (see blocks.js wireImmediateTap): rewire after any render
+      that creates focusable cards/pills. Per-element dataset guard makes
+      repeated document-wide calls cheap. */
+  function wireTaps() {
+    if (BLK && BLK.wireImmediateTap) BLK.wireImmediateTap(document);
   }
 
   function wireChatScroll() {
@@ -1916,6 +1936,8 @@
   });
   pickAgent(pickedAgent);
   wireRbtnGroups();
+  wireTaps();
+  wireListPullReveal();
   loadChatLogs();
   renderThreadList(true);
   setStatus('connecting');
