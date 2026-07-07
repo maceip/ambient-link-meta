@@ -46,6 +46,13 @@ jobs:
           port="${PROD_SSH_PORT:-22}"
           repo=/home/devuser/ambient-link-meta
 
-          ssh -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" \
-            "grep -q 'debug-send' ${repo}/web/index.html && grep -q 'list-new-session' ${repo}/web/index.html && grep -q 'ambient-link-meta-v61' ${repo}/web/sw.js && git -C ${repo} log -1 --oneline"
-          echo "production web deploy verified on server"
+          # Verify the deployed checkout IS the pushed commit — no hardcoded
+          # content markers (a v61 grep here kept failing every deploy after
+          # the SW version moved on).
+          deployed=$(ssh -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" \
+            "git -C ${repo} rev-parse HEAD" | tail -1 | tr -d '[:space:]')
+          if [ "$deployed" != "${GITHUB_SHA}" ]; then
+            echo "deployed HEAD $deployed != pushed ${GITHUB_SHA}" >&2
+            exit 1
+          fi
+          echo "production web deploy verified on server: $deployed"
