@@ -41,6 +41,7 @@ let relay;          // relay child process
 let sessionId;      // fake agent's session uuid
 let threadId;       // relay-assigned thread id for that session
 let transcript;     // fake agent's transcript path
+let spawnedTmux;    // tmux session created by the create-session test
 
 async function waitFor(fn, { timeout = 30_000, step = 250, what = 'condition' } = {}) {
   const deadline = Date.now() + timeout;
@@ -131,6 +132,11 @@ test.beforeAll(async () => {
       AMBIENT_LINK_LISTEN: `127.0.0.1:${PORT}`,
       AMBIENT_LINK_WEB_ROOT: WEB_ROOT,
       AMBIENT_LINK_LOG: 'debug',
+      // Create-session spawns run the fake agent instead of real CLIs. The
+      // UI's default agent is cursor; both point at the same stub. HOME is
+      // inlined because tmux panes inherit the tmux SERVER's env, not ours.
+      AMBIENT_LINK_SPAWN_CURSOR: `HOME=${tmp} ${process.execPath} ${path.join(WEB_ROOT, 'test', 'fake-claude-agent.mjs')}`,
+      AMBIENT_LINK_SPAWN_CLAUDE: `HOME=${tmp} ${process.execPath} ${path.join(WEB_ROOT, 'test', 'fake-claude-agent.mjs')}`,
       // deliberately NO AMBIENT_LINK_CLOUD: hermetic, never touches prod
     },
     stdio: ['ignore', logFd, logFd],
@@ -166,6 +172,9 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   try { execFileSync('tmux', ['kill-session', '-t', TMUX_SESSION]); } catch { /* already gone */ }
+  if (spawnedTmux) {
+    try { execFileSync('tmux', ['kill-session', '-t', spawnedTmux]); } catch { /* already gone */ }
+  }
   if (relay) { try { relay.kill('SIGTERM'); } catch { /* already gone */ } }
   if (tmp && process.env.AMBIENT_E2E_KEEP !== '1') {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -300,21 +309,36 @@ test.describe('touch', () => {
   });
 });
 
-test('creating a session fails honestly — no fake success, no phantom row', async ({ page }) => {
+test('creating a session actually spawns an agent the relay can see', async ({ page }) => {
+  const spawnDir = path.join(tmp, 'spawned-project');
+  fs.mkdirSync(spawnDir, { recursive: true });
+
   await page.goto(BASE);
-  // The pill sits in a scroll-reveal container that stays hidden until the
-  // list is scrolled; use the app's own deep-link hook to open the view.
   await page.waitForFunction(() => typeof window.__ambientOpenNew === 'function');
   await page.evaluate(() => window.__ambientOpenNew());
   await expect(page.locator('#view-new')).toBeVisible();
-  await page.fill('#new-prompt', 'do a thing');
+  await page.fill('#new-cwd', spawnDir);
+  await page.fill('#new-prompt', 'e2e created session');
 
   const [resp] = await Promise.all([
     page.waitForResponse((r) => r.url().includes('/ambient-link/sessions') && r.request().method() === 'POST'),
     page.click('#new-start'),
   ]);
-  expect(resp.status()).toBe(501); // relay is honest: remote spawn is not wired
+  expect(resp.status()).toBe(200);
+  const body = await resp.json();
+  expect(body.ok).toBe('spawned');
+  spawnedTmux = body.tmux; // killed in afterAll
 
-  await expect(page.locator('#toast')).toContainText(/terminal/i); // UI is honest too
-  await expect(page.locator('#view-new')).toBeVisible(); // and does not pretend to navigate
+  // The spawned agent writes a real transcript; the relay ingests it and the
+  // new session surfaces with the creating prompt.
+  await waitFor(async () => {
+    const s = await relayStatus();
+    // endsWith: macOS reports the pane cwd via /private/var while the test
+    // built the path via /var (same dir through the tmpdir symlink).
+    return (s.sessions || []).some(
+      (x) => (x.cwd || '').endsWith('spawned-project') && x.state !== 'DEAD',
+    ) ? true : null;
+  }, { what: 'spawned session visible in relay status' });
+  await page.goto(BASE);
+  await expect(page.locator('#threads')).toContainText('spawned-project');
 });

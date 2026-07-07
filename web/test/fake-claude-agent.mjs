@@ -14,16 +14,31 @@
 //      verbatim as a user record (this is what upgrades delivery status to
 //      "landed"), followed by an "ack:" assistant record (agent→human path).
 //
-// Usage: fake-claude-agent.mjs <home-dir> <agent-cwd> <session-uuid>
+// Usage:
+//   fake-claude-agent.mjs <home-dir> <agent-cwd> <session-uuid>   (harness mode)
+//   fake-claude-agent.mjs [initial prompt...]                     (spawn mode:
+//     HOME/cwd from the environment, uuid generated — matches how the relay's
+//     create-session spawns a real agent via AMBIENT_LINK_SPAWN_* overrides)
 // Must run inside a tmux pane on the DEFAULT tmux server (the relay's tmux
 // delivery adapter resolves panes by pid on the default server only).
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import { randomUUID } from 'node:crypto';
 
-const [homeDir, agentCwd, sessionId] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+let homeDir, agentCwd, sessionId, initialPrompt = '';
+if (argv.length === 3 && UUID_RE.test(argv[2])) {
+  [homeDir, agentCwd, sessionId] = argv;
+} else {
+  homeDir = process.env.HOME;
+  agentCwd = process.cwd();
+  sessionId = randomUUID();
+  initialPrompt = argv.join(' ');
+}
 if (!homeDir || !agentCwd || !sessionId) {
-  console.error('usage: fake-claude-agent.mjs <home-dir> <agent-cwd> <session-uuid>');
+  console.error('usage: fake-claude-agent.mjs [<home-dir> <agent-cwd> <session-uuid> | prompt...]');
   process.exit(2);
 }
 
@@ -45,7 +60,7 @@ function emit(type, role, text) {
   }) + '\n');
 }
 
-emit('user', 'user', 'begin e2e session');
+emit('user', 'user', initialPrompt || 'begin e2e session');
 emit('assistant', 'assistant', `fake-agent ready in ${agentCwd}`);
 console.log(`fake-claude-agent up: session=${sessionId} transcript=${transcript}`);
 
