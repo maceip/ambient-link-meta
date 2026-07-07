@@ -4,6 +4,11 @@ name: Debug APK Release
 on:
   push:
     branches: [main]
+    paths:
+      - "relay-android/**"
+      - "scripts/provision-soda-for-ci.sh"
+      - ".github/workflows/debug-apk-release.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -96,8 +101,10 @@ jobs:
           APK: ${{ steps.release.outputs.apk }}
           TITLE: ${{ steps.release.outputs.title }}
         run: |
+          # --latest=false: debug builds must never shadow a real release as
+          # the repo's "Latest" pointer.
           gh release create "$TAG" "$APK" \
             --target "$GITHUB_SHA" \
             --title "$TITLE" \
             --notes "Debug APK built from ${GITHUB_SHA} on ${GITHUB_REF_NAME}. Signed with the debug key — install via adb." \
-            --latest
+            --latest=false --prerelease
