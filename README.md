@@ -1,5 +1,9 @@
 # ambient-link-meta
 
+[![web-e2e](https://github.com/maceip/ambient-link-meta/actions/workflows/web-e2e.yml/badge.svg)](https://github.com/maceip/ambient-link-meta/actions/workflows/web-e2e.yml)
+[![deploy](https://github.com/maceip/ambient-link-meta/actions/workflows/deploy-web-prod.yml/badge.svg)](https://github.com/maceip/ambient-link-meta/actions/workflows/deploy-web-prod.yml)
+[![apk](https://github.com/maceip/ambient-link-meta/actions/workflows/debug-apk-release.yml/badge.svg)](https://github.com/maceip/ambient-link-meta/actions/workflows/debug-apk-release.yml)
+
 > Ambient Link target for **Meta Ray-Ban Display glasses** (codename
 > Hypernova). Phone relays (iOS + Android) drive HUD peek cards in
 > response to events from [ambient-link-core](https://github.com/maceip/ambient-link-core);

@@ -21,4 +21,5 @@ process that honors Claude Code's observable contract:
 ../scripts/e2e-web.sh          # builds relay if needed, runs Playwright
 ```
 
-Runs in CI on every web change (`.github/workflows/web-e2e.yml`).
+Runs in CI on every web change (`.github/workflows/web-e2e.yml`); status
+badge on the repo README.
