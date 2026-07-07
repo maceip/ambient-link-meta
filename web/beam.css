@@ -1,0 +1,84 @@
+/* Border beam on the focused session card.
+ *
+ * Vendored from border-beam (https://github.com/Jakubantalik/border-beam,
+ * MIT): the library ships as a React component, and this app is no-build
+ * vanilla JS, so the effect's CSS technique is inlined here instead — a
+ * registered @property angle driving a conic-gradient ring, masked to the
+ * card border. Its "md" border variant, tuned mono/subtle to the app accent.
+ *
+ * Used sparingly by design: it activates only on the single focused card
+ * (D-pad browsing on the glasses), costs one composited layer while focused,
+ * and the whole feature is this file — delete it and nothing else changes.
+ */
+
+@property --beam-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.dm-list .blk-list-item:focus::after,
+.dm-list .blk-list-item:focus-visible::after,
+.dm-list .thread-row:focus::after,
+.dm-list .thread-row:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: -1px; /* sit on the card's 1px border */
+  border-radius: 18px;
+  padding: 1.5px;
+  pointer-events: none;
+  background:
+    /* white beam core (border-beam's dark-theme highlight ramp) */
+    conic-gradient(
+      from var(--beam-angle),
+      transparent 0% 54%,
+      rgba(255, 255, 255, 0.10) 57%,
+      rgba(255, 255, 255, 0.30) 60%,
+      rgba(255, 255, 255, 0.60) 63%,
+      rgba(255, 255, 255, 0.75) 66%,
+      rgba(255, 255, 255, 0.60) 69%,
+      rgba(255, 255, 255, 0.30) 72%,
+      rgba(255, 255, 255, 0.10) 75%,
+      transparent 78% 100%
+    ),
+    /* accent underglow trailing the core */
+    conic-gradient(
+      from var(--beam-angle),
+      transparent 0% 48%,
+      rgba(61, 201, 122, 0.25) 56%,
+      rgba(61, 201, 122, 0.55) 66%,
+      rgba(61, 201, 122, 0.25) 76%,
+      transparent 84% 100%
+    );
+  /* keep only the ring: outer layer minus content box */
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: beam-spin 2s linear infinite, beam-fade-in 0.5s ease forwards;
+}
+
+@keyframes beam-spin {
+  to { --beam-angle: 360deg; }
+}
+
+@keyframes beam-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Reduced motion: a static ring highlight, no spin. */
+@media (prefers-reduced-motion: reduce) {
+  .dm-list .blk-list-item:focus::after,
+  .dm-list .blk-list-item:focus-visible::after,
+  .dm-list .thread-row:focus::after,
+  .dm-list .thread-row:focus-visible::after {
+    animation: none;
+    background: conic-gradient(
+      from 210deg,
+      transparent 0% 40%,
+      rgba(61, 201, 122, 0.45) 60%,
+      transparent 80% 100%
+    );
+  }
+}
