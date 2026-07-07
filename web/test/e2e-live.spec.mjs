@@ -292,7 +292,18 @@ test('swipe up on the top card reveals create-session above the list', async ({ 
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, -80);
   await expect(reveal).toHaveAttribute('aria-hidden', 'false');
-  await expect(page.locator('#new-session-pill')).toBeVisible();
+  const pill = page.locator('#new-session-pill');
+  await expect(pill).toBeVisible();
+  // "Visible" is not enough: v68 shipped with the pill translated up under
+  // the header — partially in-viewport (so toBeVisible passed) but the tap
+  // landed on the header. The pill must sit fully below the header AND a
+  // real click must reach it and open the create form.
+  const hdrBox = await page.locator('.list-hdr').boundingBox();
+  await expect
+    .poll(async () => (await pill.boundingBox()).y, { timeout: 3000 })
+    .toBeGreaterThanOrEqual(hdrBox.y + hdrBox.height);
+  await pill.click({ timeout: 3000 });
+  await expect(page.locator('#view-new')).toBeVisible();
 });
 
 test.describe('touch', () => {

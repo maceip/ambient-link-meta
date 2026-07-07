@@ -657,7 +657,11 @@
   overflow: hidden;
   opacity: 0;
   padding: 0 20px;
-  transform: translateY(calc(-1 * var(--pull, 0px)));
+  /* Pre-open drag: slide DOWN toward its slot as the pull grows. The v68
+     version translated UP by the pull (sign flip), which pushed the pill
+     under the header exactly when the list opened a gap for it — the user
+     saw a hole and the tap landed on the header. */
+  transform: translateY(calc(var(--pull, 0px) - 64px));
   transition: max-height 0.28s cubic-bezier(0.22, 1, 0.36, 1),
               opacity 0.22s ease,
               transform 0.22s ease;
@@ -666,6 +670,8 @@
   max-height: 80px;
   opacity: 1;
   padding: 4px 20px 0;
+  /* Open: the reveal owns flow height — pill sits fully below the header. */
+  transform: none;
 }
 
 .list-body {
@@ -687,8 +693,6 @@
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.14);
-  -webkit-backdrop-filter: blur(18px) saturate(1.35);
-  backdrop-filter: blur(18px) saturate(1.35);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   color: #fff;
   font-size: 16px;
@@ -762,8 +766,6 @@
   border: 1px solid var(--rbtn-glass-edge);
   border-radius: var(--radius-pill);
   background: linear-gradient(180deg, var(--rbtn-glass-top) 0%, var(--rbtn-glass-bot) 100%);
-  -webkit-backdrop-filter: var(--hud-blur);
-  backdrop-filter: var(--hud-blur);
   box-shadow: var(--rbtn-shadow-rest);
   color: #fff;
   cursor: pointer;

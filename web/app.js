@@ -870,7 +870,9 @@
     newSessionReveal.classList.toggle('open', open);
     newSessionReveal.setAttribute('aria-hidden', open ? 'false' : 'true');
     newSessionReveal.style.setProperty('--pull', pullRevealPx + 'px');
-    if (listBody) listBody.style.setProperty('--list-shift', pullRevealPx + 'px');
+    // Once open the reveal takes real flow height and pushes the list itself;
+    // keeping the shift too doubles the gap (and the pill can't fill it).
+    if (listBody) listBody.style.setProperty('--list-shift', (open ? 0 : pullRevealPx) + 'px');
     if (listScroll) listScroll.style.setProperty('--pull', pullRevealPx + 'px');
   }
 
