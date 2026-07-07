@@ -258,11 +258,17 @@ class RelayService : Service() {
     client = c
     presenter = p
     webDictation = dictation
-    agentVoiceClient = AgentSessionVoiceClient.baseUrlFromRelayUrl(url)?.let { base ->
-      AgentSessionVoiceClient(applicationContext, base, scope) { active ->
-        setMicrophoneForeground(active)
-      }.also { it.start() }
-    }
+    // Disabled: no deployed server implements /api/voice/* (the
+    // agent-session-service it targets is not on public.computer), so the
+    // client just error-loops against 404s. Flip AGENT_VOICE_ENABLED when
+    // the service is actually deployed and routed.
+    agentVoiceClient = if (AGENT_VOICE_ENABLED) {
+      AgentSessionVoiceClient.baseUrlFromRelayUrl(url)?.let { base ->
+        AgentSessionVoiceClient(applicationContext, base, scope) { active ->
+          setMicrophoneForeground(active)
+        }.also { it.start() }
+      }
+    } else null
     _status.update { it.copy(url = url, connected = false, lastError = null) }
 
     eventsJob = scope.launch {
@@ -372,6 +378,9 @@ class RelayService : Service() {
   companion object {
     private const val NOTIF_ID = 1
     private const val PREFS    = "ambient-link-meta"
+    // /api/voice polling client — off until agent-session-service is deployed
+    // behind public.computer (no server implements the API today).
+    private const val AGENT_VOICE_ENABLED = false
     private const val TAG = "RelayService"
     private const val PREF_PREWARM_MIC = "prewarm_mic"
     private const val PREF_PRELOAD_SODA = "preload_soda"
