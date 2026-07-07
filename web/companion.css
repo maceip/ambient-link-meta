@@ -153,6 +153,15 @@
 .conn-dot.warn { background: var(--warning); box-shadow: 0 0 8px rgba(255, 179, 74, 0.45); }
 .conn-dot.off { background: var(--danger); }
 
+/* Live-session count riding the wordmark line (c100fd9 banner, minus the row). */
+.conn-count {
+  flex: none;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--success);
+}
+
 /* Header-right cluster: connection dot + theme cycler share the wordmark
    line — chrome must never cost the list a card (3.5-rule). */
 .list-hdr-right {

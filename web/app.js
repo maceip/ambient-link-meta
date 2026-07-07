@@ -59,7 +59,9 @@
   var listeningPartial = '';
   var dictatePhase = 'idle'; // idle | listening | review
   var dictateDraft = '';
-  var chatPinBottom = false;
+  /* DMs convention: start pinned to the newest message; scrolling up unpins,
+     returning near the bottom re-pins. */
+  var chatPinBottom = true;
   var chatForceScrollOnce = false;
   var chatScrollToUser = false;
   var lastChatRenderSig = '';
@@ -313,6 +315,15 @@
     if (connDot) {
       connDot.classList.remove('on', 'off', 'warn');
       connDot.classList.add(state);
+    }
+    // c100fd9-era "Connected · N live sessions" liveliness, folded into the
+    // one-line chrome so it costs no card space.
+    var connCount = document.getElementById('conn-count');
+    if (connCount) {
+      var liveNow = hostInfo.liveSessionCount || liveThreadCount();
+      var showCount = state === 'on' && liveNow > 0;
+      connCount.textContent = showCount ? liveNow + ' live' : '';
+      connCount.classList.toggle('hidden', !showCount);
     }
     if (connStatus) {
       connStatus.classList.remove('on', 'off', 'warn');
@@ -1109,20 +1120,22 @@
         agentLabel: chatAgentLabel(t),
         emptyText: 'Session ended with no messages.',
       });
+      scrollChatToBottom();
       return;
     }
 
+    /* The meta strip earns its row only when it says something the chat
+       bubbles don't: a broken relay or an agent waiting on the human. The
+       old "label · done" breadcrumb repeated the title and cramped the
+       bubbles (c100fd9-era look had no such line). */
     if (!wsConnected()) {
       wMeta.textContent = 'Not connected — messages will not send until relay reconnects';
       wMeta.classList.remove('hidden');
-    } else if (thinking) {
-      wMeta.textContent = 'thinking…';
-      wMeta.classList.remove('hidden');
-    } else if (t.yank) {
+    } else if (!thinking && t.yank &&
+        (t.yank.awaiting === CS.Awaiting.PERMISSION || t.yank.awaiting === CS.Awaiting.QUESTION)) {
       wMeta.textContent = CS.metaLine(Object.assign({}, t.yank, { label: displayLabel(t) }));
       wMeta.classList.remove('hidden');
     } else {
-      wMeta.textContent = displayLabel(t) + ' · online';
       wMeta.classList.add('hidden');
     }
 
@@ -1132,6 +1145,12 @@
       emptyText: 'No messages yet.',
     });
     renderQuickReplies();
+    scrollChatToBottom();
+  }
+
+  function scrollChatToBottom() {
+    if (!wChat || !chatPinBottom) return;
+    wChat.scrollTop = wChat.scrollHeight;
   }
 
   function setComposerEnabled(on) {
@@ -1255,6 +1274,7 @@
   function openThread(id, compose) {
     if (activeThread && activeThread !== id) sendSessionSignal('session_blur', activeThread);
     activeThread = id;
+    chatPinBottom = true; // opening a thread always lands on the newest message
     listFocusedThreadId = id;
     setUrlForSession(id, !!compose);
     showView('thread');

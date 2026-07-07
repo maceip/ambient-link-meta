@@ -8,14 +8,14 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=68">
-  <link rel="stylesheet" href="blocks/blocks.css?v=68">
-  <link rel="stylesheet" href="companion.css?v=68">
-  <link rel="stylesheet" href="themes.css?v=68">
+  <link rel="stylesheet" href="styles.css?v=69">
+  <link rel="stylesheet" href="blocks/blocks.css?v=69">
+  <link rel="stylesheet" href="companion.css?v=69">
+  <link rel="stylesheet" href="themes.css?v=69">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v68';
+      var BUILD = 'v69';
       if (!('serviceWorker' in navigator)) return;
       var reloadedForSw = false;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -57,6 +57,7 @@
     <header class="list-hdr blk-shelf-list-view__hdr">
       <span class="list-title blk-shelf-list-view__title">sessions</span>
       <span class="list-hdr-right">
+        <span id="conn-count" class="conn-count hidden" aria-hidden="true"></span>
         <span id="conn-dot" class="conn-dot off" aria-hidden="true"></span>
         <button type="button" id="theme-cycle" class="theme-chip focusable" aria-label="cycle color theme">Meta</button>
       </span>
@@ -170,10 +171,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="log.js?v=68"></script>
-<script src="chipset.js?v=68"></script>
-<script src="content-pipeline.js?v=68"></script>
-<script src="blocks/blocks.js?v=68"></script>
-<script src="app.js?v=68"></script>
+<script src="log.js?v=69"></script>
+<script src="chipset.js?v=69"></script>
+<script src="content-pipeline.js?v=69"></script>
+<script src="blocks/blocks.js?v=69"></script>
+<script src="app.js?v=69"></script>
 </body>
 </html>
