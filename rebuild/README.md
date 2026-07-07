@@ -1,3 +1,11 @@
+# ⚠️ DEMO SCAFFOLD — NOT THE PRODUCT
+
+> **Everything this serves is fake.** `cmd/agent` boots two HARDCODED demo
+> agents ("claude"/auth-service, "codex"/data-pipeline) that generate
+> synthetic sessions. It exists only as a build-spec tracer. The real relay
+> is `ambient-link-core/host`; the real web app is `web/`. If you see these
+> demo sessions on a glasses screen, someone wired the wrong host.
+
 # Ambient Link — working build
 
 Fresh, dependency-free implementation of the tracer in `BUILD-SPEC.md`

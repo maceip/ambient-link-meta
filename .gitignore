@@ -42,3 +42,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Local demo scaffold (not product; broken gitlink removed 2026-07-06)
+agent-city/
