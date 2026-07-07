@@ -34,7 +34,6 @@
   var newPrompt  = document.getElementById('new-prompt');
   var newStart   = document.getElementById('new-start');
   var newBack    = document.getElementById('new-back');
-  var listNewSession = document.getElementById('list-new-session');
   var toastEl    = document.getElementById('toast');
   var hostPanel  = document.getElementById('host-panel');
   var relayBadge = document.getElementById('relay-badge');
