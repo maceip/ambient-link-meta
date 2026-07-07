@@ -1,0 +1,76 @@
+# Hermetic end-to-end test of the glasses web app against the REAL pipeline:
+# the production relay binary (built from ambient-link-core), a fake "claude"
+# agent honoring Claude Code's observable contract, and the shipping web UI
+# driven by Playwright. No mocks. See web/test/e2e-live.spec.mjs.
+#
+# This suite is the regression gate for the class of bugs that previously
+# shipped silently: a blank web app (blocks.js export of a deleted function),
+# delivery that said "delivered" but never landed (tmux locale sanitization),
+# and empty chat previews (raw JSONL payloads).
+name: web-e2e
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/web-e2e.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/web-e2e.yml"
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout ambient-link-meta
+        uses: actions/checkout@v4
+
+      - name: Checkout ambient-link-core (relay source)
+        uses: actions/checkout@v4
+        with:
+          repository: maceip/ambient-link-core
+          path: ambient-link-core
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ambient-link-core/host/go.mod
+          cache-dependency-path: ambient-link-core/host/go.sum
+
+      - name: Build relay binary
+        run: |
+          cd ambient-link-core/host
+          go build -o bin/ambient-link-host ./cmd/host
+
+      - name: Set up Node (>=22 for global WebSocket in the spec)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install tmux + lsof (delivery + proc correlation)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tmux lsof
+
+      - name: Install web test deps
+        run: cd web && npm ci
+
+      - name: Install Playwright chromium
+        run: cd web && npx playwright install --with-deps chromium
+
+      - name: Run E2E suite
+        env:
+          AMBIENT_HOST_BIN: ${{ github.workspace }}/ambient-link-core/host/bin/ambient-link-host
+        run: cd web && npx playwright test
+
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: web/test-results/
+          retention-days: 7
