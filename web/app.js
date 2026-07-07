@@ -20,7 +20,6 @@
   var quickRepliesEl = document.getElementById('quick-replies');
   var promptEl   = document.getElementById('prompt');
   var dictateBtn = document.getElementById('dictate');
-  var debugSendBtn = document.getElementById('debug-send');
   var sendBtn     = document.getElementById('send');
   var threadActions = document.getElementById('thread-actions');
   var composeField = document.getElementById('compose-field');
@@ -302,7 +301,33 @@
   }
 
   function renderConnStatus() {
-    /* Per-row status only — no top error gutter on the glasses list. */
+    // Instagram/DMs-era chrome (shell restored from c100fd9): banner on the
+    // list view + strip on the thread view, driven by the same wsConnState
+    // the rest of the app already maintains.
+    var state = connectionState();
+    var connStatus = document.getElementById('conn-status');
+    var connDot = document.getElementById('conn-dot');
+    var connLabel = document.getElementById('conn-label');
+    var threadConn = document.getElementById('thread-conn');
+    var threadConnLabel = document.getElementById('thread-conn-label');
+    if (connDot) {
+      connDot.classList.remove('on', 'off', 'warn');
+      connDot.classList.add(state);
+    }
+    if (connStatus) {
+      connStatus.classList.remove('on', 'off', 'warn');
+      connStatus.classList.add(state);
+    }
+    if (connLabel) connLabel.textContent = connectionCopy(state);
+    if (threadConn) {
+      threadConn.classList.remove('on', 'off', 'warn');
+      threadConn.classList.add(state);
+    }
+    if (threadConnLabel) {
+      threadConnLabel.textContent = state === 'on'
+        ? 'Connected'
+        : (state === 'warn' || state === 'connecting' ? 'Connecting…' : 'Not connected');
+    }
   }
 
   function setStatus(state) {
@@ -872,7 +897,24 @@
   }
 
   function wireThemes() {
-    /* Themes live in the Android companion app — not on the glasses web shell. */
+    // Theme chips (shell restored from c100fd9; wiring written fresh).
+    // Contract: themes.css keys off data-theme on <html>.
+    var bar = document.getElementById('theme-bar');
+    if (!bar) return;
+    function apply(name) {
+      document.documentElement.dataset.theme = name;
+      bar.querySelectorAll('.theme-chip').forEach(function (chip) {
+        chip.classList.toggle('active', chip.dataset.theme === name);
+      });
+      try { localStorage.setItem('ambient-link:theme', name); } catch (e) {}
+    }
+    bar.addEventListener('click', function (e) {
+      var chip = e.target && e.target.closest ? e.target.closest('.theme-chip') : null;
+      if (chip && chip.dataset.theme) apply(chip.dataset.theme);
+    });
+    var saved = '';
+    try { saved = localStorage.getItem('ambient-link:theme') || ''; } catch (e) {}
+    if (saved && bar.querySelector('[data-theme="' + saved + '"]')) apply(saved);
   }
 
   function wireListScroll() {
@@ -1851,15 +1893,6 @@
     }
     startDictate();
   });
-  if (debugSendBtn) {
-    debugSendBtn.addEventListener('click', function () {
-      if (!activeThread) {
-        showToast('open a session first', 'error');
-        return;
-      }
-      sendPrompt(activeThread, debugPingText());
-    });
-  }
   if (dictatePause) dictatePause.addEventListener('click', function () { pauseDictate(); });
   if (dictateRedo) dictateRedo.addEventListener('click', function () {
     resetDictateUi();

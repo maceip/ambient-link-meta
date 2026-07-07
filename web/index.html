@@ -8,13 +8,14 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=66">
-  <link rel="stylesheet" href="blocks/blocks.css?v=66">
-  <link rel="stylesheet" href="companion.css?v=66">
+  <link rel="stylesheet" href="styles.css?v=67">
+  <link rel="stylesheet" href="blocks/blocks.css?v=67">
+  <link rel="stylesheet" href="companion.css?v=67">
+  <link rel="stylesheet" href="themes.css?v=67">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v66';
+      var BUILD = 'v67';
       if (!('serviceWorker' in navigator)) return;
       var reloadedForSw = false;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -46,9 +47,24 @@
 <body>
 <div id="app">
 
-  <!-- THREAD LIST — validation gate: WhatsApp-style floating pills, max 4 rows -->
+  <!-- THREAD LIST — Instagram/DMs-style shell (restored from c100fd9);
+       behavior stays in current app.js, only presentation came back. -->
   <section id="view-threads" class="view blk-shelf-list-view">
     <span id="relay-badge" class="relay-badge hidden" title="relay debug — auto cards suppressed">debug</span>
+    <header class="list-hdr blk-shelf-list-view__hdr">
+      <span class="list-title blk-shelf-list-view__title">sessions</span>
+    </header>
+    <div id="conn-status" class="conn-status off" role="status" aria-live="polite">
+      <span id="conn-dot" class="conn-dot off" aria-hidden="true"></span>
+      <span id="conn-label" class="conn-label">Not connected to relay</span>
+    </div>
+    <div id="theme-bar" class="theme-bar" role="toolbar" aria-label="color theme">
+      <button type="button" class="theme-chip active" data-theme="meta">Meta</button>
+      <button type="button" class="theme-chip" data-theme="dracula">Dracula</button>
+      <button type="button" class="theme-chip" data-theme="tokyo-night">Tokyo Night</button>
+      <button type="button" class="theme-chip" data-theme="catppuccin">Catppuccin</button>
+      <button type="button" class="theme-chip" data-theme="nord">Nord</button>
+    </div>
     <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
     <div id="list-scroll" class="list-scroll blk-shelf-list-view__scroll">
       <div id="new-session-reveal" class="new-session-reveal" aria-hidden="true">
@@ -68,6 +84,10 @@
 
   <!-- SESSION COMPOSE -->
   <section id="view-thread" class="view hidden blk-agent-screen">
+    <div id="thread-conn" class="thread-conn off" role="status" aria-live="polite">
+      <span class="thread-conn-dot" aria-hidden="true"></span>
+      <span id="thread-conn-label" class="thread-conn-label">Not connected</span>
+    </div>
     <header class="thread-hdr">
       <span id="t-title" class="title hdr-title">session</span>
     </header>
@@ -100,15 +120,6 @@
               <svg class="icon-wave hidden" viewBox="0 0 24 24" fill="none"><path d="M4 10v4M7 8v8M10 6v12M13 9v6M16 7v10M19 10v4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
             </span>
             <span class="rbtn-label">Dictate</span>
-          </span>
-        </button>
-        <!-- Temporary: verify send path while dictation is fixed -->
-        <button type="button" id="debug-send" class="rbtn focusable rbtn-stroke rbtn-debug" title="debug send" aria-label="debug send">
-          <span class="rbtn-pill">
-            <span class="rbtn-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.75"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </span>
-            <span class="rbtn-label">Debug</span>
           </span>
         </button>
         <button type="button" id="send" class="rbtn rbtn-primary focusable rbtn-stroke rbtn-send-review" title="send" aria-label="send">
@@ -160,10 +171,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="log.js?v=66"></script>
-<script src="chipset.js?v=66"></script>
-<script src="content-pipeline.js?v=66"></script>
-<script src="blocks/blocks.js?v=66"></script>
-<script src="app.js?v=66"></script>
+<script src="log.js?v=67"></script>
+<script src="chipset.js?v=67"></script>
+<script src="content-pipeline.js?v=67"></script>
+<script src="blocks/blocks.js?v=67"></script>
+<script src="app.js?v=67"></script>
 </body>
 </html>

@@ -125,21 +125,21 @@
 }
 .empty-hint.hidden { display: none; }
 
+/* Instagram/DMs-era header (restored from c100fd9): bold lowercase wordmark,
+   left-aligned — not the small-caps ghost label that replaced it. */
 .list-hdr {
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 10px 16px 2px;
-  pointer-events: none;
+  justify-content: space-between;
+  padding: 16px 22px 4px;
 }
 .list-title {
-  color: rgba(255, 255, 255, 0.42);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  text-shadow: none;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-shadow: var(--hud-text-shadow);
 }
 .conn-dot {
   flex: none;
