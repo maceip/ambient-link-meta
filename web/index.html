@@ -8,15 +8,15 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=72">
-  <link rel="stylesheet" href="blocks/blocks.css?v=72">
-  <link rel="stylesheet" href="companion.css?v=72">
-  <link rel="stylesheet" href="themes.css?v=72">
-  <link rel="stylesheet" href="beam.css?v=72">
+  <link rel="stylesheet" href="styles.css?v=73">
+  <link rel="stylesheet" href="blocks/blocks.css?v=73">
+  <link rel="stylesheet" href="companion.css?v=73">
+  <link rel="stylesheet" href="themes.css?v=73">
+  <link rel="stylesheet" href="beam.css?v=73">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v72';
+      var BUILD = 'v73';
       if (!('serviceWorker' in navigator)) return;
       var reloadedForSw = false;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -142,10 +142,21 @@
       </div>
     </header>
     <div class="new-body blk-form-view__body">
+      <div id="agent-chips" class="agent-chips" role="radiogroup" aria-label="agent">
+        <button type="button" class="agent-chip focusable" data-agent="claude" role="radio" aria-checked="false">
+          <img src="icons/agents/zinc/claude.png?v=73" alt="" draggable="false"><span>Claude</span>
+        </button>
+        <button type="button" class="agent-chip focusable" data-agent="codex" role="radio" aria-checked="false">
+          <img src="icons/agents/zinc/codex.png?v=73" alt="" draggable="false"><span>Codex</span>
+        </button>
+        <button type="button" class="agent-chip focusable" data-agent="cursor" role="radio" aria-checked="false">
+          <img src="icons/agents/zinc/cursor.png?v=73" alt="" draggable="false"><span>Cursor</span>
+        </button>
+      </div>
       <label class="field-label" for="new-cwd">working directory (on your Mac)</label>
       <input id="new-cwd" class="text-input focusable" type="text" placeholder="~/Projects/my-app" tabindex="-1" aria-hidden="true">
       <label class="field-label" for="new-prompt">prompt</label>
-      <textarea id="new-prompt" class="text-input focusable" rows="5" placeholder="what should the agent do?" tabindex="-1" aria-hidden="true"></textarea>
+      <textarea id="new-prompt" class="text-input focusable" rows="3" placeholder="what should the agent do?" tabindex="-1" aria-hidden="true"></textarea>
     </div>
     <nav class="new-actions blk-form-view__actions" role="toolbar" aria-label="create session">
       <div class="rbtn-row blk-rbtn-row">
@@ -172,10 +183,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="log.js?v=72"></script>
-<script src="chipset.js?v=72"></script>
-<script src="content-pipeline.js?v=72"></script>
-<script src="blocks/blocks.js?v=72"></script>
-<script src="app.js?v=72"></script>
+<script src="log.js?v=73"></script>
+<script src="chipset.js?v=73"></script>
+<script src="content-pipeline.js?v=73"></script>
+<script src="blocks/blocks.js?v=73"></script>
+<script src="app.js?v=73"></script>
 </body>
 </html>

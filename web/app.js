@@ -1420,6 +1420,22 @@
       newTitleIcon.setAttribute('data-agent-icon', ac);
       newTitleIcon.innerHTML = agentIcon(ac);
     }
+    var chips = document.querySelectorAll('#agent-chips .agent-chip');
+    for (var i = 0; i < chips.length; i++) {
+      var on = chips[i].getAttribute('data-agent') === ac;
+      chips[i].classList.toggle('selected', on);
+      chips[i].setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+  }
+
+  function wireAgentChips() {
+    var box = document.getElementById('agent-chips');
+    if (!box) return;
+    box.addEventListener('click', function (e) {
+      var chip = e.target.closest('.agent-chip');
+      if (!chip) return;
+      pickAgent(chip.getAttribute('data-agent'));
+    });
   }
 
   function findThreadForAgent(agent, cwd) {
@@ -1971,6 +1987,7 @@
   document.querySelectorAll('[data-agent-icon]').forEach(function (n) {
     n.innerHTML = agentIcon(n.getAttribute('data-agent-icon'));
   });
+  wireAgentChips();
   pickAgent(pickedAgent);
   wireRbtnGroups();
   wireTaps();

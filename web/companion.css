@@ -350,6 +350,52 @@
   display: none;
 }
 
+/* Agent picker chips on the create form — one adjacent row (button hygiene:
+   nothing far apart), zinc icon + label, selected = same white-ring language
+   as the selected list card. */
+.agent-chips {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 2px 0 10px;
+}
+.agent-chip {
+  appearance: none;
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, #23272e 0%, #1a1d22 100%);
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-color-in) var(--ease-color-in),
+              border-color var(--dur-color-in) var(--ease-color-in),
+              transform var(--dur-focus-in) var(--ease-focus-in);
+}
+.agent-chip img {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: block;
+}
+.agent-chip:focus,
+.agent-chip:focus-visible {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.45);
+}
+.agent-chip.selected {
+  background: linear-gradient(180deg, #2e333c 0%, #242830 100%);
+  border-color: rgba(255, 255, 255, 0.55);
+  color: #fff;
+  transform: scale(1.03);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
 .thread-row {
   appearance: none;
   font: inherit;
