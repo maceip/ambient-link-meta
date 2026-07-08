@@ -366,9 +366,9 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-pill);
-  background: linear-gradient(180deg, #23272e 0%, #1a1d22 100%);
+  background: linear-gradient(180deg, #45484f 0%, #393c42 100%);
   color: var(--text-secondary);
   font-size: 15px;
   font-weight: 600;
@@ -389,11 +389,15 @@
   border-color: rgba(255, 255, 255, 0.45);
 }
 .agent-chip.selected {
-  background: linear-gradient(180deg, #2e333c 0%, #242830 100%);
-  border-color: rgba(255, 255, 255, 0.55);
+  background: linear-gradient(180deg, #52565e 0%, #45484f 100%);
+  border-color: rgba(255, 255, 255, 0.6);
   color: #fff;
   transform: scale(1.03);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.agent-chip:active {
+  transform: scale(0.96);
+  transition-duration: 90ms;
 }
 
 .thread-row {
