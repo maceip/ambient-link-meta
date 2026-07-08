@@ -972,6 +972,22 @@
     return AGENT_ICONS[agentClass(agent)] || '';
   }
 
+  /* Uniform round zinc avatars (reference_ui/LIST_ITEM_CONTENT.png: replace
+     tile avatars with agent icons "rounded like these avatars are").
+     Generated from ambient-link-core/agents/assets into icons/agents/zinc/. */
+  var ZINC_ICONS = ['amp', 'apple', 'claude', 'claudecode', 'cline', 'codex', 'copilot',
+    'cursor', 'deepseek', 'githubcopilot', 'goose', 'grok', 'hermesagent', 'huggingface',
+    'hunyuan', 'kimi', 'longcat', 'manus', 'mcp', 'meta', 'metaai', 'microsoft',
+    'midjourney', 'minimax', 'mistral', 'openclaw', 'openhands', 'poe', 'qwen',
+    'replit', 'roocode', 'trae', 'venice'];
+
+  function agentAvatarHtml(agent) {
+    var key = agentClass(agent);
+    if (key === 'generic') key = 'mcp';
+    if (ZINC_ICONS.indexOf(key) < 0) return agentIcon(agent) || undefined;
+    return '<img class="avatar-zinc" src="icons/agents/zinc/' + key + '.png" alt="" draggable="false">';
+  }
+
   function threadListSignature(live) {
     return live.map(function (t) {
       return t.id + '|' + (t.lastEventAt || 0) + '|' + (t.busy ? 1 : 0) + '|' + (t.ended ? 1 : 0)
@@ -1030,7 +1046,7 @@
         label: folderTitle(t),
         preview: preview || 'Waiting for agent…',
         time: listTimeLabel(t.lastEventAt) || relativeTime(t.lastEventAt),
-        avatarHtml: agentIcon(t.agent) || undefined,
+        avatarHtml: agentAvatarHtml(t.agent),
         avatarClass: 'agent-' + ac,
         muted: snoozed,
         connectionState: connState,

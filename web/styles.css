@@ -65,10 +65,10 @@
   --ease-focus-out: cubic-bezier(0.24, 0.24, 0.6, 1);
   --ease-color-in: cubic-bezier(0.4, 0.04, 0.5, 1);
   --ease-press: cubic-bezier(0.68, 0, 0.29, 1);
-  --dur-focus-in: 475ms;
-  --dur-focus-out: 625ms;
-  --dur-color-in: 300ms;
-  --dur-color-out: 300ms;
+  --dur-focus-in: 140ms;
+  --dur-focus-out: 200ms;
+  --dur-color-in: 120ms;
+  --dur-color-out: 160ms;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

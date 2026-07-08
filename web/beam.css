@@ -24,7 +24,7 @@
   content: "";
   position: absolute;
   inset: -1px; /* sit on the card's 1px border */
-  border-radius: 18px;
+  border-radius: 26px;
   padding: 1.5px;
   pointer-events: none;
   background:
