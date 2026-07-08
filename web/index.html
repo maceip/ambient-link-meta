@@ -8,15 +8,15 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=74">
-  <link rel="stylesheet" href="blocks/blocks.css?v=74">
-  <link rel="stylesheet" href="companion.css?v=74">
-  <link rel="stylesheet" href="themes.css?v=74">
-  <link rel="stylesheet" href="beam.css?v=74">
+  <link rel="stylesheet" href="styles.css?v=75">
+  <link rel="stylesheet" href="blocks/blocks.css?v=75">
+  <link rel="stylesheet" href="companion.css?v=75">
+  <link rel="stylesheet" href="themes.css?v=75">
+  <link rel="stylesheet" href="beam.css?v=75">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v74';
+      var BUILD = 'v75';
       if (!('serviceWorker' in navigator)) return;
       var reloadedForSw = false;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -25,19 +25,12 @@
         location.reload();
       });
       window.addEventListener('load', function () {
-        // Self-heal: earlier installs left a stale service worker caching an old
-        // shell. Drop any cache that isn't this build before (re)registering.
-        try {
-          if (window.caches && caches.keys) {
-            caches.keys().then(function (keys) {
-              keys.forEach(function (k) {
-                if (k.indexOf('ambient-link-meta-') === 0 && k !== 'ambient-link-meta-' + BUILD) {
-                  caches.delete(k);
-                }
-              });
-            });
-          }
-        } catch (e) {}
+        // No page-level cache deletion here. An earlier "self-heal" nuked
+        // every non-current cache on load — but the new build's cache only
+        // exists after the new SW installs, so any network hiccup in that
+        // window left the SW with nothing to serve and the browser showed
+        // "No internet". sw.js's activate handler already deletes old caches
+        // at the only safe time: after the new cache is populated.
         navigator.serviceWorker.register('sw.js').then(function (reg) {
           reg.update();
         }).catch(function () {});
@@ -144,13 +137,13 @@
     <div class="new-body blk-form-view__body">
       <div id="agent-chips" class="agent-chips" role="radiogroup" aria-label="agent">
         <button type="button" class="agent-chip focusable" data-agent="claude" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/claude.png?v=74" alt="" draggable="false"><span>Claude</span>
+          <img src="icons/agents/zinc/claude.png?v=75" alt="" draggable="false"><span>Claude</span>
         </button>
         <button type="button" class="agent-chip focusable" data-agent="codex" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/codex.png?v=74" alt="" draggable="false"><span>Codex</span>
+          <img src="icons/agents/zinc/codex.png?v=75" alt="" draggable="false"><span>Codex</span>
         </button>
         <button type="button" class="agent-chip focusable" data-agent="cursor" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/cursor.png?v=74" alt="" draggable="false"><span>Cursor</span>
+          <img src="icons/agents/zinc/cursor.png?v=75" alt="" draggable="false"><span>Cursor</span>
         </button>
       </div>
       <label class="field-label" for="new-cwd">working directory (on your Mac)</label>
@@ -183,10 +176,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="log.js?v=74"></script>
-<script src="chipset.js?v=74"></script>
-<script src="content-pipeline.js?v=74"></script>
-<script src="blocks/blocks.js?v=74"></script>
-<script src="app.js?v=74"></script>
+<script src="log.js?v=75"></script>
+<script src="chipset.js?v=75"></script>
+<script src="content-pipeline.js?v=75"></script>
+<script src="blocks/blocks.js?v=75"></script>
+<script src="app.js?v=75"></script>
 </body>
 </html>
