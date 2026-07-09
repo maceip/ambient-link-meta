@@ -1,10 +1,11 @@
 // Minimal service worker — required for Meta Display web-app install.
 // Network-first for the shell (so a new deploy is never masked by a stale cache),
 // cache as offline fallback. Relay paths are never intercepted.
-const CACHE = 'ambient-link-meta-v76';
+const CACHE = 'ambient-link-meta-v77';
 const SHELL = [
   './',
   './index.html',
+  './log.js',
   './app.js',
   './chipset.js',
   './content-pipeline.js',
@@ -19,7 +20,11 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
+  e.waitUntil(
+    caches.open(CACHE).then(c => Promise.all(SHELL.map(path => (
+      c.add(path).catch(() => {})
+    ))))
+  );
   self.skipWaiting();
 });
 self.addEventListener('activate', (e) => {
