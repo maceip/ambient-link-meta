@@ -726,6 +726,55 @@
     return 'ambient-link:chat-logs-v3';
   }
 
+  /* Offline resilience: the glasses should open to the last-known session
+     list (greyed via the existing session-offline styling) instead of an
+     empty screen. Snapshot is written only while connected, so a dead-relay
+     render never overwrites the good one; restored rows are reconciled
+     against the next hello. */
+  var LIST_SNAPSHOT_KEY = 'ambient-link:list-snapshot';
+
+  function saveListSnapshot(live) {
+    if (!wsConnected() || !live || !live.length) return;
+    try {
+      localStorage.setItem(LIST_SNAPSHOT_KEY, JSON.stringify(live.map(function (t) {
+        return {
+          id: t.id, label: t.label, agent: t.agent,
+          lastAssistant: listPreviewPlain(listPreviewText(t)) || t.lastAssistant || '',
+          lastEventAt: t.lastEventAt || 0,
+        };
+      })));
+    } catch (e) {}
+  }
+
+  function restoreListSnapshot() {
+    try {
+      var raw = localStorage.getItem(LIST_SNAPSHOT_KEY);
+      if (!raw) return;
+      JSON.parse(raw).forEach(function (s) {
+        if (!s || !s.id || threads[s.id]) return;
+        var row = threadRow(s.id);
+        row.label = s.label || s.id;
+        row.agent = s.agent || 'generic';
+        row.lastAssistant = s.lastAssistant || '';
+        row.lastEventAt = s.lastEventAt || 0;
+        row.restored = true; // dropped on hello if the relay no longer has it
+      });
+    } catch (e) {}
+  }
+
+  function reconcileRestoredRows(helloThreads) {
+    var seen = {};
+    (helloThreads || []).forEach(function (t) { if (t && t.id) seen[t.id] = true; });
+    Object.keys(threads).forEach(function (id) {
+      if (threads[id].restored && !seen[id]) {
+        delete threads[id];
+        threadOrder = threadOrder.filter(function (x) { return x !== id; });
+      } else {
+        threads[id].restored = false;
+      }
+    });
+  }
+
   function loadChatLogs() {
     try {
       var raw = localStorage.getItem(chatLogKey());
@@ -1061,6 +1110,7 @@
       });
       threadsUl.appendChild(li);
     });
+    saveListSnapshot(live);
     renderConnStatus();
     wireRbtnGroups();
     wireTaps();
@@ -1836,6 +1886,7 @@
 
       if (msg.type === 'hello') {
         subscribeFromCursor(msg.cursor);
+        reconcileRestoredRows(msg.threads);
         (msg.threads || []).forEach(upsertHelloRow);
         if (msg.relay_debug) {
           hostInfo.relayDebug = true;
@@ -1992,6 +2043,7 @@
   wireRbtnGroups();
   wireTaps();
   wireListPullReveal();
+  restoreListSnapshot();
   loadChatLogs();
   renderThreadList(true);
   setStatus('connecting');
