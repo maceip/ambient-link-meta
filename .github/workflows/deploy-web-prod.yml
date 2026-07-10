@@ -1,5 +1,6 @@
 # Automatic production deploy: every push to main updates the server git checkout.
-# Caddy serves /home/devuser/ambient-link-meta/web — no rsync, no local deploy script.
+# Caddy serves /home/devuser/ambient-link-meta/web at https://agent.public.computer/
+# — no rsync, no local deploy script.
 name: Deploy web (production)
 
 on:
@@ -55,4 +56,9 @@ jobs:
             echo "deployed HEAD $deployed != pushed ${GITHUB_SHA}" >&2
             exit 1
           fi
+          curl --fail --silent --show-error --location --max-time 20 \
+            https://agent.public.computer/ -o /tmp/ambient-link-index.html
+          grep -q "var BUILD = '" /tmp/ambient-link-index.html
+          curl --fail --silent --show-error --max-time 20 \
+            https://agent.public.computer/ambient-link/status -o /tmp/ambient-link-status.json
           echo "production web deploy verified on server: $deployed"

@@ -4,7 +4,9 @@
   "private": true,
   "description": "Glasses-side SPA. Static; expects relay reachable at relative /ambient-link/ws (front it with Caddy/nginx).",
   "scripts": {
-    "serve": "python3 -m http.server 8080"
+    "serve": "python3 -m http.server 8080",
+    "test": "playwright test",
+    "test:prod-agent": "AMBIENT_PROD_SMOKE=1 playwright test test/prod-agent-smoke.spec.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1"
