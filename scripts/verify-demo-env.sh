@@ -4,7 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOST="${AMBIENT_HOST:-http://127.0.0.1:5181}"
-WEB="${AMBIENT_WEB:-https://relay.public.computer}"
+WEB="${AMBIENT_WEB:-https://agent.public.computer}"
 EXPECTED_BUILD="${AMBIENT_EXPECTED_BUILD:-v77}"
 FAIL=0
 

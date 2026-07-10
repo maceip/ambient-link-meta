@@ -1,4 +1,4 @@
-# Deploying to public.computer / relay.public.computer
+# Deploying to public.computer / agent.public.computer
 
 The canonical, repeatable steps to update the **glasses web app** and the
 **relay daemon** running on `public.computer`. No secrets live in this file — it
@@ -18,17 +18,16 @@ material are managed outside the repo.)
 | Web app (static) | `/home/devuser/ambient-link-meta/web` | `devuser` | git checkout of this repo; **served directly by Caddy** |
 | Relay daemon | `/home/devuser/ambient-link-core/host/bin/ambient-link-host` | `devuser` | systemd service, binds `127.0.0.1:5181` |
 | Relay source | `/home/devuser/ambient-link-core` | `devuser` | git checkout; server has Go (`/usr/bin/go`) |
-| Reverse proxy / TLS | Caddy (`/etc/caddy/Caddyfile`) | root | terminates HTTPS for `public.computer`, `relay.public.computer`, and the legacy `agent.public.computer` alias |
+| Reverse proxy / TLS | Caddy (`/etc/caddy/Caddyfile`) | root | terminates HTTPS for `public.computer`, `agent.public.computer`, and the `relay.public.computer` alias |
 | systemd unit | `/etc/systemd/system/ambient-link-host.service` | root | `Type=simple`, runs as `devuser`, `HOME=/home/devuser` |
 
-**Request routing** (from the `public.computer` / `relay.public.computer` Caddy blocks):
+**Request routing** (from the `public.computer` / `agent.public.computer` Caddy blocks):
 
-- `https://relay.public.computer/` → **installed Meta Display web-app origin**,
+- `https://agent.public.computer/` → **installed Meta Display web-app origin**,
   serving static files from `…/ambient-link-meta/web` (Caddy `file_server`).
-- `https://agent.public.computer/` → legacy installed-app compatibility alias
-  serving the same web app and relay API. Older experiments used this hostname
-  for the `agent-session-service` demo; it must not point at the old `:5192`
-  demo backend.
+- `https://relay.public.computer/` → alias serving the same web app and relay API.
+  Older experiments used `agent.public.computer` for the `agent-session-service`
+  demo; it must not point at the old `:5192` demo backend.
 - `https://public.computer/ambient-link/` → compatibility/debug path serving the
   same static files with the `/ambient-link` prefix stripped. The relay is *not*
   involved in serving the web app on either static path.
@@ -53,9 +52,9 @@ ownership clean and avoid git "dubious ownership" errors.
 `.github/workflows/deploy-web-prod.yml`, which SSHes to the server and runs
 `git fetch && git reset --hard origin/main` in `/home/devuser/ambient-link-meta`.
 Caddy serves those files at the installed glasses origin,
-`https://relay.public.computer/`; `https://agent.public.computer/` is kept as a
-legacy installed-app alias, and `https://public.computer/ambient-link/` is kept
-as a compatibility/debug path.
+`https://agent.public.computer/`; `https://relay.public.computer/` is kept as an
+alias, and `https://public.computer/ambient-link/` is kept as a
+compatibility/debug path.
 
 Local workflow:
 
@@ -157,15 +156,15 @@ ssh root@public.computer 'curl -s http://127.0.0.1:5181/ambient-link/status | he
 ssh root@public.computer 'systemctl is-active ambient-link-host'
 
 # web app reachable through Caddy/TLS (public edge)
-curl -sI https://relay.public.computer/ | head -5
-curl -s  https://relay.public.computer/app.js | head -c 80; echo
+curl -sI https://agent.public.computer/ | head -5
+curl -s  https://agent.public.computer/app.js | head -c 80; echo
 ```
 
 To confirm the web change is actually live, grep the served asset for a known
 string from your edit:
 
 ```bash
-curl -s https://relay.public.computer/companion.css | grep -c "<your-new-token>"
+curl -s https://agent.public.computer/companion.css | grep -c "<your-new-token>"
 ```
 
 ---
@@ -221,7 +220,7 @@ not reach the relay — this is the #1 cause of `404` on a new API path.
 | `404` on a new `/ambient-link/...` API path | not in Caddy `@ambient_api` | add it + reload Caddy (§6) |
 | git "dubious ownership" | running git as root on devuser repo | run as `sudo -u devuser -H git …` |
 | `go build` fails on server | server Go too old for `go.mod` | cross-compile on laptop (§3 Path B) |
-| relay up but no sessions | sessions run on the **laptop**, not the server | needs the cloud bridge (laptop → `wss://relay.public.computer/ambient-link/relay`); separate feature |
+| relay up but no sessions | sessions run on the **laptop**, not the server | needs the cloud bridge (laptop → `wss://agent.public.computer/ambient-link/relay`); separate feature |
 | `git pull` blocked on server | disk changed outside git (rsync/scp/manual edit) | `git reset --hard origin/main` as devuser; deploy via git only (§2) |
 | `502` on `/ambient-link/ws` | relay down | `systemctl restart ambient-link-host` + check `journalctl -u ambient-link-host` |
 
@@ -242,6 +241,6 @@ ssh root@public.computer 'sudo -u devuser -H git -C /home/devuser/ambient-link-c
   systemctl restart ambient-link-host'
 
 # VERIFY
-curl -sI https://relay.public.computer/ | head -3
+curl -sI https://agent.public.computer/ | head -3
 ssh root@public.computer 'curl -s http://127.0.0.1:5181/ambient-link/status | head -c 200; echo'
 ```

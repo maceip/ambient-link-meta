@@ -2,7 +2,7 @@
 param(
   [string]$Serial = $env:ADB_SERIAL,
   [string]$AppName = "ambient link",
-  [string]$AppUrl = "https://relay.public.computer/",
+  [string]$AppUrl = "https://agent.public.computer/",
   [int]$WaitSeconds = 2,
   [int]$WaitForUnlockSeconds = 0,
   [switch]$TapConnect
