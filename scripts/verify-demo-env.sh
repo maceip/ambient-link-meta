@@ -56,10 +56,10 @@ fi
 
 echo
 echo "== 4. Meta repo (automated smoke) =="
-if bash "$ROOT/scripts/test-protocol.sh" >/dev/null 2>&1; then
-  grn "test-protocol.sh (yank + inject)"
+if bash "$ROOT/scripts/e2e-web.sh" >/dev/null 2>&1; then
+  grn "e2e-web.sh (session list + reply + dictation + create-session)"
 else
-  red "test-protocol.sh failed"
+  red "e2e-web.sh failed"
 fi
 
 echo
