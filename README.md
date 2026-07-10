@@ -102,11 +102,14 @@ open the app cold, the web app stands alone.
    on the machine(s) where your agents run.
 2. Install the native relay on your phone (see
    [`relay-android/`](relay-android) or [`relay-ios/`](relay-ios)).
-3. Add the web app to your glasses launcher (see [`web/`](web)).
+3. Add the web app to your glasses launcher at `https://relay.public.computer/`
+   (see [`web/`](web) and `scripts/install-meta-webapp.ps1`).
 4. Configure both phone relay and web app to point at your host's WS URL.
 
 ## Production deploy
 
 Web app deploys automatically via GitHub Actions on every push to `main`
 (`.github/workflows/deploy-web-prod.yml` → `git reset --hard origin/main` on
-`public.computer`). CI verify: deploy-trigger-6.
+`public.computer`). Caddy serves the installed glasses origin at
+`https://relay.public.computer/`; `https://public.computer/ambient-link/` remains
+a compatibility/debug path. CI verify: deploy-trigger-6.

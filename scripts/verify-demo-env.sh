@@ -4,7 +4,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOST="${AMBIENT_HOST:-http://127.0.0.1:5181}"
-WEB="${AMBIENT_WEB:-https://public.computer/ambient-link}"
+WEB="${AMBIENT_WEB:-https://relay.public.computer}"
+EXPECTED_BUILD="${AMBIENT_EXPECTED_BUILD:-v77}"
 FAIL=0
 
 red() { printf '\033[31m✗ %s\033[0m\n' "$1"; FAIL=1; }
@@ -46,8 +47,8 @@ BUILD=$(curl -sf "${WEB}/index.html" 2>/dev/null | sed -n "s/.*var BUILD = '\([^
 SW=$(curl -sf "${WEB}/sw.js" 2>/dev/null | sed -n "s/.*CACHE = '\([^']*\)'.*/\1/p" | head -1 || true)
 if [[ -n "$BUILD" ]]; then
   grn "Prod web BUILD=${BUILD} SW=${SW:-unknown}"
-  if [[ "$BUILD" != "v54" ]]; then
-    ylw "Prod not on latest v54 yet — deploy web or force-quit Meta AI after deploy"
+  if [[ "$BUILD" != "$EXPECTED_BUILD" ]]; then
+    ylw "Prod not on expected ${EXPECTED_BUILD} yet — deploy web or force-quit Meta AI after deploy"
   fi
 else
   ylw "Could not fetch prod web (offline?) — check ${WEB} manually"
