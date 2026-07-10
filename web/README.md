@@ -2,8 +2,9 @@
 
 Static SPA served to Meta Display glasses. No build step; Caddy on
 `public.computer` serves these files directly at the installed origin
-`https://relay.public.computer/` and at the compatibility path
-`/ambient-link/`. All data comes from the relay over relative
+`https://relay.public.computer/`, the legacy installed-app alias
+`https://agent.public.computer/`, and the compatibility path `/ambient-link/`.
+All data comes from the relay over relative
 `/ambient-link/*` paths — there are no mocks and no fixtures in this app.
 
 - Session list, chat, compose: `app.js` (WS `/ambient-link/ws` + polling

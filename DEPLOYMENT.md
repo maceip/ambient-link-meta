@@ -18,13 +18,17 @@ material are managed outside the repo.)
 | Web app (static) | `/home/devuser/ambient-link-meta/web` | `devuser` | git checkout of this repo; **served directly by Caddy** |
 | Relay daemon | `/home/devuser/ambient-link-core/host/bin/ambient-link-host` | `devuser` | systemd service, binds `127.0.0.1:5181` |
 | Relay source | `/home/devuser/ambient-link-core` | `devuser` | git checkout; server has Go (`/usr/bin/go`) |
-| Reverse proxy / TLS | Caddy (`/etc/caddy/Caddyfile`) | root | terminates HTTPS for `public.computer` and `relay.public.computer` |
+| Reverse proxy / TLS | Caddy (`/etc/caddy/Caddyfile`) | root | terminates HTTPS for `public.computer`, `relay.public.computer`, and the legacy `agent.public.computer` alias |
 | systemd unit | `/etc/systemd/system/ambient-link-host.service` | root | `Type=simple`, runs as `devuser`, `HOME=/home/devuser` |
 
 **Request routing** (from the `public.computer` / `relay.public.computer` Caddy blocks):
 
 - `https://relay.public.computer/` → **installed Meta Display web-app origin**,
   serving static files from `…/ambient-link-meta/web` (Caddy `file_server`).
+- `https://agent.public.computer/` → legacy installed-app compatibility alias
+  serving the same web app and relay API. Older experiments used this hostname
+  for the `agent-session-service` demo; it must not point at the old `:5192`
+  demo backend.
 - `https://public.computer/ambient-link/` → compatibility/debug path serving the
   same static files with the `/ambient-link` prefix stripped. The relay is *not*
   involved in serving the web app on either static path.
@@ -49,7 +53,8 @@ ownership clean and avoid git "dubious ownership" errors.
 `.github/workflows/deploy-web-prod.yml`, which SSHes to the server and runs
 `git fetch && git reset --hard origin/main` in `/home/devuser/ambient-link-meta`.
 Caddy serves those files at the installed glasses origin,
-`https://relay.public.computer/`; `https://public.computer/ambient-link/` is kept
+`https://relay.public.computer/`; `https://agent.public.computer/` is kept as a
+legacy installed-app alias, and `https://public.computer/ambient-link/` is kept
 as a compatibility/debug path.
 
 Local workflow:

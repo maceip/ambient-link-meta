@@ -111,5 +111,6 @@ open the app cold, the web app stands alone.
 Web app deploys automatically via GitHub Actions on every push to `main`
 (`.github/workflows/deploy-web-prod.yml` → `git reset --hard origin/main` on
 `public.computer`). Caddy serves the installed glasses origin at
-`https://relay.public.computer/`; `https://public.computer/ambient-link/` remains
-a compatibility/debug path. CI verify: deploy-trigger-6.
+`https://relay.public.computer/`; `https://agent.public.computer/` is a legacy
+installed-app compatibility alias, and `https://public.computer/ambient-link/`
+remains a compatibility/debug path. CI verify: deploy-trigger-6.
