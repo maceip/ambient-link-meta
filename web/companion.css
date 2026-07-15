@@ -162,29 +162,12 @@
   color: var(--success);
 }
 
-/* Header-right cluster: connection dot + theme cycler share the wordmark
-   line — chrome must never cost the list a card (3.5-rule). */
+/* Header-right cluster: connection dot shares the wordmark line — chrome
+   must never cost the list a card (3.5-rule). */
 .list-hdr-right {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-#theme-cycle {
-  appearance: none;
-  font: inherit;
-  padding: 4px 12px;
-  border-radius: var(--radius-pill);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-#theme-cycle:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  color: var(--text-primary);
 }
 .conn-status.hidden { display: none; }
 

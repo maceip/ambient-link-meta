@@ -52,9 +52,12 @@ object HudWidgets {
   private fun orderedChips(chips: List<Chip>): List<Chip> =
     chips.sortedByDescending { it.primary }.take(MAX_ACTIONS)
 
-  /** DAT buttons default to START-aligned labels; center chip text + row on the waveguide. */
+  /** Bare button child — passing alignSelf/flex params wraps the button in a
+   *  FlexChildWrapper, and the glasses renderer then sizes the wrapper instead
+   *  of the label: text stays start-anchored and clips at the trailing edge.
+   *  Bare buttons size to their label. Row centering lives on actionChipRow. */
   private fun FlexBoxScope.hudChipButton(label: String, style: ButtonStyle, onClick: () -> Unit) {
-    button(label, style = style, onClick = onClick, alignSelf = Alignment.CENTER)
+    button(label, style = style, onClick = onClick)
   }
 
   private fun FlexBoxScope.actionChipRow(block: FlexBoxScope.() -> Unit) {
@@ -64,6 +67,9 @@ object HudWidgets {
       padding = 0,
       alignment = Alignment.CENTER,
       crossAlignment = Alignment.CENTER,
+      // Three full-width chips can exceed the 600px waveguide; wrap to a second
+      // line instead of letting the renderer shrink-clip every label.
+      wrap = true,
       background = FlexBoxBackground.NONE,
     ) {
       block()

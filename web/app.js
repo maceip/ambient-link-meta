@@ -1073,30 +1073,14 @@
   }
 
   var THEMES = ['meta', 'dracula', 'tokyo-night', 'catppuccin', 'nord'];
-  var THEME_LABELS = {
-    meta: 'Meta', dracula: 'Dracula', 'tokyo-night': 'Tokyo Night',
-    catppuccin: 'Catppuccin', nord: 'Nord',
-  };
 
   function wireThemes() {
-    // Era themes, glasses-economy form: one header chip cycles through the
-    // presets instead of a pill row (which cost a whole card of height).
-    // Contract: themes.css keys off data-theme on <html>.
-    var chip = document.getElementById('theme-cycle');
-    if (!chip) return;
-    function apply(name) {
-      document.documentElement.dataset.theme = name;
-      chip.textContent = THEME_LABELS[name] || name;
-      try { localStorage.setItem('ambient-link:theme', name); } catch (e) {}
-    }
-    chip.addEventListener('click', function () {
-      var cur = document.documentElement.dataset.theme || 'meta';
-      var i = THEMES.indexOf(cur);
-      apply(THEMES[(i + 1) % THEMES.length]);
-    });
+    // The header theme-cycle chip was removed (glasses chrome economy); a
+    // previously saved theme still applies. Contract: themes.css keys off
+    // data-theme on <html>.
     var saved = '';
     try { saved = localStorage.getItem('ambient-link:theme') || ''; } catch (e) {}
-    apply(THEMES.indexOf(saved) >= 0 ? saved : 'meta');
+    document.documentElement.dataset.theme = THEMES.indexOf(saved) >= 0 ? saved : 'meta';
   }
 
   function wireListScroll() {
