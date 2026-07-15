@@ -40,16 +40,24 @@ class DictateDebugReceiver : BroadcastReceiver() {
           ),
         )
       }
+      ACTION_INPUT -> {
+        val thread = intent.getStringExtra(EXTRA_THREAD) ?: return
+        val text = intent.getStringExtra(EXTRA_TEXT)?.takeIf { it.isNotBlank() } ?: return
+        val id = RelayService.debugSendInput(thread, text)
+        Log.i(TAG, "debug input thread=$thread id=$id")
+      }
     }
   }
 
   companion object {
     const val ACTION_FIXTURE = "com.lowkey.ambientlink.DEBUG_SODA_FIXTURE"
     const val ACTION_YANK = "com.lowkey.ambientlink.DEBUG_HUD_YANK"
+    const val ACTION_INPUT = "com.lowkey.ambientlink.DEBUG_SEND_INPUT"
     const val EXTRA_PATH = "path"
     const val EXTRA_EXPECT = "expect"
     const val EXTRA_PROMPT = "prompt"
     const val EXTRA_THREAD = "thread"
+    const val EXTRA_TEXT = "text"
     private const val TAG = "DictateDebug"
 
     fun registerIfDebug(context: Context) {
@@ -57,6 +65,7 @@ class DictateDebugReceiver : BroadcastReceiver() {
       val filter = IntentFilter().apply {
         addAction(ACTION_FIXTURE)
         addAction(ACTION_YANK)
+        addAction(ACTION_INPUT)
       }
       context.registerReceiver(DictateDebugReceiver(), filter, Context.RECEIVER_EXPORTED)
       Log.i(TAG, "registered debug broadcasts (debug builds only)")

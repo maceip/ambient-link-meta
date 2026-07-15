@@ -342,8 +342,32 @@
     }
 
     stack.appendChild(bubble);
+
+    // Honest per-message lifecycle under user bubbles, driven only by relay
+    // input_status frames: sending/offline → accepted/queued/delivered →
+    // landed | failed. Landed is the only "seen by agent" proof.
+    if (opts.role === 'user' && opts.status) {
+      var statusEl = document.createElement('div');
+      statusEl.className = 'blk-chat-status blk-chat-status--' + opts.status;
+      statusEl.textContent = chatStatusLabel(opts.status, opts.error);
+      stack.appendChild(statusEl);
+    }
+
     wrap.appendChild(stack);
     return wrap;
+  }
+
+  function chatStatusLabel(status, error) {
+    switch (status) {
+      case 'sending': return 'sending…';
+      case 'offline': return 'waiting for connection';
+      case 'accepted': return 'relay accepted';
+      case 'queued': return 'queued for agent';
+      case 'delivered': return 'delivered';
+      case 'landed': return '✓ landed';
+      case 'failed': return 'failed' + (error ? ' — ' + error : '');
+      default: return status;
+    }
   }
 
   function renderChatThread(container, messages, opts) {

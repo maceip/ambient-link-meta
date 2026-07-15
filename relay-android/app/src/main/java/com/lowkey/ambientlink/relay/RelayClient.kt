@@ -19,6 +19,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
+import java.util.UUID
 
 class RelayClient(val url: String) {
   private val client = OkHttpClient.Builder()
@@ -41,18 +42,41 @@ class RelayClient(val url: String) {
     data class DictateCommit(val thread: String, val text: String, val source: String) : Event()
     data class DictateAbort(val thread: String, val source: String) : Event()
     data class DictatePartial(val thread: String, val text: String, val source: String) : Event()
-    data class DictateEnd(val thread: String, val text: String, val source: String) : Event()
+    data class DictateEnd(
+      val thread: String,
+      val text: String,
+      val source: String,
+      val ok: Boolean,
+      val error: String,
+    ) : Event()
     data class SessionFocus(val thread: String, val source: String) : Event()
     data class SessionBlur(val thread: String, val source: String) : Event()
     data class CompanionUi(val screen: String, val source: String) : Event()
+    /** PROTOCOL v2 message lifecycle: accepted → queued|delivered → landed|failed. */
+    data class InputStatus(
+      val id: String,
+      val sessionId: String,
+      val thread: String,
+      val status: String,
+      val error: String,
+    ) : Event()
+    data class ThreadStarted(val meta: ThreadMeta) : Event()
+    data class ThreadEnded(val thread: String) : Event()
     data class Error(val msg: String) : Event()
   }
-  data class ThreadMeta(val id: String, val label: String, val agent: String)
+  data class ThreadMeta(val id: String, val label: String, val agent: String, val sessionId: String = "")
 
   private val _events = MutableSharedFlow<Event>(extraBufferCapacity = 64)
   val events: SharedFlow<Event> = _events
   private val labels = mutableMapOf<String, String>()
   private val agents = mutableMapOf<String, String>()
+  /** thread id → session_id learned from hello/thread_* frames (v2 addressing). */
+  private val sessionsByThread = mutableMapOf<String, String>()
+  /** Message IDs this client minted — via the proxy, other clients' statuses
+   *  are mirrored to everyone, so only react to our own. */
+  private val pendingInputs = object : LinkedHashMap<String, Boolean>() {
+    override fun removeEldestEntry(eldest: Map.Entry<String, Boolean>) = size > 64
+  }
   @Volatile private var subscribed = false
 
   fun start() {
@@ -88,6 +112,7 @@ class RelayClient(val url: String) {
             "hello" -> {
               labels.clear()
               agents.clear()
+              synchronized(sessionsByThread) { sessionsByThread.clear() }
               val arr = obj.optJSONArray("threads")
               val list = mutableListOf<ThreadMeta>()
               if (arr != null) for (i in 0 until arr.length()) {
@@ -96,9 +121,11 @@ class RelayClient(val url: String) {
                   t.optString("id"),
                   t.optString("label", t.optString("id")),
                   t.optString("agent", "generic"),
+                  t.optString("session_id", ""),
                 )
                 labels[tm.id] = tm.label
                 agents[tm.id] = tm.agent
+                rememberSession(tm.id, tm.sessionId)
                 list += tm
               }
               // Subscribe at journal head — skip replaying stale thread_idle cards.
@@ -118,7 +145,49 @@ class RelayClient(val url: String) {
               Log.i("RelayClient", "hud_yank thread=${y.thread} awaiting=${y.awaiting}")
               _events.tryEmit(Event.HudYank(y))
             }
-            "thread_busy" -> _events.tryEmit(Event.ThreadBusy(obj.optString("thread")))
+            "thread_busy" -> {
+              rememberSession(obj.optString("thread"), obj.optString("session_id", ""))
+              _events.tryEmit(Event.ThreadBusy(obj.optString("thread")))
+            }
+            "thread_started" -> {
+              val id = obj.optString("thread")
+              val meta = ThreadMeta(
+                id,
+                obj.optString("label", labels[id] ?: id),
+                obj.optString("agent", agents[id] ?: "generic"),
+                obj.optString("session_id", ""),
+              )
+              labels[meta.id] = meta.label
+              agents[meta.id] = meta.agent
+              rememberSession(meta.id, meta.sessionId)
+              _events.tryEmit(Event.ThreadStarted(meta))
+            }
+            "thread_ended" -> {
+              val id = obj.optString("thread")
+              labels.remove(id)
+              agents.remove(id)
+              synchronized(sessionsByThread) { sessionsByThread.remove(id) }
+              _events.tryEmit(Event.ThreadEnded(id))
+            }
+            "input_status" -> {
+              val st = Event.InputStatus(
+                id = obj.optString("id"),
+                sessionId = obj.optString("session_id", ""),
+                thread = obj.optString("thread", ""),
+                status = obj.optString("status"),
+                error = obj.optString("error", ""),
+              )
+              // The proxy mirrors landed/failed frames to every client — only
+              // surface lifecycle statuses for messages this phone minted.
+              val mine = synchronized(pendingInputs) { pendingInputs.containsKey(st.id) }
+              if (mine) {
+                Log.i("RelayClient", "input_status id=${st.id} status=${st.status} err=${st.error}")
+                if (st.status == "landed" || st.status == "failed") {
+                  synchronized(pendingInputs) { pendingInputs.remove(st.id) }
+                }
+                _events.tryEmit(st)
+              }
+            }
             "dictate_active" -> _events.tryEmit(
               Event.DictateActive(obj.optString("thread"), obj.optString("source", "")),
             )
@@ -153,8 +222,16 @@ class RelayClient(val url: String) {
                 )
               }
             }
+            // v2: dictate_end carries the real outcome — ok=false means the
+            // committed text never reached the agent (render failure, not sent).
             "dictate_end" -> _events.tryEmit(
-              Event.DictateEnd(obj.optString("thread"), obj.optString("text", ""), obj.optString("source", "")),
+              Event.DictateEnd(
+                obj.optString("thread"),
+                obj.optString("text", ""),
+                obj.optString("source", ""),
+                obj.optBoolean("ok", true),
+                obj.optString("error", ""),
+              ),
             )
             "session_focus" -> _events.tryEmit(
               Event.SessionFocus(obj.optString("thread"), obj.optString("source", "")),
@@ -185,8 +262,17 @@ class RelayClient(val url: String) {
     done.await()
   }
 
+  private fun rememberSession(thread: String, sessionId: String) {
+    if (thread.isBlank() || sessionId.isBlank()) return
+    synchronized(sessionsByThread) { sessionsByThread[thread] = sessionId }
+  }
+
+  private fun sessionFor(thread: String): String =
+    synchronized(sessionsByThread) { sessionsByThread[thread] ?: "" }
+
   private fun parseYank(obj: JSONObject): AgentYank {
     val id = obj.optString("thread")
+    rememberSession(id, obj.optString("session_id", ""))
     val awaiting = when (obj.optString("awaiting")) {
       "permission" -> Awaiting.PERMISSION
       "question"   -> Awaiting.QUESTION
@@ -222,14 +308,29 @@ class RelayClient(val url: String) {
     ws?.send(JSONObject().put("type", "hud_yank").put("thread", thread).toString())
   }
 
-  fun sendInput(thread: String, text: String, enter: Boolean = true) {
-    ws?.send(JSONObject()
-      .put("type", "input").put("thread", thread)
-      .put("text", text).put("enter", enter).toString())
+  /**
+   * PROTOCOL v2 input: session_id-first addressing (thread as fallback), a
+   * client-minted message ID echoed back on every input_status frame, and no
+   * enter flag — delivery always submits. Returns the message ID so callers
+   * can correlate lifecycle statuses.
+   */
+  fun sendInput(thread: String, text: String): String {
+    val messageID = UUID.randomUUID().toString()
+    synchronized(pendingInputs) { pendingInputs[messageID] = true }
+    val o = JSONObject()
+      .put("type", "input")
+      .put("text", text)
+      .put("client_id", messageID)
+    sessionFor(thread).takeIf { it.isNotBlank() }?.let { o.put("session_id", it) }
+    if (thread.isNotBlank()) o.put("thread", thread)
+    ws?.send(o.toString())
+    return messageID
   }
   fun sendSpecial(thread: String, key: String) {
-    ws?.send(JSONObject()
-      .put("type", "special").put("thread", thread).put("key", key).toString())
+    val o = JSONObject().put("type", "special").put("key", key)
+    sessionFor(thread).takeIf { it.isNotBlank() }?.let { o.put("session_id", it) }
+    if (thread.isNotBlank()) o.put("thread", thread)
+    ws?.send(o.toString())
   }
 
   /** Quick replies + snooze window — synced to web companion. */

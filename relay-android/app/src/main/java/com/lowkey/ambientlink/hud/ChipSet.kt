@@ -9,7 +9,6 @@ import com.lowkey.ambientlink.settings.UserPrefs
 data class Chip(
   val label: String,
   val text: String?,
-  val enter: Boolean = true,
   val kind: ChipKind = ChipKind.SEND,
   val primary: Boolean = false,
 )

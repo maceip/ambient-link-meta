@@ -310,10 +310,20 @@ class RelayService : Service() {
             p.yank(ev.yank)
           }
           is RelayClient.Event.ThreadBusy   -> p.cancelIfFor(ev.thread)
+          is RelayClient.Event.ThreadStarted -> p.hello(listOf(ev.meta))
+          is RelayClient.Event.ThreadEnded  -> p.threadEnded(ev.thread)
+          is RelayClient.Event.InputStatus  -> {
+            // Only failure needs UI: statuses for our frames come back on this
+            // socket; landed frames fan out to everyone (session-scoped).
+            if (ev.status == "failed") p.onInputFailed(ev.thread, ev.error)
+          }
           is RelayClient.Event.DictateActive -> dictation.onActive(ev.thread, ev.source)
           is RelayClient.Event.DictateCommit -> dictation.onCommitFromWeb(ev.thread)
           is RelayClient.Event.DictateAbort -> dictation.onAbortFromWeb(ev.thread)
-          is RelayClient.Event.DictateEnd   -> dictation.onEnd(ev.thread)
+          is RelayClient.Event.DictateEnd   -> {
+            dictation.onEnd(ev.thread)
+            if (!ev.ok) p.onDictateFailed(ev.thread, ev.error)
+          }
           is RelayClient.Event.SessionFocus -> {
             dictation.onSessionFocus(ev.thread)
             p.onCompanionUi("session")
@@ -396,6 +406,10 @@ class RelayService : Service() {
     fun debugYank(yank: com.lowkey.ambientlink.hud.AgentYank) {
       state?.presenter?.yank(yank)
     }
+
+    /** Debug: send a v2 input frame over the live relay WS (adb broadcast). */
+    fun debugSendInput(thread: String, text: String): String? =
+      state?.client?.sendInput(thread, text)
 
     fun setMicrophoneForeground(active: Boolean) {
       state?.setMicrophoneForeground(active)

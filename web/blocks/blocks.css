@@ -1089,6 +1089,32 @@ textarea.text-input {
   text-align: left;
 }
 
+/* Per-message delivery lifecycle (input_status-driven, user bubbles only). */
+.blk-chat-status {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-align: right;
+  color: var(--text-muted, rgba(255, 255, 255, 0.55));
+}
+
+.blk-chat-status--sending,
+.blk-chat-status--offline,
+.blk-chat-status--queued {
+  opacity: 0.8;
+  font-style: italic;
+}
+
+.blk-chat-status--landed {
+  color: var(--accent-ok, #4ade80);
+}
+
+.blk-chat-status--failed {
+  color: var(--accent-err, #f87171);
+  font-style: normal;
+}
+
 .blk-chat-bubble__note {
   margin-top: 8px;
   padding-top: 8px;

@@ -235,6 +235,67 @@ class HudPresenter(
     }
   }
 
+  /** Host `thread_ended` — the session is gone; drop its row and queued cards. */
+  fun threadEnded(thread: String) {
+    sessions.remove(thread)
+    queue.removeAll { it.thread == thread }
+    if (current?.thread == thread && state != State.DICTATING) {
+      Log.i("HudPresenter", "thread_ended $thread — dismissing its card")
+      dismissCard()
+    }
+  }
+
+  /**
+   * v2 lifecycle: a failed input_status means our reply never reached the
+   * agent. Undo the post-response idle suppression (the turn is still open),
+   * surface the failure, then bring the card back so the user can retry.
+   */
+  fun onInputFailed(thread: String, error: String) {
+    val t = thread.ifBlank { suppressIdleThread ?: return }
+    Log.w("HudPresenter", "input failed thread=$t err=$error")
+    sessions[t]?.let { it.status = "failed"; it.lastEventAt = System.currentTimeMillis() }
+    if (suppressIdleThread == t) {
+      suppressIdleThread = null
+      suppressIdleUntilMs = 0
+    }
+    quietUntilMs = 0
+    val retry = sessions[t]?.yank
+    showTransientError("not delivered", error.ifBlank { "reply failed to reach agent" }) {
+      retry?.let { yank(it) }
+    }
+  }
+
+  /** v2 `dictate_end ok=false` — committed text did NOT land; replace the "sent" confirm. */
+  fun onDictateFailed(thread: String, error: String) {
+    if (suppressIdleThread == thread) {
+      suppressIdleThread = null
+      suppressIdleUntilMs = 0
+      quietUntilMs = 0
+    }
+    sessions[thread]?.let { it.status = "failed"; it.lastEventAt = System.currentTimeMillis() }
+    if (current?.thread == thread && commitJob?.isActive == true) {
+      commitJob?.cancel()
+      showDictateError(error.ifBlank { "dictation did not reach the agent" })
+    } else {
+      Log.w("HudPresenter", "dictate failed thread=$thread err=$error")
+    }
+  }
+
+  /** Render an error card briefly if we own the display, then run [after]. */
+  private fun showTransientError(title: String, message: String, after: () -> Unit = {}) {
+    val d = datSession.activeDisplay
+    if (d == null || webOccupiesDisplay()) {
+      after()
+      return
+    }
+    lastRenderedKey = null
+    HudWidgets.sendError(scope, d, message, title)
+    scope.launch {
+      delay(3_000)
+      after()
+    }
+  }
+
   private fun upsertSession(y: AgentYank) {
     val row = sessions.getOrPut(y.thread) {
       SessionRow(y.thread, y.label, y.agent, "online", 0L, null)
@@ -650,9 +711,11 @@ class HudPresenter(
     when (c.kind) {
       ChipKind.SEND -> {
         if (c.text != null) {
-          relay.sendInput(y.thread, c.text, c.enter)
+          val msgID = relay.sendInput(y.thread, c.text)
+          Log.i("HudPresenter", "input sent thread=${y.thread} id=$msgID")
           // Responding ends this card: suppress the thread's lingering idle and
-          // go dark instead of popping the next queued card.
+          // go dark instead of popping the next queued card. A failed
+          // input_status (onInputFailed) undoes the suppression and retries.
           markResponded(y.thread)
           queue.clear()
           dismissCard(showNext = false)

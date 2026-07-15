@@ -203,16 +203,17 @@ object HudWidgets {
     }
   }
 
-  /** Dictate failed — no action chips; caller auto-dismisses. */
+  /** Failure card (dictate or delivery) — no action chips; caller auto-dismisses. */
   fun sendError(
     scope: CoroutineScope,
     display: Display,
     message: String,
+    title: String = "dictate error",
   ) {
     postContent(scope) {
       display.sendContent {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
-          text("dictate error", style = TextStyle.META, color = TextColor.SECONDARY)
+          text(title, style = TextStyle.META, color = TextColor.SECONDARY)
           flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
             text(truncateBody(message), style = TextStyle.BODY)
           }

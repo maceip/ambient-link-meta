@@ -6,7 +6,35 @@
   var CS = window.AmbientChipSet;
   var BLK = window.AmbientBlocks;
   var PIPE = window.AmbientContentPipeline;
-  var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ambient-link/ws';
+
+  /* Bearer token, provisioned by the pair flow (QR/link carries #token=…
+     in the fragment so it never appears in server logs). Persisted so a
+     reload keeps the pairing; sent on the WS upgrade and on fetches. */
+  var TOKEN = loadToken();
+
+  function loadToken() {
+    try {
+      var m = (location.hash || '').match(/[#&]token=([^&]+)/);
+      if (m) {
+        var tok = decodeURIComponent(m[1]);
+        localStorage.setItem('ambient-link:token', tok);
+        history.replaceState({}, '', location.pathname + location.search);
+        return tok;
+      }
+      return localStorage.getItem('ambient-link:token') || '';
+    } catch (e) { return ''; }
+  }
+
+  function authHeaders(extra) {
+    var h = extra || {};
+    if (TOKEN) h['Authorization'] = 'Bearer ' + TOKEN;
+    return h;
+  }
+
+  function wsUrl() {
+    var base = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ambient-link/ws';
+    return TOKEN ? base + '?token=' + encodeURIComponent(TOKEN) : base;
+  }
 
   var threadsUl  = document.getElementById('threads');
   var emptyHint  = document.getElementById('empty-hint');
@@ -270,6 +298,7 @@
     var row = threadRow(t.id);
     row.label = t.label || t.id;
     row.agent = t.agent || row.agent || 'generic';
+    if (t.session_id) row.sessionId = t.session_id;
     row.ended = false;
     row.lastEventAt = row.lastEventAt || clockNow();
   }
@@ -800,9 +829,13 @@
     } catch (e) {}
   }
 
-  /** Immutable append-only chat log. Never edit or replace entries. */
-  function appendChatMessage(row, role, rawText) {
+  /** Append-only chat log. The only in-place mutation allowed is a user
+      bubble's delivery status, updated by input_status frames keyed on the
+      relay message ID (opts.id). */
+  function appendChatMessage(row, role, rawText, opts) {
     if (!rawText || !String(rawText).trim()) return;
+    opts = opts || {};
+    if (opts.id && chatFindByMsgId(row, opts.id)) return;
     if (chatHasRoleText(row, role, rawText)) return;
     var filtered = filterText(rawText);
     var log = ensureChatLog(row);
@@ -811,15 +844,39 @@
       text: filtered.display,
       kind: filtered.kind,
       truncated: filtered.truncated,
-      at: clockNow(),
+      at: opts.at || clockNow(),
+      msgId: opts.id || '',
+      status: opts.status || '',
+      error: opts.error || '',
     });
     if (log.length > 48) row.chatLog = log.slice(-48);
     saveChatLogs();
   }
 
-  function appendUserMessage(row, text) {
+  function chatFindByMsgId(row, msgId) {
+    var log = row && row.chatLog;
+    if (!log || !msgId) return null;
+    for (var i = log.length - 1; i >= 0; i--) {
+      if (log[i].msgId === msgId) return log[i];
+    }
+    return null;
+  }
+
+  /** Update a user bubble's lifecycle status by message ID. Returns true if
+      a bubble was found. Statuses are honest relay states only. */
+  function updateMessageStatus(threadId, msgId, status, error) {
+    var row = threads[threadId];
+    var entry = chatFindByMsgId(row, msgId);
+    if (!entry) return false;
+    entry.status = status || entry.status;
+    entry.error = error || '';
+    saveChatLogs();
+    return true;
+  }
+
+  function appendUserMessage(row, text, opts) {
     if (!row || !text || !String(text).trim()) return;
-    appendChatMessage(row, 'user', text);
+    appendChatMessage(row, 'user', text, opts);
     LOG.log('chat', 'user', { thread: row.id, n: (row.chatLog || []).length });
   }
 
@@ -846,12 +903,12 @@
       if (!st || st.thread !== row.id) return;
       if (st.status !== 'delivered' && st.status !== 'landed') return;
       var text = (st.text || '').trim();
-      if (text) appendUserMessage(row, text);
+      if (text) appendUserMessage(row, text, { id: id, status: st.status });
     });
     pendingInputs.forEach(function (item) {
       if (item.thread !== row.id) return;
       var text = (item.text || '').trim();
-      if (text) appendUserMessage(row, text);
+      if (text) appendUserMessage(row, text, { id: item.id, status: 'offline' });
     });
   }
 
@@ -864,6 +921,60 @@
         recordAgentReply(row, row.lastAssistant);
       }
     }
+  }
+
+  /* Relay history is the authoritative record (store.interactions on the
+     laptop, proxied when hosted); localStorage is only a display cache.
+     Merge strategy: relay rows first (they carry real message IDs and final
+     delivery statuses), then keep local entries the relay doesn't know —
+     in-flight sends and offline-queued drafts. */
+  function hydrateFromRelayHistory(row) {
+    if (!row || !row.sessionId || row.historyLoading || row.historyLoaded) return;
+    row.historyLoading = true;
+    fetch('/ambient-link/history?session_id=' + encodeURIComponent(row.sessionId) + '&limit=48', {
+      headers: authHeaders(),
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        row.historyLoading = false;
+        if (!data || !Array.isArray(data.rows)) return;
+        row.historyLoaded = true;
+        if (!data.rows.length) return;
+        mergeHistoryRows(row, data.rows);
+        if (activeThread === row.id) renderCompose();
+      })
+      .catch(function () { row.historyLoading = false; });
+  }
+
+  function mergeHistoryRows(row, rows) {
+    var merged = [];
+    var seenIds = {};
+    rows.forEach(function (r) {
+      if (!r || !r.text || !String(r.text).trim()) return;
+      var filtered = filterText(r.text);
+      var entry = {
+        role: r.role === 'human' ? 'user' : 'agent',
+        text: filtered.display,
+        kind: filtered.kind,
+        truncated: filtered.truncated,
+        at: r.at || 0,
+        msgId: r.message_id || '',
+        status: r.role === 'human' ? (r.delivery_status || '') : '',
+        error: '',
+      };
+      if (entry.msgId) seenIds[entry.msgId] = true;
+      merged.push(entry);
+    });
+    var textSeen = {};
+    merged.forEach(function (m) { textSeen[m.role + '\u0000' + m.text] = true; });
+    (row.chatLog || []).forEach(function (m) {
+      if (m.msgId && seenIds[m.msgId]) return;
+      if (textSeen[m.role + '\u0000' + m.text]) return;
+      merged.push(m);
+    });
+    merged.sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+    row.chatLog = merged.slice(-48);
+    saveChatLogs();
   }
 
   function chatAgentLabel(row) {
@@ -1242,7 +1353,9 @@
     promptEl.placeholder = 'listening…';
   }
 
-  function applyDictateResult(thread, text) {
+  /* Honest dictation end: the relay's dictate_end carries ok/error. A failed
+     inject renders as a failure — never a sent bubble (DECISIONS §4). */
+  function applyDictateResult(thread, text, ok, errText) {
     if (phoneDictateThread === thread || phoneDictateThread != null) phoneDictateThread = null;
     listeningPartial = '';
     if (dictRec) {
@@ -1256,22 +1369,23 @@
       renderCompose();
       return;
     }
+    if (ok === false) {
+      // Keep the transcript in the composer so the human can retry or edit.
+      promptEl.value = trimmed;
+      showToast('not delivered — ' + (errText || 'inject failed'), 'error');
+      renderCompose();
+      return;
+    }
     var row = threads[thread];
     if (row) {
-      appendUserMessage(row, trimmed);
+      appendUserMessage(row, trimmed, { status: 'delivered' });
       if (row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: trimmed });
-      row.busy = true;
       row.lastEventAt = clockNow();
     }
     promptEl.value = '';
-    showToast('sent', 'success');
     renderCompose();
     if (activeView === 'list') renderThreadList();
     setTimeout(syncFromHost, 400);
-  }
-
-  function finishPhoneDictate(thread, text) {
-    applyDictateResult(thread, text);
   }
 
   function pauseDictate() {
@@ -1314,6 +1428,9 @@
     return 'debug ping ' + local + ' · ' + now.toISOString();
   }
 
+  /* Honest send: the bubble appears immediately but carries its real
+     lifecycle state (sending/offline), advanced ONLY by input_status frames
+     keyed on the message ID. No 'sent' toast, no fabricated busy state. */
   function sendPrompt(thread, text) {
     var row = threads[thread];
     if (row && row.ended) {
@@ -1326,15 +1443,14 @@
       queueInput(item);
     }
     if (row) {
-      appendUserMessage(row, text);
+      appendUserMessage(row, text, { id: item.id, status: sent ? 'sending' : 'offline' });
       LOG.log('send', 'prompt', { thread: thread, ok: sent });
       if (row.yank) row.yank = Object.assign({}, row.yank, { lastUserInput: text });
       row.lastEventAt = clockNow();
-      row.busy = true;
     }
     promptEl.value = '';
     resetDictateUi();
-    showToast('sent', 'success');
+    if (!sent) showToast('offline — queued on this device', 'error');
     renderCompose();
     if (activeView === 'list') renderThreadList();
   }
@@ -1350,6 +1466,7 @@
     titleEl.textContent = cached ? displayLabel(cached) : 'loading…';
     sendSessionSignal('session_focus', id);
     hydrateChatIfEmpty(threads[id]);
+    hydrateFromRelayHistory(threads[id]);
     renderCompose();
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: 'hud_yank', thread: id }));
@@ -1499,16 +1616,6 @@
     return null;
   }
 
-  function threadIdFor(agent, cwd) {
-    var payload = agent + '::' + (cwd || '');
-    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload)).then(function (buf) {
-      var hex = Array.from(new Uint8Array(buf)).map(function (b) {
-        return ('0' + b.toString(16)).slice(-2);
-      }).join('');
-      return agent + '-' + hex.slice(0, 10);
-    });
-  }
-
   function startNewThread() {
     var text = (newPrompt.value || '').trim();
     var cwd = (newCwd.value || '').trim();
@@ -1525,45 +1632,46 @@
     createHostSession(pickedAgent, cwd, text);
   }
 
+  /* Create honesty: the web never invents a thread ID. A session exists only
+     when the relay broadcasts thread_started (with session_id). Until then
+     the UI shows "starting…"; create failures arrive as create_status
+     frames (or the HTTP error) and render as errors. */
+  var pendingCreate = null;
+
   function createHostSession(agent, cwd, text) {
     fetch('/ambient-link/sessions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ agent: agent, cwd: cwd, prompt: text }),
     })
       .then(function (r) {
-        var ct = r.headers.get('content-type') || '';
-        if (!r.ok || ct.indexOf('application/json') < 0) {
+        if (!r.ok) {
           return r.text().then(function (body) {
-            throw new Error(body || 'session create unavailable');
+            var msg = body;
+            try { msg = JSON.parse(body).error || body; } catch (e) {}
+            throw new Error(msg || ('session create failed (' + r.status + ')'));
           });
         }
-        return r.json();
-      })
-      .then(function (data) {
-        var id = data.thread_id || data.thread || data.session_id;
-        if (!id) return threadIdFor(agent, cwd || '.').then(function (fallback) {
-          return Object.assign({}, data, { thread_id: fallback });
-        });
-        return data;
-      })
-      .then(function (data) {
-        var id = data.thread_id || data.thread || data.session_id;
-        var row = threadRow(id);
-        row.label = data.label || (cwd ? (agent + ': ' + shortName(cwd)) : agent);
-        row.agent = agent;
-        row.busy = true;
-        row.ended = false;
-        row.lastEventAt = clockNow();
+        pendingCreate = { agent: agent, cwd: cwd || '', at: clockNow() };
         newPrompt.value = '';
         newCwd.value = '';
-        showToast('starting ' + agent, 'success');
+        showToast('starting ' + agent + '…', 'success');
+        showView('list');
         renderThreadList();
-        openThread(id, true);
       })
-      .catch(function () {
-        showToast('start ' + agent + ' in a terminal first', 'error');
+      .catch(function (err) {
+        showToast((err && err.message) || ('could not start ' + agent), 'error');
       });
+  }
+
+  function applyCreateStatus(msg) {
+    if (!msg) return;
+    if (msg.ok === false) {
+      pendingCreate = null;
+      showToast('agent failed to start — ' + (msg.error || 'unknown error'), 'error');
+      return;
+    }
+    showToast((msg.agent || 'agent') + ' starting — session will appear shortly', 'success');
   }
 
   function shortName(path) {
@@ -1577,20 +1685,25 @@
     return sendInputItem(buildInput(thread, text, enter, clientId));
   }
 
+  /* Wire format: session_id is the address (thread is the legacy fallback the
+     relay still accepts); client_id is the message-lifecycle ID echoed back on
+     every input_status frame. There is no enter flag — delivery always
+     submits (relay DECISIONS §4). 'sending' is a local state: only the
+     relay's own 'accepted' confirms custody. */
   function sendInputItem(item) {
     if (!ws || ws.readyState !== 1 || !item || !item.thread || !item.text) return false;
     try {
       ws.send(JSON.stringify({
         type: 'input',
+        session_id: item.sessionId || sessionIdForThread(item.thread),
         thread: item.thread,
         text: item.text,
-        enter: item.enter !== false,
         client_id: item.id,
       }));
       trackDelivery(item.id, {
         thread: item.thread,
         text: item.text,
-        status: 'sent',
+        status: 'sending',
         at: item.at || clockNow(),
       });
       return true;
@@ -1599,12 +1712,17 @@
     }
   }
 
+  function sessionIdForThread(thread) {
+    var row = thread ? threads[thread] : null;
+    return (row && row.sessionId) || '';
+  }
+
   function buildInput(thread, text, enter, clientId) {
     return {
       id: clientId || newInputId(),
       thread: thread,
+      sessionId: sessionIdForThread(thread),
       text: text,
-      enter: enter !== false,
       at: clockNow(),
     };
   }
@@ -1640,7 +1758,7 @@
     trackDelivery(item.id, {
       thread: item.thread,
       text: item.text,
-      status: 'local_pending',
+      status: 'offline',
       at: item.at,
     });
     savePendingInputs();
@@ -1654,6 +1772,7 @@
     pendingInputs.forEach(function (item) {
       if (sendInputItem(item)) {
         sent++;
+        updateMessageStatus(item.thread, item.id, 'sending', '');
       } else {
         remaining.push(item);
       }
@@ -1716,26 +1835,35 @@
     saveDeliveryStates();
   }
 
+  /* The one honest source of per-message truth: input_status frames from the
+     relay (accepted → queued/delivered → landed | failed), keyed by message
+     ID. Updates the matching bubble in place; appends only when this device
+     has the text but never rendered a bubble (e.g. restored after reload). */
   function applyInputStatus(msg) {
     if (!msg || !msg.id) return;
+    var known = deliveryStates[msg.id];
     trackDelivery(msg.id, {
-      thread: msg.thread,
+      thread: msg.thread || (known && known.thread) || '',
       sessionId: msg.session_id,
       status: msg.status || 'unknown',
       error: msg.error || '',
       pendingCount: msg.pending_count || 0,
       relayAt: msg.at || 0,
-      text: msg.text || '',
     });
     var status = msg.status || '';
-    if (status !== 'delivered' && status !== 'landed') return;
-    var row = msg.thread ? threads[msg.thread] : null;
-    if (!row) return;
-    var text = (msg.text || '').trim();
-    if (!text) {
-      var st = deliveryStates[msg.id];
-      if (st && st.text) text = String(st.text).trim();
+    var threadId = msg.thread || (known && known.thread) || '';
+    if (updateMessageStatus(threadId, msg.id, status, msg.error || '')) {
+      if (status === 'failed') showToast('not delivered — ' + (msg.error || 'delivery failed'), 'error');
+      return;
     }
+    // No bubble yet (page reloaded mid-flight): materialize it from the
+    // cached text once the relay confirms the message really exists.
+    if (status !== 'accepted' && status !== 'queued' && status !== 'delivered' && status !== 'landed') return;
+    var row = threadId ? threads[threadId] : null;
+    if (!row) return;
+    var text = '';
+    var st = deliveryStates[msg.id];
+    if (st && st.text) text = String(st.text).trim();
     if (!text) {
       for (var i = pendingInputs.length - 1; i >= 0; i--) {
         if (pendingInputs[i].id === msg.id) {
@@ -1744,7 +1872,7 @@
         }
       }
     }
-    if (text) appendUserMessage(row, text);
+    if (text) appendUserMessage(row, text, { id: msg.id, status: status });
   }
 
   function applyOutboxStatus(outbox) {
@@ -1781,7 +1909,7 @@
   }
 
   function syncFromHost() {
-    fetch('/ambient-link/status')
+    fetch('/ambient-link/status', { headers: authHeaders() })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data) return;
@@ -1854,7 +1982,11 @@
         }).length;
         renderConnStatus();
         renderThreadList();
-        if (activeThread) renderCompose();
+        if (activeThread) {
+          // The open thread may only now have learned its session_id.
+          hydrateFromRelayHistory(threads[activeThread]);
+          renderCompose();
+        }
       })
       .catch(function () {
         hostInfo.relayConnected = false;
@@ -1871,7 +2003,7 @@
 
   function connect() {
     setStatus('warn');
-    try { ws = new WebSocket(WS_URL); }
+    try { ws = new WebSocket(wsUrl()); }
     catch (e) { setStatus('off'); scheduleReconnect(); return; }
 
     ws.onopen = function () {
@@ -1907,9 +2039,14 @@
         if (msg.label) started.label = msg.label;
         if (msg.agent) started.agent = msg.agent;
         if (msg.cwd) started.cwd = msg.cwd;
+        if (msg.session_id) started.sessionId = msg.session_id;
         started.busy = true;
         started.ended = false;
         started.lastEventAt = msg.at || clockNow();
+        if (pendingCreate && (pendingCreate.agent === (msg.agent || '') || !msg.agent)) {
+          pendingCreate = null;
+          openThread(msg.thread, true);
+        }
       } else if (msg.type === 'thread_ended') {
         var ended = threadRow(msg.thread);
         ended.ended = true;
@@ -1942,11 +2079,14 @@
         if (dictateStatusText) dictateStatusText.textContent = msg.text;
         renderCompose();
       } else if (msg.type === 'dictate_end' && activeThread === msg.thread) {
-        applyDictateResult(msg.thread, msg.text || '');
+        applyDictateResult(msg.thread, msg.text || '', msg.ok !== false, msg.error || '');
       } else if (msg.type === 'input_status') {
         applyInputStatus(msg);
         if (activeThread === msg.thread) renderCompose();
         else renderThreadList();
+        return;
+      } else if (msg.type === 'create_status') {
+        applyCreateStatus(msg);
         return;
       } else {
         return;
