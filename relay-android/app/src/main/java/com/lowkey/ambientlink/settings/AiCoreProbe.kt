@@ -11,11 +11,15 @@ import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.prompt.Generation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** On-device AI Core / Gemini Nano readiness for companion suggestions. */
 object AiCoreProbe {
   private const val TAG = "AiCoreProbe"
   private const val AICORE_PACKAGE = "com.google.android.aicore"
+  /** Long enough for the local shared-weights registration, far too short for
+   *  a multi-GB network fetch — which is exactly the split we want. */
+  private const val REGISTER_TIMEOUT_MS = 10_000L
 
   enum class Tier {
     /** Device or OS build does not support AI Core — suggestions stay heuristic-only. */
@@ -39,18 +43,28 @@ object AiCoreProbe {
     try {
       val client = Generation.getClient()
       when (val status = client.checkStatus()) {
-        FeatureStatus.AVAILABLE -> {
-          val name = runCatching { client.getBaseModelName() }.getOrNull()?.trim()
-          Status(
-            tier = Tier.READY,
-            modelName = name?.takeIf { it.isNotEmpty() } ?: "Gemini Nano",
-            featureStatus = status,
-          )
+        FeatureStatus.AVAILABLE -> ready(status)
+        // DOWNLOADABLE only means "not registered for THIS app yet". AICore
+        // shares one Gemini Nano across apps, so on devices that already have
+        // the weights (e.g. Pixel with system AI features) download() is a
+        // quick local registration, not a network fetch. Kick it off silently
+        // and re-check instead of nagging the user to download a model their
+        // phone already has. A real (large, networked) fetch won't finish
+        // inside the timeout and we fall back to the explicit download UI.
+        FeatureStatus.DOWNLOADABLE -> {
+          val registered = withTimeoutOrNull(REGISTER_TIMEOUT_MS) { downloadModel() }
+          when {
+            registered == true || client.checkStatus() == FeatureStatus.AVAILABLE -> {
+              Log.i(TAG, "downloadable → registered shared model without user prompt")
+              ready(FeatureStatus.AVAILABLE)
+            }
+            // Timed out: a real fetch is now running in AICore — report it.
+            registered == null ->
+              Status(tier = Tier.NEEDS_MODEL, isDownloading = true, featureStatus = status)
+            // Hard failure: keep the explicit download UI available.
+            else -> Status(tier = Tier.NEEDS_MODEL, featureStatus = status)
+          }
         }
-        FeatureStatus.DOWNLOADABLE -> Status(
-          tier = Tier.NEEDS_MODEL,
-          featureStatus = status,
-        )
         FeatureStatus.DOWNLOADING -> Status(
           tier = Tier.NEEDS_MODEL,
           isDownloading = true,
@@ -62,6 +76,15 @@ object AiCoreProbe {
       Log.w(TAG, "probe failed: ${e.message}")
       Status(tier = Tier.UNSUPPORTED)
     }
+  }
+
+  private suspend fun ready(status: Int): Status {
+    val name = runCatching { Generation.getClient().getBaseModelName() }.getOrNull()?.trim()
+    return Status(
+      tier = Tier.READY,
+      modelName = name?.takeIf { it.isNotEmpty() } ?: "Gemini Nano",
+      featureStatus = status,
+    )
   }
 
   /** Trigger ML Kit model download; returns true when complete. */
