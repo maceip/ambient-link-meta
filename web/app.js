@@ -309,6 +309,12 @@
     return wsConnState === 'on';
   }
 
+  /** True socket liveness — guards ACTIONS (send/dictate). wsConnState is the
+      *displayed* state and deliberately lags real drops by a grace window. */
+  function wsLive() {
+    return !!(ws && ws.readyState === 1);
+  }
+
   function connectionState() {
     return wsConnState;
   }
@@ -373,10 +379,42 @@
     }
   }
 
-  function setStatus(state) {
-    wsConnState = state || 'off';
+  function applyConnState(state) {
+    wsConnState = state;
     if (document.body) document.body.dataset.relayState = wsConnState;
     renderConnStatus();
+    renderThreadList();
+  }
+
+  /* Anti-thrash: the glasses↔phone link blips constantly. Reconnects usually
+     win within a second or two, so surfacing every drop turns the UI into a
+     connecting/connected strobe. Drops from a connected state are held back
+     for a grace window; recovery ('on') always applies immediately. */
+  var CONN_GRACE_MS = 2500;
+  var connGraceTimer = null;
+  var pendingConnState = null;
+
+  function setStatus(state) {
+    state = state || 'off';
+    if (state === 'on') {
+      if (connGraceTimer) { clearTimeout(connGraceTimer); connGraceTimer = null; }
+      pendingConnState = null;
+      applyConnState('on');
+      return;
+    }
+    if (wsConnState !== 'on') {
+      // Never been connected (or drop already surfaced): show it live.
+      if (!connGraceTimer) applyConnState(state);
+      else pendingConnState = state;
+      return;
+    }
+    pendingConnState = state;
+    if (connGraceTimer) return;
+    connGraceTimer = setTimeout(function () {
+      connGraceTimer = null;
+      if (pendingConnState) applyConnState(pendingConnState);
+      pendingConnState = null;
+    }, CONN_GRACE_MS);
   }
 
   function sessionDeliverable(sessionId) {
@@ -1403,7 +1441,7 @@
   function startDictate() {
     var t = activeThread ? threads[activeThread] : null;
     if (!t) { showToast('open a session first', 'error'); return; }
-    if (!wsConnected()) {
+    if (!wsLive()) {
       showToast('relay not connected — wait for reconnect', 'error');
       return;
     }
@@ -2003,11 +2041,13 @@
 
     ws.onopen = function () {
       backoff = 500;
+      lastMsgAt = Date.now();
       setStatus('on');
       sendCompanionUi(activeView);
     };
 
     ws.onmessage = function (ev) {
+      lastMsgAt = Date.now();
       var msg;
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
 
@@ -2095,10 +2135,44 @@
     ws.onerror = function () {};
   }
 
+  var reconnectTimer = null;
+  var lastMsgAt = Date.now();
+
   function scheduleReconnect() {
-    setTimeout(connect, backoff);
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(function () {
+      reconnectTimer = null;
+      connect();
+    }, backoff);
     backoff = Math.min(backoff * 2, 10000);
   }
+
+  /** Network came back (online event / app foregrounded): don't sit out the
+      remaining backoff — reconnect NOW. No-op while a socket is open/opening. */
+  function forceReconnect() {
+    if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+    backoff = 500;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    connect();
+  }
+  window.addEventListener('online', forceReconnect);
+
+  /* Dead-socket detection: a dropped glasses↔phone link can leave the socket
+     "open" for minutes with the green dot lying. When idle, ping the hub (it
+     echoes pong); if nothing at all arrives, close so reconnect kicks in. */
+  var HEARTBEAT_IDLE_MS = 25000;
+  var HEARTBEAT_DEAD_MS = 45000;
+  setInterval(function () {
+    if (!ws || ws.readyState !== 1) return;
+    var idle = Date.now() - lastMsgAt;
+    if (idle > HEARTBEAT_DEAD_MS) {
+      try { ws.close(); } catch (e) {}
+      return;
+    }
+    if (idle > HEARTBEAT_IDLE_MS) {
+      try { ws.send('{"type":"ping"}'); } catch (e) {}
+    }
+  }, 10000);
 
   setInterval(syncFromHost, 15000);
 
@@ -2109,6 +2183,7 @@
   });
 
   function regainSessionFocus() {
+    forceReconnect();
     if (!activeThread || activeView !== 'thread') return;
     if (!ws || ws.readyState !== 1) return;
     sendSessionSignal('session_focus', activeThread);
