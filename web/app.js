@@ -67,7 +67,6 @@
   var newDictate = document.getElementById('new-dictate');
   var listScroll = document.getElementById('list-scroll');
   var listBody   = document.getElementById('list-body');
-  var newSessionReveal = document.getElementById('new-session-reveal');
   var newSessionPill = document.getElementById('new-session-pill');
 
   /** Glasses list view: show at most this many sessions (newest by last activity). */
@@ -1046,64 +1045,8 @@
     codex: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.75"/><path d="M8 9l-2 3 2 3M16 9l2 3-2 3M13 8l-2 8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>'
   };
 
-  var PULL_REVEAL_THRESHOLD = 56;
-  var pullRevealPx = 0;
-  var pullTouchStartY = 0;
-  var revealAutoOpened = false;
-
-  function listAtTop() {
-    if (!listScroll) return true;
-    return listScroll.scrollTop <= 4;
-  }
-
-  function setPullReveal(px, sticky) {
-    if (!newSessionReveal) return;
-    pullRevealPx = Math.max(0, Math.min(px, 88));
-    var open = sticky || pullRevealPx >= PULL_REVEAL_THRESHOLD;
-    newSessionReveal.classList.toggle('open', open);
-    newSessionReveal.setAttribute('aria-hidden', open ? 'false' : 'true');
-    newSessionReveal.style.setProperty('--pull', pullRevealPx + 'px');
-    // Once open the reveal takes real flow height and pushes the list itself;
-    // keeping the shift too doubles the gap (and the pill can't fill it).
-    if (listBody) listBody.style.setProperty('--list-shift', (open ? 0 : pullRevealPx) + 'px');
-    if (listScroll) listScroll.style.setProperty('--pull', pullRevealPx + 'px');
-  }
-
-  function wireListPullReveal() {
-    if (!listScroll || !newSessionPill) return;
-
-    listScroll.addEventListener('touchstart', function (e) {
-      pullTouchStartY = e.touches[0].clientY;
-    }, { passive: true });
-
-    listScroll.addEventListener('touchmove', function (e) {
-      if (!listAtTop()) return;
-      var dy = e.touches[0].clientY - pullTouchStartY;
-      if (dy > 0) setPullReveal(dy, false);
-    }, { passive: true });
-
-    listScroll.addEventListener('touchend', function () {
-      if (pullRevealPx < PULL_REVEAL_THRESHOLD) setPullReveal(0, false);
-      else setPullReveal(PULL_REVEAL_THRESHOLD, true);
-    });
-
-    listScroll.addEventListener('wheel', function (e) {
-      if (!listAtTop()) return;
-      if (e.deltaY >= 0) return;
-      var next = pullRevealPx + Math.abs(e.deltaY);
-      setPullReveal(next, next >= PULL_REVEAL_THRESHOLD);
-      e.preventDefault();
-    }, { passive: false });
-
-    listScroll.addEventListener('scroll', function () {
-      if (!listAtTop() && pullRevealPx > 0) setPullReveal(0, false);
-    });
-
-    newSessionPill.addEventListener('click', function () {
-      setPullReveal(0, false);
-      openNewSession();
-    });
-  }
+  // New session pill is a permanent list row now — no pull-to-reveal gesture.
+  // Its click is wired once at startup alongside the other static buttons.
 
   var THEMES = ['meta', 'dracula', 'tokyo-night', 'catppuccin', 'nord'];
 
@@ -1204,22 +1147,12 @@
       } else {
         emptyHint.textContent = 'No sessions — tap New session';
       }
-      // Empty list: the pull-to-reveal gesture is undiscoverable, so surface
-      // the New session pill outright instead of hiding the only action.
-      if (!revealAutoOpened) {
-        revealAutoOpened = true;
-        setPullReveal(PULL_REVEAL_THRESHOLD, true);
-      }
       renderConnStatus();
       wireRbtnGroups();
       wireTaps();
       return;
     }
     emptyHint.classList.add('hidden');
-    if (revealAutoOpened) {
-      revealAutoOpened = false;
-      setPullReveal(0, false);
-    }
     live.forEach(function (t) {
       var ac = agentClass(t.agent);
       var preview = listPreviewText(t);
@@ -2217,7 +2150,6 @@
   pickAgent(pickedAgent);
   wireRbtnGroups();
   wireTaps();
-  wireListPullReveal();
   restoreListSnapshot();
   loadChatLogs();
   renderThreadList(true);

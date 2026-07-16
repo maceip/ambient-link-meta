@@ -8,15 +8,15 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=82">
-  <link rel="stylesheet" href="blocks/blocks.css?v=82">
-  <link rel="stylesheet" href="companion.css?v=82">
-  <link rel="stylesheet" href="themes.css?v=82">
-  <link rel="stylesheet" href="beam.css?v=82">
+  <link rel="stylesheet" href="styles.css?v=83">
+  <link rel="stylesheet" href="blocks/blocks.css?v=83">
+  <link rel="stylesheet" href="companion.css?v=83">
+  <link rel="stylesheet" href="themes.css?v=83">
+  <link rel="stylesheet" href="beam.css?v=83">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v82';
+      var BUILD = 'v83';
       if (!('serviceWorker' in navigator)) return;
       // Only reload when an UPDATED worker takes over a page that was already
       // controlled. On first install (claim() fires controllerchange too) the
@@ -68,7 +68,9 @@
     </div>
     <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
     <div id="list-scroll" class="list-scroll blk-shelf-list-view__scroll">
-      <div id="new-session-reveal" class="new-session-reveal" aria-hidden="true">
+      <!-- Always visible at the top of the list: the pull-to-reveal gesture was
+           undiscoverable (nobody found the only "create" affordance in demos). -->
+      <div id="new-session-reveal" class="new-session-reveal">
         <button type="button" id="new-session-pill" class="compose-pill focusable" aria-label="new session">
           <span class="compose-pill__icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.75"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
@@ -145,13 +147,13 @@
     <div class="new-body blk-form-view__body">
       <div id="agent-chips" class="agent-chips" role="radiogroup" aria-label="agent">
         <button type="button" class="agent-chip focusable" data-agent="claude" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/claude.png?v=82" alt="" draggable="false"><span>Claude</span>
+          <img src="icons/agents/zinc/claude.png?v=83" alt="" draggable="false"><span>Claude</span>
         </button>
         <button type="button" class="agent-chip focusable" data-agent="codex" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/codex.png?v=82" alt="" draggable="false"><span>Codex</span>
+          <img src="icons/agents/zinc/codex.png?v=83" alt="" draggable="false"><span>Codex</span>
         </button>
         <button type="button" class="agent-chip focusable" data-agent="cursor" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/cursor.png?v=82" alt="" draggable="false"><span>Cursor</span>
+          <img src="icons/agents/zinc/cursor.png?v=83" alt="" draggable="false"><span>Cursor</span>
         </button>
       </div>
       <label class="field-label" for="new-cwd">working directory (on your Mac)</label>
@@ -184,10 +186,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="log.js?v=82"></script>
-<script src="chipset.js?v=82"></script>
-<script src="content-pipeline.js?v=82"></script>
-<script src="blocks/blocks.js?v=82"></script>
-<script src="app.js?v=82"></script>
+<script src="log.js?v=83"></script>
+<script src="chipset.js?v=83"></script>
+<script src="content-pipeline.js?v=83"></script>
+<script src="blocks/blocks.js?v=83"></script>
+<script src="app.js?v=83"></script>
 </body>
 </html>

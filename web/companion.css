@@ -680,31 +680,14 @@
   color: var(--text-muted);
 }
 
+/* Permanent first row of the list (scrolls with it). It used to be a
+   pull-to-reveal drawer, which made the only "create" affordance invisible. */
 .new-session-reveal {
   flex: none;
   order: -1;
   display: flex;
   justify-content: center;
-  align-items: flex-end;
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  padding: 0 20px;
-  /* Pre-open drag: slide DOWN toward its slot as the pull grows. The v68
-     version translated UP by the pull (sign flip), which pushed the pill
-     under the header exactly when the list opened a gap for it — the user
-     saw a hole and the tap landed on the header. */
-  transform: translateY(calc(var(--pull, 0px) - 64px));
-  transition: max-height 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-              opacity 0.22s ease,
-              transform 0.22s ease;
-}
-.new-session-reveal.open {
-  max-height: 80px;
-  opacity: 1;
-  padding: 4px 20px 0;
-  /* Open: the reveal owns flow height — pill sits fully below the header. */
-  transform: none;
+  padding: 4px 20px 6px;
 }
 
 .list-body {
@@ -712,8 +695,6 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  transform: translateY(var(--list-shift, 0px));
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .compose-pill {
