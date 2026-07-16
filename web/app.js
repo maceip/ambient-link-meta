@@ -48,7 +48,6 @@
   var quickRepliesEl = document.getElementById('quick-replies');
   var promptEl   = document.getElementById('prompt');
   var dictateBtn = document.getElementById('dictate');
-  var sendBtn     = document.getElementById('send');
   var threadActions = document.getElementById('thread-actions');
   var composeField = document.getElementById('compose-field');
   var dictateChrome = document.getElementById('dictate-chrome');
@@ -157,6 +156,10 @@
   }
 
   function renderQuickReplies() {
+    // One action row on glasses: Back · Dictate · first configured quick reply.
+    // A second row of pills cost vertical space and a wall of focus stops
+    // between the user and "respond" — everything auto-sends, so one chip is
+    // the whole configurable surface.
     if (!quickRepliesEl) return;
     var t = activeThread ? threads[activeThread] : null;
     var chips = sessionActionChips(t);
@@ -166,23 +169,17 @@
       return;
     }
     quickRepliesEl.classList.remove('hidden');
-    chips.forEach(function (chip) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'quick-reply-pill focusable' +
-        (chip.primary || chip.kind === 'dictate' ? ' quick-reply-pill--primary' : '');
-      btn.textContent = chip.label || chip.text || '';
-      btn.addEventListener('click', function () {
-        if (!activeThread) return;
-        if (chip.kind === 'dictate') {
-          if (dictRec || phoneDictateThread) stopDictRec(activeThread);
-          else startDictate();
-          return;
-        }
-        if (chip.text) sendPrompt(activeThread, chip.text);
-      });
-      quickRepliesEl.appendChild(btn);
+    var chip = chips[0];
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'quick-reply-pill focusable' +
+      (chip.primary ? ' quick-reply-pill--primary' : '');
+    btn.textContent = chip.label || chip.text || '';
+    btn.addEventListener('click', function () {
+      if (!activeThread) return;
+      if (chip.text) sendPrompt(activeThread, chip.text);
     });
+    quickRepliesEl.appendChild(btn);
     wireTaps();
   }
 
@@ -221,9 +218,11 @@
     if (dictateBtn) {
       dictateBtn.classList.toggle('recording', dictatePhase === 'listening');
       dictateBtn.classList.toggle('rbtn-active', dictatePhase === 'listening');
-    }
-    if (sendBtn) {
-      sendBtn.classList.toggle('rbtn-active', dictatePhase === 'review');
+      // The same button starts and finishes a dictation — say so. "2 of 7
+      // tries" confusion came from a mic icon that never told the user the
+      // next tap sends.
+      var lbl = dictateBtn.querySelector('.rbtn-label');
+      if (lbl) lbl.textContent = dictatePhase === 'listening' ? 'Done — send' : 'Dictate';
     }
     if (dictatePhase === 'listening' && dictateStatusText) {
       dictateStatusText.textContent = 'Listening…';
@@ -235,8 +234,6 @@
     listeningPartial = '';
     setDictatePhase('idle');
     if (dictateBtn) dictateBtn.classList.remove('recording');
-    if (sendBtn) sendBtn.classList.remove('rbtn-active');
-    promptEl.placeholder = 'type your message…';
   }
 
   function sendDictate(type, thread, text) {
@@ -560,12 +557,9 @@
     document.addEventListener('keydown', function (e) {
       if (isTextEntry(document.activeElement)) return;
       var key = e.key;
-      if (activeView === 'thread' && (key === 'ArrowUp' || key === 'ArrowDown')) {
-        if (tryScrollChat(key === 'ArrowUp' ? 'up' : 'down')) {
-          e.preventDefault();
-          return;
-        }
-      }
+      // D-pad moves between BUTTONS only. It used to scroll the entire chat
+      // history first, which put a wall of scrollback between the user and
+      // the actions. History still scrolls by touch drag.
       if (key === 'ArrowUp') { e.preventDefault(); moveFocus('up'); return; }
       if (key === 'ArrowDown') { e.preventDefault(); moveFocus('down'); return; }
       if (key === 'ArrowLeft') { e.preventDefault(); moveFocus('left'); return; }
@@ -1268,10 +1262,12 @@
     if (BLK && BLK.wireImmediateTap) BLK.wireImmediateTap(document);
   }
 
+  /** History is read-only chrome: never focusable, never a d-pad stop. It
+      scrolls by touch drag only, tracking pin-to-bottom for new messages. */
   function wireChatScroll() {
     if (!wChat || wChat.dataset.scrollWired) return;
     wChat.dataset.scrollWired = '1';
-    wChat.setAttribute('tabindex', '-1');
+    wChat.removeAttribute('tabindex');
     var touchStartY = 0;
     wChat.addEventListener('scroll', function () {
       var dist = wChat.scrollHeight - wChat.scrollTop - wChat.clientHeight;
@@ -1286,34 +1282,6 @@
     wChat.addEventListener('wheel', function () {
       chatPinBottom = false;
     }, { passive: true });
-    wChat.addEventListener('keydown', function (e) {
-      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-      if (wChat.scrollHeight <= wChat.clientHeight + 2) return;
-      e.preventDefault();
-      e.stopPropagation();
-      var step = 56;
-      if (e.key === 'ArrowUp') wChat.scrollTop = Math.max(0, wChat.scrollTop - step);
-      else wChat.scrollTop = Math.min(wChat.scrollHeight - wChat.clientHeight, wChat.scrollTop + step);
-      var dist = wChat.scrollHeight - wChat.scrollTop - wChat.clientHeight;
-      chatPinBottom = dist <= 48;
-    });
-  }
-
-  function tryScrollChat(direction) {
-    if (!wChat || activeView !== 'thread') return false;
-    if (wChat.scrollHeight <= wChat.clientHeight + 2) return false;
-    var step = 56;
-    if (direction === 'up') {
-      if (wChat.scrollTop <= 0) return false;
-      wChat.scrollTop = Math.max(0, wChat.scrollTop - step);
-    } else {
-      var max = wChat.scrollHeight - wChat.clientHeight;
-      if (wChat.scrollTop >= max - 1) return false;
-      wChat.scrollTop = Math.min(max, wChat.scrollTop + step);
-    }
-    var dist = wChat.scrollHeight - wChat.scrollTop - wChat.clientHeight;
-    chatPinBottom = dist <= 48;
-    return true;
   }
 
   function renderCompose() {
@@ -1372,7 +1340,6 @@
       dictateBtn.disabled = !on || !dictateOn;
       dictateBtn.style.display = dictateOn ? '' : 'none';
     }
-    sendBtn.disabled = !on;
   }
 
   function startPhoneDictate(t) {
@@ -1501,6 +1468,9 @@
     hydrateChatIfEmpty(threads[id]);
     hydrateFromRelayHistory(threads[id]);
     renderCompose();
+    // Respond is the #1 action in a session (history is a distant fourth):
+    // land the focus ring on Dictate, never on the scrollback.
+    focusSessionPrimary();
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: 'hud_yank', thread: id }));
     }
@@ -2207,11 +2177,6 @@
   newStart.addEventListener('click', startNewThread);
   wireThemes();
   wireDpadNavigation();
-  sendBtn.addEventListener('click', function () {
-    var text = (promptEl.value || '').trim();
-    if (!text || !activeThread) return;
-    sendPrompt(activeThread, text);
-  });
   promptEl.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {
       e.preventDefault();

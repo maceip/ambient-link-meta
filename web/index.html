@@ -8,15 +8,15 @@
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=80">
-  <link rel="stylesheet" href="blocks/blocks.css?v=80">
-  <link rel="stylesheet" href="companion.css?v=80">
-  <link rel="stylesheet" href="themes.css?v=80">
-  <link rel="stylesheet" href="beam.css?v=80">
+  <link rel="stylesheet" href="styles.css?v=81">
+  <link rel="stylesheet" href="blocks/blocks.css?v=81">
+  <link rel="stylesheet" href="companion.css?v=81">
+  <link rel="stylesheet" href="themes.css?v=81">
+  <link rel="stylesheet" href="beam.css?v=81">
   <link rel="manifest" href="manifest.json">
   <script>
     (function () {
-      var BUILD = 'v80';
+      var BUILD = 'v81';
       if (!('serviceWorker' in navigator)) return;
       // Only reload when an UPDATED worker takes over a page that was already
       // controlled. On first install (claim() fires controllerchange too) the
@@ -94,17 +94,18 @@
     </header>
     <div class="compose-wrap blk-agent-view">
       <p id="w-meta" class="widget-meta blk-agent-card__meta hidden"></p>
-      <div id="w-chat" class="blk-chat-thread compose-chat" role="log" aria-live="off" tabindex="-1"></div>
+      <div id="w-chat" class="blk-chat-thread compose-chat" role="log" aria-live="off"></div>
     </div>
-    <div id="quick-replies" class="quick-replies hidden" role="toolbar" aria-label="quick replies"></div>
     <div id="dictate-chrome" class="dictate-chrome hidden" aria-live="polite">
       <div id="dictate-status" class="dictate-status hidden">
         <span class="dictate-cursor" aria-hidden="true"></span>
         <span id="dictate-status-text">Listening…</span>
       </div>
     </div>
-    <div class="compose-field" id="compose-field">
-      <input id="prompt" type="text" placeholder="type your message…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" class="text-input focusable" tabindex="-1" aria-hidden="true">
+    <!-- No visible composer on glasses: there is no keyboard, so the input is a
+         hidden state holder for the dictate pipeline (partials/retry drafts). -->
+    <div class="compose-field hidden" id="compose-field" aria-hidden="true">
+      <input id="prompt" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" class="text-input" tabindex="-1" aria-hidden="true">
     </div>
     <nav id="thread-actions" class="thread-actions new-actions blk-form-view__actions" role="toolbar" aria-label="session actions">
       <div class="rbtn-row blk-rbtn-row" id="thread-rbtn-row">
@@ -123,9 +124,9 @@
             <span class="rbtn-label">Dictate</span>
           </span>
         </button>
-        <button type="button" id="send" class="rbtn rbtn-primary focusable rbtn-stroke rbtn-send-review" title="send" aria-label="send">
-          <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/></svg></span><span class="rbtn-label">Send</span></span>
-        </button>
+        <!-- Dictate auto-sends and quick replies auto-send: no Send button.
+             One row only: Back · Dictate · first user-configured quick reply. -->
+        <span id="quick-replies" class="thread-user-chips" role="presentation"></span>
         <button type="button" id="dictate-pause" class="rbtn focusable rbtn-stroke hidden" aria-label="pause dictation">
           <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 7v10M15 7v10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></span><span class="rbtn-label">Pause</span></span>
         </button>
@@ -144,13 +145,13 @@
     <div class="new-body blk-form-view__body">
       <div id="agent-chips" class="agent-chips" role="radiogroup" aria-label="agent">
         <button type="button" class="agent-chip focusable" data-agent="claude" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/claude.png?v=80" alt="" draggable="false"><span>Claude</span>
+          <img src="icons/agents/zinc/claude.png?v=81" alt="" draggable="false"><span>Claude</span>
         </button>
         <button type="button" class="agent-chip focusable" data-agent="codex" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/codex.png?v=80" alt="" draggable="false"><span>Codex</span>
+          <img src="icons/agents/zinc/codex.png?v=81" alt="" draggable="false"><span>Codex</span>
         </button>
         <button type="button" class="agent-chip focusable" data-agent="cursor" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/cursor.png?v=80" alt="" draggable="false"><span>Cursor</span>
+          <img src="icons/agents/zinc/cursor.png?v=81" alt="" draggable="false"><span>Cursor</span>
         </button>
       </div>
       <label class="field-label" for="new-cwd">working directory (on your Mac)</label>
@@ -183,10 +184,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </div>
-<script src="log.js?v=80"></script>
-<script src="chipset.js?v=80"></script>
-<script src="content-pipeline.js?v=80"></script>
-<script src="blocks/blocks.js?v=80"></script>
-<script src="app.js?v=80"></script>
+<script src="log.js?v=81"></script>
+<script src="chipset.js?v=81"></script>
+<script src="content-pipeline.js?v=81"></script>
+<script src="blocks/blocks.js?v=81"></script>
+<script src="app.js?v=81"></script>
 </body>
 </html>

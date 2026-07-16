@@ -29,15 +29,17 @@
     if (!trimmed) return '';
     var lines = trimmed.split('\n');
     var head = lines.slice(0, 3).join('\n');
+    // Diff/code markers replace hidden content (one line, load-bearing);
+    // plain-text truncation is just "…" — no char-count meta line, vertical
+    // space on the waveguide is too scarce for commentary.
     if (kind === 'diff') {
-      return head + '\n… (' + lines.length + ' lines of diff hidden on glasses)';
+      return head + '\n… (' + lines.length + ' diff lines)';
     }
     if (kind === 'code') {
-      return head + '\n… (large code block hidden on glasses)';
+      return head + '\n…';
     }
     var slice = trimmed.slice(0, DISPLAY_MAX_CHARS);
-    var suffix = trimmed.length > DISPLAY_MAX_CHARS ? '…' : '';
-    return slice + suffix + '\n(' + trimmed.length + ' chars — collapsed for display)';
+    return slice + (trimmed.length > DISPLAY_MAX_CHARS ? '…' : '');
   }
 
   function classify(text) {

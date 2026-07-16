@@ -1391,14 +1391,13 @@ textarea.text-input {
 .toast.error { border-color: var(--danger); }
 .toast.success { border-color: var(--success); }
 
-.quick-replies {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 16px 8px;
+/* Inline slot inside the action row (Back · Dictate · user chip) — the old
+   standalone pill row above the composer is gone. */
+.thread-user-chips {
+  display: inline-flex;
+  align-items: center;
 }
-.quick-replies.hidden { display: none !important; }
+.thread-user-chips.hidden { display: none !important; }
 .quick-reply-pill {
   appearance: none;
   font: inherit;

@@ -317,17 +317,8 @@
     text.textContent = opts.text || '';
     bubble.appendChild(text);
 
-    if (opts.truncated && opts.kind && opts.kind !== 'long') {
-      var note = document.createElement('div');
-      note.className = 'blk-chat-bubble__note';
-      note.textContent =
-        opts.kind === 'diff'
-          ? 'Large diff hidden on glasses — full context on Mac'
-          : opts.kind === 'code'
-            ? 'Large code block hidden on glasses'
-            : 'Long message collapsed for display';
-      bubble.appendChild(note);
-    }
+    // No "collapsed for display" note rows: vertical space on the waveguide is
+    // too scarce to spend on meta-commentary. Truncation shows as a plain "…".
 
     if (opts.at) {
       var timeEl = document.createElement('div');
