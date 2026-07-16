@@ -9,7 +9,7 @@
 //     the page calls reg.update() on load, a byte-changed sw.js installs the
 //     new cache atomically and reloads the page once via controllerchange.
 // Relay API paths are never intercepted.
-const V = '81'; // keep in lockstep with ?v= in index.html
+const V = '82'; // keep in lockstep with ?v= in index.html
 const CACHE = 'ambient-link-meta-v' + V;
 // Versioned entries must match index.html's ?v= URLs exactly: cache-first
 // below uses exact-URL matching so a hit is always the right build.

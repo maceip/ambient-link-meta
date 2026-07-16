@@ -73,30 +73,75 @@
 
   /** Glasses browsers focus on first tap and click on second, which reads as
       "I have to double-tap everything" plus click-delay lag. Synthesize the
-      click on touchend instead — but ONLY for a true tap (finger didn't move,
-      short press), so scrolling across a card never opens it and never loses
-      momentum to preventDefault. */
+      click when the tap ENDS instead — but ONLY for a true tap (finger didn't
+      move, short press), so scrolling across a card never opens it.
+
+      Wired on BOTH touch and pointer events: the temple touchpad is a pointer
+      device and may surface taps as pointer/mouse events with no touch events
+      at all — the old touch-only shim never fired for those, which is why
+      double-tap kept coming back. activate() dedupes so a browser sending
+      both families (or a trailing native click) still fires exactly once. */
   function wireImmediateTap(scope) {
     var rootEl = scope && scope.querySelectorAll ? scope : document;
-    rootEl.querySelectorAll('.rbtn, .quick-reply-pill, .thread-row, .compose-pill, .theme-chip').forEach(function (el) {
+    var SEL = '.rbtn, .quick-reply-pill, .thread-row, .compose-pill, .theme-chip, .agent-chip, .chip';
+    rootEl.querySelectorAll(SEL).forEach(function (el) {
       if (el.dataset.tapWired) return;
       el.dataset.tapWired = '1';
       var startX = 0, startY = 0, startedAt = 0;
+      var lastActivateAt = 0;
+
+      function begin(x, y) {
+        startX = x;
+        startY = y;
+        startedAt = Date.now();
+      }
+
+      function isTap(x, y) {
+        if (!startedAt) return false;
+        return Math.hypot(x - startX, y - startY) <= 12 &&
+          Date.now() - startedAt <= 700;
+      }
+
+      function activate() {
+        if (el.disabled) return;
+        var now = Date.now();
+        if (now - lastActivateAt < 350) return; // touch+pointer double-report
+        lastActivateAt = now;
+        // preventDefault above also suppressed native focus; keep the visible
+        // focus ring on the element that was actually tapped.
+        try { el.focus({ preventScroll: true }); } catch (e) {}
+        el.click();
+      }
+
+      // The browser may still dispatch its own (trusted) click after our
+      // synthetic one; swallow it. el.click() is untrusted and passes.
+      el.addEventListener('click', function (e) {
+        if (e.isTrusted && Date.now() - lastActivateAt < 600) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, true);
+
       el.addEventListener('touchstart', function (e) {
         var t = e.touches[0];
-        startX = t.clientX;
-        startY = t.clientY;
-        startedAt = Date.now();
+        begin(t.clientX, t.clientY);
       }, { passive: true });
       el.addEventListener('touchend', function (e) {
-        if (el.disabled) return;
         var t = e.changedTouches && e.changedTouches[0];
-        if (!t) return;
-        var moved = Math.hypot(t.clientX - startX, t.clientY - startY);
-        if (moved > 12 || Date.now() - startedAt > 700) return; // scroll or hold — not a tap
+        if (!t || !isTap(t.clientX, t.clientY)) return;
         e.preventDefault();
-        el.click();
+        activate();
       }, { passive: false });
+
+      if (window.PointerEvent) {
+        el.addEventListener('pointerdown', function (e) {
+          begin(e.clientX, e.clientY);
+        });
+        el.addEventListener('pointerup', function (e) {
+          if (!isTap(e.clientX, e.clientY)) return;
+          activate();
+        });
+      }
     });
   }
 
