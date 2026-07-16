@@ -87,7 +87,6 @@
   var dictateDraft = '';
   /* DMs convention: start pinned to the newest message; scrolling up unpins,
      returning near the bottom re-pins. */
-  var chatPinBottom = true;
   var chatForceScrollOnce = false;
   var chatScrollToUser = false;
   var lastChatRenderSig = '';
@@ -1195,27 +1194,10 @@
     if (BLK && BLK.wireImmediateTap) BLK.wireImmediateTap(document);
   }
 
-  /** History is read-only chrome: never focusable, never a d-pad stop. It
-      scrolls by touch drag only, tracking pin-to-bottom for new messages. */
-  function wireChatScroll() {
-    if (!wChat || wChat.dataset.scrollWired) return;
-    wChat.dataset.scrollWired = '1';
-    wChat.removeAttribute('tabindex');
-    var touchStartY = 0;
-    wChat.addEventListener('scroll', function () {
-      var dist = wChat.scrollHeight - wChat.scrollTop - wChat.clientHeight;
-      chatPinBottom = dist <= 48;
-    }, { passive: true });
-    wChat.addEventListener('touchstart', function (e) {
-      touchStartY = e.touches[0].clientY;
-    }, { passive: true });
-    wChat.addEventListener('touchmove', function (e) {
-      if (Math.abs(e.touches[0].clientY - touchStartY) > 10) chatPinBottom = false;
-    }, { passive: true });
-    wChat.addEventListener('wheel', function () {
-      chatPinBottom = false;
-    }, { passive: true });
-  }
+  // History is read-only chrome: never focusable, never a d-pad stop, and no
+  // "pinned" state to lose — every render snaps to the newest message (below).
+  // The old pin flag broke silently: once anything nudged the chat up, dictated
+  // messages landed off-screen and auto-scroll looked dead for the whole session.
 
   function renderCompose() {
     var t = activeThread ? threads[activeThread] : null;
@@ -1261,9 +1243,14 @@
     scrollChatToBottom();
   }
 
+  /** Always glued to the newest message — user or agent. Second pass on the
+      next frame catches late layout (fonts/async render) growing the log. */
   function scrollChatToBottom() {
-    if (!wChat || !chatPinBottom) return;
+    if (!wChat) return;
     wChat.scrollTop = wChat.scrollHeight;
+    requestAnimationFrame(function () {
+      wChat.scrollTop = wChat.scrollHeight;
+    });
   }
 
   function setComposerEnabled(on) {
@@ -1391,7 +1378,6 @@
   function openThread(id, compose) {
     if (activeThread && activeThread !== id) sendSessionSignal('session_blur', activeThread);
     activeThread = id;
-    chatPinBottom = true; // opening a thread always lands on the newest message
     listFocusedThreadId = id;
     setUrlForSession(id, !!compose);
     showView('thread');

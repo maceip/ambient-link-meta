@@ -1078,12 +1078,13 @@
 .widget-meta.hidden {
   display: none;
 }
+/* Read-only log: no touch/drag/wheel — it is always glued to the newest
+   message programmatically. overflow stays auto so scrollTop works. */
 .compose-chat {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
+  pointer-events: none;
 }
 .widget-card {
   display: none;
