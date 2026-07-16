@@ -9,7 +9,7 @@
 //     the page calls reg.update() on load, a byte-changed sw.js installs the
 //     new cache atomically and reloads the page once via controllerchange.
 // Relay API paths are never intercepted.
-const V = '85'; // keep in lockstep with ?v= in index.html
+const V = '86'; // keep in lockstep with ?v= in index.html
 const CACHE = 'ambient-link-meta-v' + V;
 // Versioned entries must match index.html's ?v= URLs exactly: cache-first
 // below uses exact-URL matching so a hit is always the right build.
@@ -55,6 +55,8 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (/^\/ambient-link\/(ws|status|pair|sessions|ingest|hooks\/|debug\/|history)/.test(url.pathname)) return;
+  // /next/ is the Svelte rewrite staging path — never serve it the old shell.
+  if (url.pathname.startsWith('/next/') || url.pathname === '/next') return;
   if (e.request.method !== 'GET') return;
 
   if (e.request.mode === 'navigate') {

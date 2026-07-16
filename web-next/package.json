@@ -1,0 +1,20 @@
+{
+  "name": "ambient-link-web-next",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Svelte 5 rewrite of the Ambient Link glasses web app. Build output is committed to ../web/next/ so the git-pull production deploy ships it with zero server changes.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "svelte": "^5.56.5",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}
