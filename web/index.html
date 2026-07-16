@@ -7,23 +7,19 @@
   <meta name="mrbd-web-app-capable" content="yes">
   <meta name="theme-color" content="#000000">
   <title>ambient link</title>
-  <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=86">
-  <link rel="stylesheet" href="blocks/blocks.css?v=86">
-  <link rel="stylesheet" href="companion.css?v=86">
-  <link rel="stylesheet" href="themes.css?v=86">
-  <link rel="stylesheet" href="beam.css?v=86">
-  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="./manifest.json">
   <script>
     (function () {
-      var BUILD = 'v86';
+      // BUILD marker: deploy verification greps for it, humans read it in
+      // view-source. The real freshness key is the hashed asset URLs.
+      var BUILD = 'svelte-1';
       if (!('serviceWorker' in navigator)) return;
       // Only reload when an UPDATED worker takes over a page that was already
       // controlled. On first install (claim() fires controllerchange too) the
-      // page is already the freshest build — reloading it just adds an extra
-      // navigation during the one window where the new cache may not be
-      // populated yet, which is how the glasses browser ends up on its
-      // dead-end "No Internet Connection" page.
+      // page is already the freshest build — reloading during the window where
+      // the new cache may not be populated is how the glasses browser lands on
+      // its dead-end "No Internet Connection" page.
       var hadController = !!navigator.serviceWorker.controller;
       var reloadedForSw = false;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -33,163 +29,16 @@
         location.reload();
       });
       window.addEventListener('load', function () {
-        // No page-level cache deletion here. An earlier "self-heal" nuked
-        // every non-current cache on load — but the new build's cache only
-        // exists after the new SW installs, so any network hiccup in that
-        // window left the SW with nothing to serve and the browser showed
-        // "No internet". sw.js's activate handler already deletes old caches
-        // at the only safe time: after the new cache is populated.
         navigator.serviceWorker.register('sw.js').then(function (reg) {
           reg.update();
         }).catch(function () {});
       });
     })();
   </script>
+  <script type="module" crossorigin src="./assets/index-cbg_7utf.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/style-B4Oe5i2B.css">
 </head>
 <body>
-<div id="app">
-
-  <!-- THREAD LIST — Instagram/DMs-style shell (restored from c100fd9);
-       behavior stays in current app.js, only presentation came back. -->
-  <section id="view-threads" class="view blk-shelf-list-view">
-    <span id="relay-badge" class="relay-badge hidden" title="relay debug — auto cards suppressed">debug</span>
-    <!-- Glasses vertical economy (WhatsApp/IG precedent): chrome is ONE header
-         line so ≥3 session cards stay visible. The connection banner only
-         occupies a row when something is wrong; connected = dot only. -->
-    <header class="list-hdr blk-shelf-list-view__hdr">
-      <span class="list-title blk-shelf-list-view__title">sessions</span>
-      <span class="list-hdr-right">
-        <span id="conn-count" class="conn-count hidden" aria-hidden="true"></span>
-        <span id="conn-dot" class="conn-dot off" aria-hidden="true"></span>
-      </span>
-    </header>
-    <div id="conn-status" class="conn-status off hidden" role="status" aria-live="polite">
-      <span id="conn-label" class="conn-label">Not connected to relay</span>
-    </div>
-    <div id="host-panel" class="host-panel hidden" aria-live="polite"></div>
-    <div id="list-scroll" class="list-scroll blk-shelf-list-view__scroll">
-      <!-- Always visible at the top of the list: the pull-to-reveal gesture was
-           undiscoverable (nobody found the only "create" affordance in demos). -->
-      <div id="new-session-reveal" class="new-session-reveal">
-        <button type="button" id="new-session-pill" class="compose-pill focusable" aria-label="new session">
-          <span class="compose-pill__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.75"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
-          </span>
-          <span class="compose-pill__label">New session</span>
-        </button>
-      </div>
-      <div id="list-body" class="list-body">
-        <p id="empty-hint" class="empty-hint blk-shelf-list-view__empty">no sessions</p>
-        <div id="threads" class="thread-list dm-list blk-shelf-list-view__list" role="list"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SESSION COMPOSE -->
-  <section id="view-thread" class="view hidden blk-agent-screen">
-    <div id="thread-conn" class="thread-conn off" role="status" aria-live="polite">
-      <span class="thread-conn-dot" aria-hidden="true"></span>
-      <span id="thread-conn-label" class="thread-conn-label">Not connected</span>
-    </div>
-    <header class="thread-hdr">
-      <span id="t-title" class="title hdr-title">session</span>
-    </header>
-    <div class="compose-wrap blk-agent-view">
-      <p id="w-meta" class="widget-meta blk-agent-card__meta hidden"></p>
-      <div id="w-chat" class="blk-chat-thread compose-chat" role="log" aria-live="off"></div>
-    </div>
-    <div id="dictate-chrome" class="dictate-chrome hidden" aria-live="polite">
-      <div id="dictate-status" class="dictate-status hidden">
-        <span class="dictate-cursor" aria-hidden="true"></span>
-        <span id="dictate-status-text">Listening…</span>
-      </div>
-    </div>
-    <!-- No visible composer on glasses: there is no keyboard, so the input is a
-         hidden state holder for the dictate pipeline (partials/retry drafts). -->
-    <div class="compose-field hidden" id="compose-field" aria-hidden="true">
-      <input id="prompt" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" class="text-input" tabindex="-1" aria-hidden="true">
-    </div>
-    <nav id="thread-actions" class="thread-actions new-actions blk-form-view__actions" role="toolbar" aria-label="session actions">
-      <div class="rbtn-row blk-rbtn-row" id="thread-rbtn-row">
-        <button type="button" id="back" class="rbtn focusable rbtn-stroke" aria-label="back">
-          <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M15 5.5 8 12l7 6.5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rbtn-label">Back</span></span>
-        </button>
-        <button type="button" id="dictate-redo" class="rbtn focusable rbtn-stroke hidden" aria-label="redo dictation">
-          <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0 1 13.7-5.7M20 4v5h-5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rbtn-label">Redo</span></span>
-        </button>
-        <button type="button" id="dictate" class="rbtn focusable rbtn-stroke" title="dictate" aria-label="dictate">
-          <span class="rbtn-pill">
-            <span class="rbtn-icon rbtn-icon--dictate" aria-hidden="true">
-              <svg class="icon-mic" viewBox="0 0 24 24" fill="none"><rect x="9" y="4" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.75"/><path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><path d="M12 18v3M8 21h8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
-              <svg class="icon-wave hidden" viewBox="0 0 24 24" fill="none"><path d="M4 10v4M7 8v8M10 6v12M13 9v6M16 7v10M19 10v4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
-            </span>
-            <span class="rbtn-label">Dictate</span>
-          </span>
-        </button>
-        <!-- Dictate auto-sends and quick replies auto-send: no Send button.
-             One row only: Back · Dictate · first user-configured quick reply. -->
-        <span id="quick-replies" class="thread-user-chips" role="presentation"></span>
-        <button type="button" id="dictate-pause" class="rbtn focusable rbtn-stroke hidden" aria-label="pause dictation">
-          <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 7v10M15 7v10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></span><span class="rbtn-label">Pause</span></span>
-        </button>
-      </div>
-    </nav>
-  </section>
-
-  <!-- NEW SESSION — blk-form -->
-  <section id="view-new" class="view hidden blk-form-view">
-    <header class="hdr new-hdr blk-form-view__hdr">
-      <div class="new-title-wrap blk-form-view__title-wrap">
-        <span id="new-title-icon" class="new-title-icon blk-form-view__icon agent-cursor" data-agent-icon="cursor" aria-hidden="true"></span>
-        <h1 id="new-title" class="new-title-text blk-form-view__title">createCursor</h1>
-      </div>
-    </header>
-    <div class="new-body blk-form-view__body">
-      <div id="agent-chips" class="agent-chips" role="radiogroup" aria-label="agent">
-        <button type="button" class="agent-chip focusable" data-agent="claude" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/claude.png?v=86" alt="" draggable="false"><span>Claude</span>
-        </button>
-        <button type="button" class="agent-chip focusable" data-agent="codex" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/codex.png?v=86" alt="" draggable="false"><span>Codex</span>
-        </button>
-        <button type="button" class="agent-chip focusable" data-agent="cursor" role="radio" aria-checked="false">
-          <img src="icons/agents/zinc/cursor.png?v=86" alt="" draggable="false"><span>Cursor</span>
-        </button>
-      </div>
-      <label class="field-label" for="new-cwd">working directory (on your Mac)</label>
-      <input id="new-cwd" class="text-input focusable" type="text" placeholder="~/Projects/my-app" tabindex="-1" aria-hidden="true">
-      <label class="field-label" for="new-prompt">prompt</label>
-      <textarea id="new-prompt" class="text-input focusable" rows="3" placeholder="what should the agent do?" tabindex="-1" aria-hidden="true"></textarea>
-    </div>
-    <nav class="new-actions blk-form-view__actions" role="toolbar" aria-label="create session">
-      <div class="rbtn-row blk-rbtn-row">
-      <button type="button" id="new-back" class="rbtn focusable rbtn-stroke" aria-label="back">
-        <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M15 5.5 8 12l7 6.5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rbtn-label">Back</span></span>
-      </button>
-      <button type="button" id="new-dictate" class="rbtn focusable" title="fill test prompt" aria-label="fill test prompt">
-        <span class="rbtn-pill">
-          <span class="rbtn-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-          </span>
-          <span class="rbtn-label">Test prompt</span>
-        </span>
-      </button>
-      <button type="button" id="new-start" class="rbtn focusable rbtn-primary" aria-label="start session">
-        <span class="rbtn-pill">
-          <span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.5 5.2v13.6c0 .8.9 1.3 1.6.9l10.2-6.2c.7-.4.7-1.4 0-1.8L9.1 4.3c-.7-.4-1.6.1-1.6.9Z"/></svg></span>
-          <span class="rbtn-label">Start</span>
-        </span>
-      </button>
-      </div>
-    </nav>
-  </section>
-
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-</div>
-<script src="log.js?v=86"></script>
-<script src="chipset.js?v=86"></script>
-<script src="content-pipeline.js?v=86"></script>
-<script src="blocks/blocks.js?v=86"></script>
-<script src="app.js?v=86"></script>
+  <div id="app-root"></div>
 </body>
 </html>

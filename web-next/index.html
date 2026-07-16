@@ -9,6 +9,32 @@
   <title>ambient link</title>
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="manifest" href="./manifest.json">
+  <script>
+    (function () {
+      // BUILD marker: deploy verification greps for it, humans read it in
+      // view-source. The real freshness key is the hashed asset URLs.
+      var BUILD = 'svelte-1';
+      if (!('serviceWorker' in navigator)) return;
+      // Only reload when an UPDATED worker takes over a page that was already
+      // controlled. On first install (claim() fires controllerchange too) the
+      // page is already the freshest build — reloading during the window where
+      // the new cache may not be populated is how the glasses browser lands on
+      // its dead-end "No Internet Connection" page.
+      var hadController = !!navigator.serviceWorker.controller;
+      var reloadedForSw = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (!hadController) { hadController = true; return; }
+        if (reloadedForSw) return;
+        reloadedForSw = true;
+        location.reload();
+      });
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').then(function (reg) {
+          reg.update();
+        }).catch(function () {});
+      });
+    })();
+  </script>
 </head>
 <body>
   <div id="app-root"></div>

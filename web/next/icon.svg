@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ambient link">
-  <rect width="512" height="512" rx="112" fill="#000"/>
-  <circle cx="256" cy="256" r="150" fill="none" stroke="#3aa0ff" stroke-width="34"/>
-  <circle cx="256" cy="256" r="72" fill="#31d179"/>
-  <path d="M154 256h204" stroke="#fff" stroke-width="32" stroke-linecap="round" opacity=".92"/>
-</svg>

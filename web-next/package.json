@@ -3,10 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Svelte 5 rewrite of the Ambient Link glasses web app. Build output is committed to ../web/next/ so the git-pull production deploy ships it with zero server changes.",
+  "description": "Svelte 5 source of the Ambient Link glasses web app. Build output is committed to ../web/ (served by Caddy) so the git-pull production deploy ships it with zero server changes.",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "rm -rf ../web/assets && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -52,9 +52,11 @@ Caddy serves those files at the installed glasses origin,
 `https://agent.public.computer/`; `https://public.computer/ambient-link/` is kept
 as a compatibility/debug path.
 
-Local workflow:
+Local workflow (source lives in `web-next/`, Caddy serves the committed build
+output in `web/` — always rebuild before committing a web change):
 
 ```bash
+cd web-next && npm run build && cd ..
 git add -A && git commit -m "web: <what changed>"
 git push origin main
 # CI deploys — watch Actions tab on GitHub
@@ -153,14 +155,15 @@ ssh root@public.computer 'systemctl is-active ambient-link-host'
 
 # web app reachable through Caddy/TLS (public edge)
 curl -sI https://agent.public.computer/ | head -5
-curl -s  https://agent.public.computer/app.js | head -c 80; echo
+curl -s  https://agent.public.computer/index.html | head -c 400; echo
 ```
 
-To confirm the web change is actually live, grep the served asset for a known
-string from your edit:
+To confirm the web change is actually live, check that the served index.html
+references the asset hashes from your local `web-next` build (the hashed
+filenames change on every content change):
 
 ```bash
-curl -s https://agent.public.computer/companion.css | grep -c "<your-new-token>"
+curl -s https://agent.public.computer/index.html | grep -o 'assets/index-[^"]*'
 ```
 
 ---
@@ -173,9 +176,11 @@ look "not deployed" because the browser/glasses is serving the cached SW bundle.
 
 When a change doesn't show:
 
-1. **Bump the SW cache version** in `web/sw.js` (the cache name/version constant)
-   as part of the change. This is the reliable fix — the new SW activates and
-   evicts the old cache. Commit it with the web change.
+1. **Rebuild** (`cd web-next && npm run build`) and commit the output. The
+   build content-hashes every asset and regenerates `web/sw.js` with the new
+   hashed shell list, so the SW cache version bumps automatically — there is
+   no hand-maintained version constant anymore. A stale `web/` (source edited
+   without rebuilding) is caught by the web-e2e workflow.
 2. Hard refresh / unregister: in DevTools → Application → Service Workers →
    *Unregister*, then reload. On glasses, reinstall the web app entry.
 3. If `git pull` fails with "local changes would be overwritten", the checkout
@@ -212,7 +217,7 @@ not reach the relay — this is the #1 cause of `404` on a new API path.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Web change not visible | service-worker cache | bump `sw.js` version (§5) |
+| Web change not visible | edited `web-next/` without rebuilding, or SW cache | `cd web-next && npm run build`, commit `web/` (§5) |
 | `404` on a new `/ambient-link/...` API path | not in Caddy `@ambient_api` | add it + reload Caddy (§6) |
 | git "dubious ownership" | running git as root on devuser repo | run as `sudo -u devuser -H git …` |
 | `go build` fails on server | server Go too old for `go.mod` | cross-compile on laptop (§3 Path B) |
