@@ -33,7 +33,13 @@ import { randomUUID } from 'node:crypto';
 const PORT = Number(process.env.AMBIENT_E2E_PORT || 5188);
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const BASE = `${ORIGIN}/ambient-link/`;
-const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Directory of THIS suite (fake agent + specs) — always the legacy web/.
+const TEST_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// What the relay serves. Overridable so the same behavioral contract runs
+// against the Svelte build (web/next) during the rewrite and after cutover.
+const WEB_ROOT = process.env.AMBIENT_WEB_ROOT
+  ? path.resolve(process.env.AMBIENT_WEB_ROOT)
+  : TEST_ROOT;
 const HOST_BIN = process.env.AMBIENT_HOST_BIN
   || path.join(os.homedir(), 'ambient-link-core/host/bin/ambient-link-host');
 const TMUX_SESSION = `al-e2e-${process.pid}`;
@@ -137,8 +143,8 @@ test.beforeAll(async () => {
       // Create-session spawns run the fake agent instead of real CLIs. The
       // UI's default agent is cursor; both point at the same stub. HOME is
       // inlined because tmux panes inherit the tmux SERVER's env, not ours.
-      AMBIENT_LINK_SPAWN_CURSOR: `HOME=${tmp} ${process.execPath} ${path.join(WEB_ROOT, 'test', 'fake-claude-agent.mjs')}`,
-      AMBIENT_LINK_SPAWN_CLAUDE: `HOME=${tmp} ${process.execPath} ${path.join(WEB_ROOT, 'test', 'fake-claude-agent.mjs')}`,
+      AMBIENT_LINK_SPAWN_CURSOR: `HOME=${tmp} ${process.execPath} ${path.join(TEST_ROOT, 'test', 'fake-claude-agent.mjs')}`,
+      AMBIENT_LINK_SPAWN_CLAUDE: `HOME=${tmp} ${process.execPath} ${path.join(TEST_ROOT, 'test', 'fake-claude-agent.mjs')}`,
       // deliberately NO AMBIENT_LINK_CLOUD: hermetic, never touches prod
     },
     stdio: ['ignore', logFd, logFd],
@@ -147,7 +153,7 @@ test.beforeAll(async () => {
 
   // Fake agent inside a tmux pane on the DEFAULT server — that is where the
   // relay's tmux delivery adapter looks up panes by pid.
-  const agentScript = path.join(WEB_ROOT, 'test', 'fake-claude-agent.mjs');
+  const agentScript = path.join(TEST_ROOT, 'test', 'fake-claude-agent.mjs');
   execFileSync('tmux', [
     'new-session', '-d', '-s', TMUX_SESSION,
     `exec ${process.execPath} ${agentScript} ${tmp} ${workdir} ${sessionId}`,

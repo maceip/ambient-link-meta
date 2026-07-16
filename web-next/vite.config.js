@@ -8,6 +8,17 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 export default defineConfig({
   plugins: [svelte()],
   base: './',
+  // Vitest must compile runes with the CLIENT runtime (jsdom), not SSR.
+  resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined,
+  server: {
+    // Local dev against a locally running relay.
+    proxy: {
+      '/ambient-link': {
+        target: 'http://127.0.0.1:5181',
+        ws: true,
+      },
+    },
+  },
   build: {
     outDir: '../web/next',
     emptyOutDir: true,
@@ -17,7 +28,7 @@ export default defineConfig({
     cssCodeSplit: false,
   },
   test: {
-    environment: 'node',
+    environment: 'jsdom',
     include: ['test/**/*.test.js'],
   },
 });

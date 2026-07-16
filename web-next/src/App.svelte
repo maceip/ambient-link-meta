@@ -1,50 +1,70 @@
 <script>
-  // Device gate: proves runes reactivity, single-tap handling, and the WS
-  // path to the relay all work in the glasses browser before we port the app.
-  const BUILD = 'next-gate-1';
+  import { onMount } from 'svelte';
+  import {
+    app, init, saveListSnapshot, closeThreadView, closeNewSessionView,
+  } from './lib/store.svelte.js';
+  import {
+    wireDpadNavigation, focusLastListRow, focusSessionPrimary, focusNewPrimary,
+  } from './lib/focus.js';
+  import { loadString } from './lib/persist.js';
+  import { KEYS } from './lib/persist.js';
+  import List from './views/List.svelte';
+  import Thread from './views/Thread.svelte';
+  import New from './views/New.svelte';
 
-  let taps = $state(0);
-  let ws = $state('connecting…');
-  let sessions = $state(-1);
+  const THEMES = ['meta', 'dracula', 'tokyo-night', 'catppuccin', 'nord'];
 
-  const doubled = $derived(taps * 2);
+  let toastVisible = $state(false);
+  let toastTimer = null;
+
+  onMount(() => {
+    // Contract: themes.css keys off data-theme on <html> (no picker chrome —
+    // a previously saved theme still applies).
+    const saved = loadString(KEYS.theme);
+    document.documentElement.dataset.theme = THEMES.includes(saved) ? saved : 'meta';
+
+    init();
+
+    wireDpadNavigation(
+      () => app.view,
+      (view) => {
+        if (view === 'thread') closeThreadView();
+        else if (view === 'new') closeNewSessionView();
+      },
+    );
+  });
+
+  // Focus follows the view: list → last (or remembered) row; thread → Dictate
+  // (respond is the #1 action; never the scrollback); new → Start.
+  $effect(() => {
+    const view = app.view;
+    if (view === 'list') focusLastListRow(app.listFocusedThreadId);
+    else if (view === 'thread') focusSessionPrimary();
+    else if (view === 'new') focusNewPrimary();
+  });
+
+  // Offline resilience: snapshot the list while connected so the glasses open
+  // to the last-known sessions instead of an empty screen.
+  $effect(() => {
+    void app.threadOrder.length;
+    void app.conn;
+    Object.values(app.threads).forEach((t) => { void t.lastEventAt; });
+    saveListSnapshot();
+  });
 
   $effect(() => {
-    const sock = new WebSocket(
-      (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ambient-link/ws'
-    );
-    sock.onopen = () => { ws = 'open'; };
-    sock.onerror = () => { ws = 'error'; };
-    sock.onclose = () => { ws = 'closed'; };
-    sock.onmessage = (ev) => {
-      try {
-        const m = JSON.parse(ev.data);
-        if (m.type === 'hello' && Array.isArray(m.threads)) sessions = m.threads.length;
-      } catch { /* ignore */ }
-    };
-    return () => sock.close();
+    if (!app.toast.seq) return;
+    toastVisible = true;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastVisible = false; }, 2800);
   });
 </script>
 
-<main>
-  <h1>web-next boot OK</h1>
-  <p class="tag">{BUILD} · svelte 5 runes</p>
-  <p>relay ws: <b class={ws}>{ws}</b>{#if sessions >= 0} · {sessions} session(s){/if}</p>
-  <button onclick={() => { taps += 1; }}>tap me — {taps} taps, doubled {doubled}</button>
-  <p class="hint">If the count rises on a SINGLE tap and ws says open, the gate passes.</p>
-</main>
-
-<style>
-  :global(body) { margin: 0; background: #000; color: #fff; font: 16px/1.5 system-ui, sans-serif; }
-  main { padding: 28px 20px; max-width: 560px; margin: 0 auto; }
-  h1 { font-size: 22px; color: #1c84ff; margin: 0 0 4px; }
-  .tag { opacity: 0.6; margin: 0 0 16px; }
-  b.open { color: #25d366; }
-  b.error, b.closed { color: #ff5c5c; }
-  button {
-    font: inherit; color: #fff; background: rgba(28, 132, 255, 0.2);
-    border: 1px solid rgba(28, 132, 255, 0.5); border-radius: 999px;
-    padding: 12px 22px; margin: 10px 0; cursor: pointer;
-  }
-  .hint { opacity: 0.55; font-size: 14px; }
-</style>
+<div id="app">
+  <List />
+  <Thread />
+  <New />
+  <div id="toast" class="toast" class:visible={toastVisible}
+       class:success={app.toast.kind === 'success'} class:error={app.toast.kind === 'error'}
+       role="status" aria-live="polite">{app.toast.text}</div>
+</div>

@@ -1,0 +1,7 @@
+/* Rewrite-only rules (legacy CSS files are verbatim copies — don't edit them).
+   The Svelte mount point wraps #app; without a size it collapses to 0 height
+   because every .view inside #app is absolutely positioned. */
+#app-root {
+  width: 100%;
+  height: 100%;
+}
