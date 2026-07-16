@@ -11,8 +11,10 @@
 // Covered loop (the product's core promise):
 //   1. live agent session appears in the session list (agent → human)
 //   2. opening a session shows its real transcript history
-//   3. a reply typed on the web LANDS in the agent's stdin, is confirmed
-//      "landed" via transcript echo, and the agent's answer flows back
+//   3. a reply sent from the web UI (quick-reply chip — the composer input
+//      and Send button were removed; glasses have no keyboard) LANDS in the
+//      agent's stdin, is confirmed "landed" via transcript echo, and the
+//      agent's answer flows back
 //   4. dictation: glasses press Dictate → phone streams partials → commit is
 //      injected into the agent (the phone is played by a plain WS client —
 //      the exact frames relay-android sends)
@@ -201,8 +203,13 @@ test('reply from the web lands in the agent and the answer flows back', async ({
 
   await openSession(page);
   const text = `e2e ping ${Date.now()}`;
-  await page.fill('#prompt', text);
-  await page.click('#send');
+  // The typed composer is gone (v81): the web's send paths are dictation and
+  // the user-configured quick-reply chip in the action row. Configure the chip
+  // over the same companion_config fan-out relay-android uses, then click it.
+  observer.send({ type: 'companion_config', quick_replies: [text], source: 'phone' });
+  const chip = page.locator('#quick-replies .quick-reply-pill');
+  await expect(chip).toBeVisible();
+  await chip.click();
 
   // 1. Delivered for real: the text reaches the agent process's stdin and the
   //    agent writes it into its transcript as a user turn.
@@ -242,7 +249,9 @@ test('dictation: begin on glasses, partials + commit from phone, lands in agent'
 
   const spoken = `hello from the phone ${Date.now()}`;
   phone.send({ type: 'dictate_partial', thread: threadId, text: 'hello from', source: 'phone' });
-  await expect(page.locator('#prompt')).toHaveValue('hello from'); // partial streamed to glasses
+  // Partial streamed to the glasses' visible listening line (the composer
+  // input is a hidden state holder since v81 — not a UI surface).
+  await expect(page.locator('#dictate-status-text')).toHaveText('hello from');
   phone.send({ type: 'dictate_partial', thread: threadId, text: spoken, source: 'phone' });
   phone.send({ type: 'dictate_commit', thread: threadId, text: spoken, source: 'phone' });
 
@@ -280,18 +289,11 @@ test('glasses economy: ~3.5 session cards visible at most (scroll for more)', as
   expect(fit, detail).toBeGreaterThanOrEqual(2.8);
 });
 
-test('swipe up on the top card reveals create-session above the list', async ({ page }) => {
+test('New session pill is always visible above the list and opens the form', async ({ page }) => {
+  // v83 killed pull-to-reveal: the pill is a permanent first row of the list
+  // (the gesture was undiscoverable — nobody found the only create affordance).
   await page.goto(BASE);
   await expect(page.locator('#threads .thread-row').first()).toBeVisible();
-  const reveal = page.locator('#new-session-reveal');
-  await expect(reveal).toHaveAttribute('aria-hidden', 'true');
-  // The band/glasses "swipe up at the top of the list" arrives as an upward
-  // scroll gesture; past the threshold the reveal sticks open. Use a real
-  // wheel event (dispatchEvent builds a plain Event with no deltaY).
-  const box = await page.locator('#list-scroll').boundingBox();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.wheel(0, -80);
-  await expect(reveal).toHaveAttribute('aria-hidden', 'false');
   const pill = page.locator('#new-session-pill');
   await expect(pill).toBeVisible();
   // "Visible" is not enough: v68 shipped with the pill translated up under

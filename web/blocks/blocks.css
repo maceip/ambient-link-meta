@@ -78,30 +78,14 @@
   display: none;
 }
 
-/* Pull down at top → reveal "New session" (Instagram glasses DMs). */
+/* Permanent "New session" row above the list (pull-to-reveal was removed:
+   the gesture hid the only create affordance). Keep in sync with companion.css. */
 .new-session-reveal {
   flex: none;
   order: -1;
   display: flex;
   justify-content: center;
-  align-items: flex-end;
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  padding: 0 20px;
-  /* keep in sync with companion.css (which loads later and wins): slide DOWN
-     toward the slot while dragging; never translate up under the header */
-  transform: translateY(calc(var(--pull, 0px) - 64px));
-  transition: max-height 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-              opacity 0.22s ease,
-              transform 0.22s ease;
-}
-
-.new-session-reveal.open {
-  max-height: 80px;
-  opacity: 1;
-  padding: 4px 20px 0;
-  transform: none;
+  padding: 4px 20px 6px;
 }
 
 .list-body {
@@ -109,8 +93,6 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  transform: translateY(var(--list-shift, 0px));
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Meta glasses DMs list — WhatsApp / Instagram shared card rows. */

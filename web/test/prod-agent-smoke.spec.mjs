@@ -44,9 +44,20 @@ test.describe('production agent timestamp smoke', () => {
     expect([200, 202], await createResp.text()).toContain(createResp.status());
 
     await expect(page.locator('#view-thread')).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator('#prompt')).toBeEnabled({ timeout: 30_000 });
-    await page.fill('#prompt', timestampText);
-    await page.click('#send');
+    // No typed composer since v81 — configure a quick-reply chip carrying the
+    // timestamp over the relay's companion_config fan-out (the same frames
+    // relay-android sends) and click it in the action row.
+    const wsUrl = ORIGIN.replace(/^http/, 'ws') + '/ambient-link/ws';
+    const sock = new WebSocket(wsUrl);
+    await new Promise((resolve, reject) => {
+      sock.addEventListener('open', resolve);
+      sock.addEventListener('error', reject);
+    });
+    sock.send(JSON.stringify({ type: 'companion_config', quick_replies: [timestampText], source: 'phone' }));
+    const chip = page.locator('#quick-replies .quick-reply-pill');
+    await expect(chip).toBeVisible({ timeout: 15_000 });
+    await chip.click();
+    sock.close();
 
     await expect(page.locator('#w-chat')).toContainText(timestampText, { timeout: 30_000 });
 
