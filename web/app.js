@@ -1017,6 +1017,7 @@
   var PULL_REVEAL_THRESHOLD = 56;
   var pullRevealPx = 0;
   var pullTouchStartY = 0;
+  var revealAutoOpened = false;
 
   function listAtTop() {
     if (!listScroll) return true;
@@ -1167,9 +1168,15 @@
       } else if (hostInfo.liveSessionCount > 0) {
         emptyHint.textContent = 'Loading sessions…';
       } else if (hostInfo.laptopPeerConnected) {
-        emptyHint.textContent = 'No active agents — start Cursor, Claude, or Codex on your Mac';
+        emptyHint.textContent = 'No active agents — tap New session, or start one on your Mac';
       } else {
-        emptyHint.textContent = 'No sessions — tap New session below';
+        emptyHint.textContent = 'No sessions — tap New session';
+      }
+      // Empty list: the pull-to-reveal gesture is undiscoverable, so surface
+      // the New session pill outright instead of hiding the only action.
+      if (!revealAutoOpened) {
+        revealAutoOpened = true;
+        setPullReveal(PULL_REVEAL_THRESHOLD, true);
       }
       renderConnStatus();
       wireRbtnGroups();
@@ -1177,6 +1184,10 @@
       return;
     }
     emptyHint.classList.add('hidden');
+    if (revealAutoOpened) {
+      revealAutoOpened = false;
+      setPullReveal(0, false);
+    }
     live.forEach(function (t) {
       var ac = agentClass(t.agent);
       var preview = listPreviewText(t);
