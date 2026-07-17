@@ -1,6 +1,7 @@
 // D-pad focus model — port of app.js wireDpadNavigation + focus helpers.
-// D-pad moves between BUTTONS only (history is inert chrome); Enter clicks;
-// Escape backs out of thread/new views.
+// D-pad moves between BUTTONS only (history is inert chrome); Enter clicks.
+// Escape = hardware Back (Neural Band middle→thumb, temple two-finger tap)
+// and returns thread/new → session list. There is no on-screen Back in thread.
 
 function isTextEntry(el) {
   if (!el) return false;
@@ -17,7 +18,7 @@ export function focusablesInView(view) {
   const root = viewRoot(view);
   if (!root || root.classList.contains('hidden')) return [];
   return Array.from(root.querySelectorAll('.focusable:not([disabled])')).filter((el) => {
-    if (view === 'new' && (el.id === 'new-prompt' || el.id === 'new-cwd')) return false;
+    if (view === 'new' && el.id === 'new-prompt') return false;
     return !el.classList.contains('hidden') && el.offsetParent !== null;
   });
 }
@@ -50,7 +51,7 @@ export function focusLastListRow(preferThreadId) {
   (pick || rows[rows.length - 1]).focus({ preventScroll: true });
 }
 
-/** Glasses can't type — land on Dictate (mic), expanded and ready.
+/** Glasses can't type — land on Phone mic (default dictate), expanded and ready.
     Respond is the #1 action in a session; never focus the scrollback. */
 export function focusSessionPrimary() {
   setTimeout(() => {

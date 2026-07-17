@@ -12,7 +12,11 @@ data class Chip(
   val kind: ChipKind = ChipKind.SEND,
   val primary: Boolean = false,
 )
-enum class ChipKind { SEND, DICTATE, MODIFY, SNOOZE, BROWSE }
+// MODIFY removed: it used to Intent.ACTION_VIEW a companion URL, which opens
+// the *phone* browser — not the Meta Display web app. DAT chips stay interrupt
+// actions only (SEND / DICTATE / SNOOZE / BROWSE). Soft handoff to web is via
+// companion_config.wake_hint when the user opens the launcher.
+enum class ChipKind { SEND, DICTATE, SNOOZE, BROWSE }
 
 data class ActionConfig(
   val quickReplies: List<String> = emptyList(),

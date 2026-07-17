@@ -1,27 +1,12 @@
 // Chip classification — host sets awaiting: permission | question | done.
-// ESM port of web/chipset.js (behavior unchanged).
+// Body copy for glasses is ask/ready only (see glasses-copy.js).
+
+import { displayForYank, stripChipSuffix } from './glasses-copy.js';
 
 export const Awaiting = { PERMISSION: 'permission', QUESTION: 'question', DONE: 'done' };
 
-function stripChipActionSuffix(text) {
-  return (text || '').replace(
-    /\s+[—–-]\s+(continue|dictate|dismiss)(\s*\|\s*(continue|dictate|dismiss))+\.?\s*$/i,
-    '',
-  ).trim();
-}
-
 export function bodyText(yank) {
-  const parts = [];
-  if (yank.awaiting === Awaiting.PERMISSION) {
-    const perm = (yank.permissionPrompt && yank.permissionPrompt.trim()) || yank.lastAssistant || '';
-    if (perm) parts.push(perm);
-  } else if (yank.lastAssistant) {
-    parts.push(stripChipActionSuffix(yank.lastAssistant));
-  }
-  if (yank.lastUserInput && yank.lastUserInput.trim()) {
-    parts.push('You: ' + yank.lastUserInput.trim());
-  }
-  return parts.join('\n\n') || yank.lastAssistant || '';
+  return displayForYank(yank || {});
 }
 
 export function metaLine(yank) {
@@ -30,6 +15,11 @@ export function metaLine(yank) {
   if (yank.awaiting === Awaiting.QUESTION) return label + ' · question';
   if (yank.awaiting === Awaiting.DONE) return label + ' · done';
   return label;
+}
+
+/** @deprecated use stripChipSuffix from glasses-copy */
+export function stripChipActionSuffix(text) {
+  return stripChipSuffix(text);
 }
 
 export function parseYank(msg) {

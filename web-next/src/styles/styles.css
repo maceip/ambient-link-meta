@@ -39,7 +39,7 @@
   --hud-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); /* legibility on transparent */
   /* Meta Messages rbtn row (BUTTON_ANIMS.mov) — frosted glass + bold icon weight. */
   --rbtn-size: 68px;
-  --rbtn-icon-size: 30px;
+  --rbtn-icon-size: 34px; /* +4px — icons are the only resting signal on glasses */
   --rbtn-gap: 6px;
   --rbtn-glass-top: rgba(255, 255, 255, 0.14);
   --rbtn-glass-bot: rgba(255, 255, 255, 0.06);
@@ -48,15 +48,17 @@
   --rbtn-send-top: #25d366;
   --rbtn-send-bot: #128c7e;
   --rbtn-shadow-rest:
-    0 6px 20px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.42),
-    inset 0 -2px 5px rgba(0, 0, 0, 0.22);
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -3px 7px rgba(0, 0, 0, 0.26);
   --rbtn-capsule-top: rgba(255, 255, 255, 0.94);
   --rbtn-capsule-bot: rgba(255, 255, 255, 0.78);
   --rbtn-shadow-focus:
-    0 12px 32px rgba(0, 0, 0, 0.48),
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.1);
+    0 14px 36px rgba(0, 0, 0, 0.54),
+    0 3px 9px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.12);
   --radius-pill: 999px;                   /* fully-rounded capsule */
   --avatar-size: 46px;
   --font-sans: -apple-system, "SF Pro Display", "SF Pro Text", BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;

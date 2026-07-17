@@ -9,12 +9,12 @@ describe('content pipeline', () => {
     expect(classify('hello world')).toEqual({ kind: 'normal', truncated: false, display: 'hello world' });
   });
 
-  it('collapses diffs to a head + count line', () => {
+  it('hides diffs entirely on glasses (empty display)', () => {
     const diff = 'diff --git a/x b/x\n' + Array.from({ length: 30 }, (_, i) => '+line ' + i).join('\n');
     const c = classify(diff);
     expect(c.kind).toBe('diff');
-    expect(c.display).toContain('diff lines)');
-    expect(preview(diff)).toBe('Large diff · open on Mac for full context');
+    expect(c.display).toBe('');
+    expect(preview(diff)).toBe('');
   });
 
   it('truncates long prose with a bare ellipsis — no meta commentary', () => {
@@ -23,6 +23,7 @@ describe('content pipeline', () => {
     expect(c.kind).toBe('long');
     expect(c.display.endsWith('…')).toBe(true);
     expect(c.display).not.toContain('chars');
+    expect(c.display).not.toMatch(/summar|compress|collapsed/i);
   });
 });
 

@@ -38,7 +38,8 @@ class RelayClient(val url: String) {
     data class ThreadIdle(val yank: AgentYank) : Event()
     data class HudYank(val yank: AgentYank) : Event()
     data class ThreadBusy(val thread: String) : Event()
-    data class DictateActive(val thread: String, val source: String) : Event()
+    /** mic: "phone" (default) or "glasses" (Bluetooth SCO / HFP). */
+    data class DictateActive(val thread: String, val source: String, val mic: String = "phone") : Event()
     data class DictateCommit(val thread: String, val text: String, val source: String) : Event()
     data class DictateAbort(val thread: String, val source: String) : Event()
     data class DictatePartial(val thread: String, val text: String, val source: String) : Event()
@@ -189,12 +190,20 @@ class RelayClient(val url: String) {
               }
             }
             "dictate_active" -> _events.tryEmit(
-              Event.DictateActive(obj.optString("thread"), obj.optString("source", "")),
+              Event.DictateActive(
+                obj.optString("thread"),
+                obj.optString("source", ""),
+                normalizeMic(obj.optString("mic", "phone")),
+              ),
             )
             "dictate_begin" -> {
               if (obj.optString("source") == "web") {
                 _events.tryEmit(
-                  Event.DictateActive(obj.optString("thread"), "web"),
+                  Event.DictateActive(
+                    obj.optString("thread"),
+                    "web",
+                    normalizeMic(obj.optString("mic", "phone")),
+                  ),
                 )
               }
             }
@@ -333,6 +342,9 @@ class RelayClient(val url: String) {
     ws?.send(o.toString())
   }
 
+  private fun normalizeMic(raw: String): String =
+    if (raw.equals("glasses", ignoreCase = true)) "glasses" else "phone"
+
   /** Quick replies + snooze window — synced to web companion. */
   fun sendCompanionConfig(
     quickReplies: List<String>,
@@ -340,19 +352,61 @@ class RelayClient(val url: String) {
     showContinue: Boolean,
     showDictate: Boolean,
     defaultAgent: String,
+    dictateMic: String = "phone",
+    wakeHint: WakeHint? = null,
   ) {
     val arr = org.json.JSONArray()
     quickReplies.forEach { arr.put(it) }
+    val mic = if (dictateMic.equals("glasses", ignoreCase = true)) "glasses" else "phone"
+    val o = JSONObject()
+      .put("type", "companion_config")
+      .put("quick_replies", arr)
+      .put("snooze_until", snoozeUntilMs)
+      .put("show_continue", showContinue)
+      .put("show_dictate", showDictate)
+      .put("default_agent", defaultAgent)
+      .put("dictate_mic", mic)
+      .put("source", "phone")
+    if (wakeHint != null) o.put("wake_hint", wakeHint.toJson())
+    ws?.send(o.toString())
+  }
+
+  /**
+   * Soft handoff for the glasses web app: after a DAT wake, opening the
+   * launcher lands on this thread if the hint is still fresh (~2 min).
+   * Does not open the web app itself (unsupported from DAT).
+   */
+  fun sendWakeHint(thread: String, reason: String, sessionId: String = "") {
+    if (thread.isBlank()) return
+    val hint = WakeHint(
+      thread = thread,
+      at = System.currentTimeMillis(),
+      reason = reason.ifBlank { "done" },
+      sessionId = sessionId,
+    )
     ws?.send(
       JSONObject()
         .put("type", "companion_config")
-        .put("quick_replies", arr)
-        .put("snooze_until", snoozeUntilMs)
-        .put("show_continue", showContinue)
-        .put("show_dictate", showDictate)
-        .put("default_agent", defaultAgent)
+        .put("wake_hint", hint.toJson())
         .put("source", "phone")
         .toString(),
     )
+    Log.i("RelayClient", "wake_hint thread=$thread reason=${hint.reason}")
+  }
+
+  data class WakeHint(
+    val thread: String,
+    val at: Long,
+    val reason: String,
+    val sessionId: String = "",
+  ) {
+    fun toJson(): JSONObject {
+      val o = JSONObject()
+        .put("thread", thread)
+        .put("at", at)
+        .put("reason", reason)
+      if (sessionId.isNotBlank()) o.put("session_id", sessionId)
+      return o
+    }
   }
 }

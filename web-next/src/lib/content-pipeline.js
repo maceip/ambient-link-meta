@@ -1,5 +1,5 @@
-// Glasses-safe content pipeline — full text kept for context; display is
-// filtered. ESM port of web/content-pipeline.js (byte-for-byte behavior).
+// Legacy classifier — kept for call sites that still pass raw blobs.
+// Glasses surfaces should prefer glasses-copy.js (ask / ready only).
 
 export const DISPLAY_MAX_CHARS = 320;
 const DISPLAY_MAX_LINES = 8;
@@ -23,37 +23,20 @@ function isCodeDump(text) {
   return fence >= 4 && text.length > 600;
 }
 
-function summarizeLarge(text, kind) {
-  const trimmed = (text || '').trim();
-  if (!trimmed) return '';
-  const lines = trimmed.split('\n');
-  const head = lines.slice(0, 3).join('\n');
-  // Diff/code markers replace hidden content (one line, load-bearing);
-  // plain-text truncation is just "…" — no char-count meta line, vertical
-  // space on the waveguide is too scarce for commentary.
-  if (kind === 'diff') {
-    return head + '\n… (' + lines.length + ' diff lines)';
-  }
-  if (kind === 'code') {
-    return head + '\n…';
-  }
-  const slice = trimmed.slice(0, DISPLAY_MAX_CHARS);
-  return slice + (trimmed.length > DISPLAY_MAX_CHARS ? '…' : '');
-}
-
 export function classify(text) {
   if (!text || !String(text).trim()) {
     return { kind: 'empty', truncated: false, display: '' };
   }
   const raw = String(text);
+  // Dumps are not shown on glasses — empty display, no head/ellipsis chrome.
   if (isDiffLike(raw)) {
-    return { kind: 'diff', truncated: true, display: summarizeLarge(raw, 'diff') };
+    return { kind: 'diff', truncated: true, display: '' };
   }
   if (isCodeDump(raw)) {
-    return { kind: 'code', truncated: true, display: summarizeLarge(raw, 'code') };
+    return { kind: 'code', truncated: true, display: '' };
   }
   if (raw.length > HARD_MAX_CHARS || raw.split('\n').length > DISPLAY_MAX_LINES * 3) {
-    return { kind: 'large', truncated: true, display: summarizeLarge(raw, 'large') };
+    return { kind: 'large', truncated: true, display: '' };
   }
   if (raw.length > DISPLAY_MAX_CHARS || raw.split('\n').length > DISPLAY_MAX_LINES) {
     return {
@@ -67,15 +50,10 @@ export function classify(text) {
 
 export const filterForDisplay = classify;
 
-/** List preview — more text than bubble cap, still filtered for diffs. */
+/** List preview — first useful line only; no meta commentary. */
 export function preview(text, maxChars) {
   const cap = maxChars || 180;
   const c = classify(text);
-  if (c.truncated && (c.kind === 'diff' || c.kind === 'code' || c.kind === 'large')) {
-    if (c.kind === 'diff') return 'Large diff · open on Mac for full context';
-    if (c.kind === 'code') return 'Large code block · open on Mac for full context';
-    return c.display.split('\n')[0].slice(0, cap);
-  }
-  const d = c.display || '';
+  const d = (c.display || '').split('\n')[0] || '';
   return d.length > cap ? d.slice(0, cap - 1) + '…' : d;
 }

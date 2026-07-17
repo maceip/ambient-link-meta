@@ -1,8 +1,6 @@
 package com.lowkey.ambientlink.hud
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.util.Log
 import com.lowkey.ambientlink.dictation.DictationCallback
 import com.lowkey.ambientlink.dictation.DictationManager
@@ -79,18 +77,55 @@ class HudPresenter(
   // session's idle event doesn't immediately re-open a menu on the glasses.
   private var quietUntilMs = 0L
   private val QUIET_AFTER_RESPONSE_MS = 10_000L
-  /** When the web companion is on the glasses display, queue native HUD peeks. */
+  /** When the web companion is on the glasses display, queue native HUD peeks.
+   *  Lease expires if web stops heartbeating (~15s) for [WEB_COMPANION_LEASE_MS]. */
   private var webCompanionScreen: String? = null
+  private var webCompanionAtMs = 0L
+  private var companionLeaseJob: Job? = null
+  private val WEB_COMPANION_LEASE_MS = 45_000L
 
-  private fun webOccupiesDisplay(): Boolean {
+  private fun webScreenActive(): Boolean {
     val s = webCompanionScreen ?: return false
     return s.isNotBlank() && s != "idle"
+  }
+
+  private fun webOccupiesDisplay(): Boolean {
+    if (!webScreenActive()) return false
+    if (System.currentTimeMillis() - webCompanionAtMs > WEB_COMPANION_LEASE_MS) {
+      clearWebCompanionLease("lease_expired")
+      return false
+    }
+    return true
+  }
+
+  private fun clearWebCompanionLease(reason: String) {
+    val was = webScreenActive()
+    webCompanionScreen = null
+    companionLeaseJob?.cancel()
+    companionLeaseJob = null
+    Log.i("HudPresenter", "companion_ui cleared reason=$reason")
+    if (was) maybeShowQueuedAfterWeb()
+  }
+
+  private fun rescheduleCompanionLease() {
+    companionLeaseJob?.cancel()
+    if (!webScreenActive()) return
+    companionLeaseJob = scope.launch {
+      delay(WEB_COMPANION_LEASE_MS + 250L)
+      if (webScreenActive() &&
+        System.currentTimeMillis() - webCompanionAtMs >= WEB_COMPANION_LEASE_MS
+      ) {
+        clearWebCompanionLease("lease_expired")
+      }
+    }
   }
 
   /** Web app owns the waveguide — hide native DAT and queue yanks until idle. */
   fun onCompanionUi(screen: String) {
     val wasOccupied = webOccupiesDisplay()
     webCompanionScreen = screen
+    webCompanionAtMs = System.currentTimeMillis()
+    rescheduleCompanionLease()
     Log.i("HudPresenter", "companion_ui screen=$screen occupied=${webOccupiesDisplay()}")
     if (webOccupiesDisplay()) {
       if (isOccupied() || opening || datSession.activeDisplay != null) {
@@ -111,6 +146,22 @@ class HudPresenter(
     dequeueNext()?.let { yank(it) }
   }
 
+  private fun wakeReason(yank: AgentYank): String = when (yank.awaiting) {
+    Awaiting.PERMISSION -> "permission"
+    Awaiting.QUESTION -> "question"
+    Awaiting.DONE -> "done"
+  }
+
+  /** Always publish — even when web owns the display — so the web can stack
+   *  Switch targets for sessions that would have peeked the HUD. */
+  private fun publishWakeHint(yank: AgentYank) {
+    try {
+      relay.sendWakeHint(yank.thread, wakeReason(yank))
+    } catch (e: Exception) {
+      Log.w("HudPresenter", "wake_hint failed: ${e.message}")
+    }
+  }
+
   fun yank(yank: AgentYank) {
     if (!WearablesRuntime.initialized) {
       Log.w("HudPresenter", "Wearables SDK not initialized (open app and grant BT permissions)")
@@ -121,6 +172,7 @@ class HudPresenter(
       return
     }
     upsertSession(yank)
+    publishWakeHint(yank)
     if (webOccupiesDisplay()) {
       enqueue(yank)
       Log.i("HudPresenter", "queued yank — web owns display ($webCompanionScreen) thread=${yank.thread}")
@@ -165,6 +217,7 @@ class HudPresenter(
     val actionable = yank.awaiting == Awaiting.PERMISSION || yank.awaiting == Awaiting.QUESTION
 
     if (actionable) {
+      publishWakeHint(yank)
       if (isOccupied() || opening || commitJob?.isActive == true) {
         if (current?.thread == yank.thread) {
           current = yank
@@ -179,6 +232,7 @@ class HudPresenter(
         Log.i("HudPresenter", "queued actionable idle — web owns display thread=${yank.thread}")
         return
       }
+      // yank() publishes again — fine; web de-dupes by thread.
       yank(yank)
       return
     }
@@ -200,6 +254,7 @@ class HudPresenter(
       return
     }
     if (webOccupiesDisplay()) {
+      publishWakeHint(yank)
       enqueue(yank)
       Log.i("HudPresenter", "queued idle — web owns display ($webCompanionScreen) thread=${yank.thread}")
       return
@@ -722,18 +777,6 @@ class HudPresenter(
         }
       }
       ChipKind.DICTATE -> startDictating(y)
-      ChipKind.MODIFY -> {
-        try {
-          val url = relay.companionComposeUrl(y.thread)
-          Log.i("HudPresenter", "modify → companion $url")
-          appContext.startActivity(
-            Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-          )
-        } catch (e: Exception) {
-          Log.e("HudPresenter", "modify open failed: ${e.message}")
-        }
-        dismissCard()
-      }
       ChipKind.BROWSE -> enterBrowsing()
       ChipKind.SNOOZE -> onSnooze()
     }
@@ -834,9 +877,9 @@ class HudPresenter(
     endingThread?.let { RelayService.coolMicForThread(it) }
   }
 
-  /** Turn the glasses screen off — blank HUD, then SDK removeDisplay (not session.stop). */
+  /** Turn the glasses screen off — blank HUD, removeDisplay, release session. */
   private fun tearDownDisplay() {
-    Log.i("HudPresenter", "tear down display (sleep waveguide)")
+    Log.i("HudPresenter", "tear down display (power off waveguide)")
     val d = datSession.activeDisplay
     scope.launch {
       try {
@@ -845,7 +888,8 @@ class HudPresenter(
           delay(180)
         }
       } catch (_: Throwable) {}
-      datSession.sleepDisplay()
+      // powerOff (not sleep-only): keeping DeviceSession alive leaves Meta home lit.
+      datSession.powerOffDisplay()
     }
   }
 }

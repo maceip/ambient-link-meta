@@ -59,7 +59,7 @@ Integration gate: `scripts/check.sh` (host + protocol + APK SODA + phone logcat)
 
 | Path | Purpose |
 |---|---|
-| [`relay-android/`](relay-android) | Kotlin app — headless DAT companion. Foreground service holds DAT session, subscribes to host WS, on `thread_idle` pushes the peek card and routes chip taps back. No on-phone chat UI. |
+| [`relay-android/`](relay-android) | Kotlin app — headless DAT companion. Foreground service holds DAT session, subscribes to host WS, on `thread_idle` pushes the peek card and routes chip taps back. Phone UI is connection + agent + chips + snooze (advanced theme/AI/quick-reply chrome behind `CompanionUiFlags.SHOW_ADVANCED_COMPANION_UI`). No on-phone chat UI. |
 | [`relay-ios/`](relay-ios) | Swift app — same job as `relay-android`, idiomatically native. Built against meta-wearables-dat-ios SDK. |
 | [`web/`](web) | Static PWA registered as a Meta Display web app — gets the in-HUD launcher icon. WhatsApp-style multi-thread chat view, used for browsing / cold-open / long-form composition. |
 | [`push-test/`](push-test) | Diagnostic page used to verify what the Stella web-app runtime does and doesn't support. Research artifact, not part of the production trigger path. |
@@ -86,12 +86,14 @@ web app alone can't deliver the proactive peek-card UX; only the native
 DAT SDK path can.
 
 But native apps can't get a launcher icon in the on-glasses launcher —
-that's a web-only affordance. So:
+that's a web-only affordance. So both surfaces are required:
 
-- **Web app** = in-HUD launcher icon + browse/cold-open + long-form
-  composition.
-- **Native relay** = the proactive peek-card path (DAT createSession +
-  sendContent on host event).
+| Surface | Owns | Does not own |
+|---|---|---|
+| **DAT widget** (Android) | Wake when glasses are off; permission/question interrupts; ≤3 quick chips (approve / deny / dictate / canned reply) | Long chat, history, session browser |
+| **Web app** | Launcher icon; session list; full chat; New session; deep work | Pushing the glasses awake when closed |
+
+Mental model: **widget = something needs you — act or dismiss**; **web = go here to work the session**. There is no supported DAT chip → open the installed glasses web app path (phone `ACTION_VIEW` opens the phone browser, not the Meta Display runtime). Soft handoff: DAT publishes `wake_hint` for sessions that would peek (including while web owns the display). Web keeps a FIFO stack — soft-opens from the list when fresh, and shows a **Switch** pill to jump to waiting sessions without yanking the current view.
 
 If you don't care about proactive HUD push and just want to chat when you
 open the app cold, the web app stands alone.

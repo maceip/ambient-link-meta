@@ -20,7 +20,8 @@ object HudWidgets {
   private const val CARD_PADDING = 14
   private const val ACTION_GAP = 12
   private const val MAX_ACTIONS = 3
-  private const val MAX_BODY_CHARS = 220
+  /** Body is already ask/ready-shaped; keep a hard cap as belt-and-suspenders. */
+  private const val MAX_BODY_CHARS = 160
 
   /** Single in-flight sendContent — prevents peek overwriting dictate (and vice versa). */
   private var contentJob: Job? = null
@@ -41,7 +42,7 @@ object HudWidgets {
     return truncateBody(combined)
   }
 
-  /** Matches web `chipset.js` — send/dictate chips are primary; deny/modify stay secondary. */
+  /** Matches web `chipset.js` — send/dictate chips are primary; deny stays secondary. */
   private fun chipStyle(chip: Chip): ButtonStyle = when {
     chip.primary -> ButtonStyle.PRIMARY
     chip.kind == ChipKind.DICTATE -> ButtonStyle.PRIMARY
@@ -76,7 +77,7 @@ object HudWidgets {
     }
   }
 
-  /** Blank waveguide then removeDisplay — same path as HudPresenter tearDownDisplay. */
+  /** Blank waveguide then power off — same path as HudPresenter tearDownDisplay. */
   suspend fun dismissWaveguide(display: Display, session: DatDisplaySession) {
     try {
       display.sendContent {
@@ -85,7 +86,7 @@ object HudWidgets {
       delay(180)
     } catch (_: Throwable) {
     }
-    session.sleepDisplay()
+    session.powerOffDisplay()
   }
 
   /** Debug card — same layout/chips as production HUD cards; OK dismisses the waveguide. */
@@ -238,9 +239,9 @@ object HudWidgets {
     postContent(scope) {
       display.sendContent {
         flexBox(gap = ROOT_GAP, padding = ROOT_PADDING) {
-          text("${yank.label} · modify", style = TextStyle.META, color = TextColor.SECONDARY)
+          text("${yank.label} · follow up", style = TextStyle.META, color = TextColor.SECONDARY)
           flexBox(padding = CARD_PADDING, background = FlexBoxBackground.CARD) {
-            text("pick a change to send", style = TextStyle.BODY)
+            text("pick a reply to send", style = TextStyle.BODY)
           }
           actionChipRow {
             orderedChips(chips).forEach { c ->

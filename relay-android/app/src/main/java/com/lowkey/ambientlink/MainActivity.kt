@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -38,13 +39,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -66,20 +65,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lowkey.ambientlink.hud.GlassesDisplay
-import com.lowkey.ambientlink.relay.RelayConfig
+import com.lowkey.ambientlink.relay.CompanionUrls
 import com.lowkey.ambientlink.relay.RelayLanStore
 import com.lowkey.ambientlink.relay.RelayService
-import com.lowkey.ambientlink.relay.CwdSaveOutcome
 import com.lowkey.ambientlink.settings.AiCoreProbe
 import com.lowkey.ambientlink.settings.CompanionSuggest
+import com.lowkey.ambientlink.settings.CompanionUiFlags
 import com.lowkey.ambientlink.settings.UserPrefs
 import com.lowkey.ambientlink.ui.AiCoreSettingsSection
 import com.lowkey.ambientlink.ui.AiQuickReplySuggestions
 import com.lowkey.ambientlink.ui.AiSnoozeSuggestions
 import com.lowkey.ambientlink.ui.ActionLine
 import com.lowkey.ambientlink.ui.AmbientPrimaryButton
+import com.lowkey.ambientlink.ui.GlassesWebPreview
+import com.lowkey.ambientlink.ui.GlassesWebPreviewSheet
 import com.lowkey.ambientlink.ui.InlineActionStatus
-import com.lowkey.ambientlink.ui.InlineSaveField
 import com.lowkey.ambientlink.ui.QuickRepliesEditor
 import com.lowkey.ambientlink.ui.SettingsBlockLabel
 import com.lowkey.ambientlink.ui.AmbientPillGrid
@@ -93,6 +93,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.lowkey.ambientlink.ui.FirstRunTipOverlay
+import com.lowkey.ambientlink.ui.SimpleCompanionTipOverlay
 import com.lowkey.ambientlink.ui.formatSnoozeLabel
 import com.lowkey.ambientlink.wearables.WearablesRepository
 import com.lowkey.ambientlink.wearables.WearablesRuntime
@@ -243,12 +244,6 @@ private fun ControlScreen(
     if (svcStatus.url.isNotBlank()) url = svcStatus.url
   }
 
-  var cwd by remember {
-    mutableStateOf(
-      ctx.getSharedPreferences("ambient-link-meta", Context.MODE_PRIVATE)
-        .getString("default_cwd", "") ?: "",
-    )
-  }
   var preloadSoda by remember { mutableStateOf(RelayService.isSodaPreloadEnabled(ctx)) }
   var bluetoothSco by remember { mutableStateOf(RelayService.isBluetoothScoEnabled(ctx)) }
   var quickReplies by remember { mutableStateOf(UserPrefs.getQuickReplies(ctx)) }
@@ -262,14 +257,11 @@ private fun ControlScreen(
   var suggestions by remember { mutableStateOf(CompanionSuggest.Result()) }
   var aiCoreStatus by remember { mutableStateOf(AiCoreProbe.Status(AiCoreProbe.Tier.UNSUPPORTED)) }
   var modelDownloadBusy by remember { mutableStateOf(false) }
-  val hasUsageData = CompanionSuggest.hasData(ctx)
+  val showAdvanced = CompanionUiFlags.SHOW_ADVANCED_COMPANION_UI
+  val hasUsageData = showAdvanced && CompanionSuggest.hasData(ctx)
   var debugExpanded by remember { mutableStateOf(false) }
   var settingsExpanded by remember { mutableStateOf(true) }
   var addReplyStatus by remember { mutableStateOf<ActionLine?>(null) }
-  var cwdSaveStatus by remember { mutableStateOf<ActionLine?>(null) }
-  var cwdSaveLoading by remember { mutableStateOf(false) }
-  var cwdCreatePrompt by remember { mutableStateOf<String?>(null) }
-  var cwdCreateLoading by remember { mutableStateOf(false) }
   var debugWidgetLoading by remember { mutableStateOf(false) }
   var debugWidgetStatus by remember { mutableStateOf<ActionLine?>(null) }
   var relayActionStatus by remember { mutableStateOf<ActionLine?>(null) }
@@ -285,6 +277,7 @@ private fun ControlScreen(
 
   LaunchedEffect(Unit) {
     RelayService.setPreWarmMicEnabled(ctx, true)
+    if (!showAdvanced) return@LaunchedEffect
     suggestionsLoading = true
     val loaded = withContext(Dispatchers.Default) { CompanionSuggest.load(ctx) }
     suggestions = loaded
@@ -348,37 +341,16 @@ private fun ControlScreen(
     else activateSnoozeMinutes(minutes)
   }
 
-  fun clearCwdFeedback() {
-    cwdSaveStatus = null
-    cwdCreatePrompt = null
-  }
-
-  suspend fun persistCwdToMac(path: String, create: Boolean) {
-    val normalized = RelayConfig.normalizeCwdInput(path)
-    when (val outcome = RelayConfig.saveDefaultCwd(ctx, url, svcStatus.url, normalized, create)) {
-      is CwdSaveOutcome.Saved -> {
-        ctx.getSharedPreferences("ambient-link-meta", Context.MODE_PRIVATE)
-          .edit().putString("default_cwd", normalized).apply()
-        cwd = normalized
-        clearCwdFeedback()
-        cwdSaveStatus = ActionLine("Directory saved", ok = true)
-      }
-      is CwdSaveOutcome.NotFound -> {
-        cwdCreatePrompt = outcome.resolvedPath
-        cwdSaveStatus = null
-      }
-      is CwdSaveOutcome.Unreachable -> {
-        cwdCreatePrompt = null
-        cwdSaveStatus = ActionLine(outcome.hint, ok = false)
-      }
-      is CwdSaveOutcome.Failed -> {
-        cwdCreatePrompt = null
-        cwdSaveStatus = ActionLine(outcome.message, ok = false)
-      }
-    }
-  }
-
   val glassesTint = glassesIconColor(regState, displayDevice)
+  val glassesWebUrl = remember(svcStatus.url, url, lanOnly) {
+    CompanionUrls.glassesWebAppUrl(svcStatus.url.ifBlank { url }, lanOnly = lanOnly)
+  }
+  // LAN is cleartext http — Chrome Custom Tabs block it (HTTPS-First).
+  // Use an in-app WebView sheet for http; partial Custom Tab for https.
+  var webPreviewUrl by remember { mutableStateOf<String?>(null) }
+  val customTabLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.StartActivityForResult(),
+  ) { /* dismiss only — companion stays underneath */ }
 
   Scaffold(
     modifier = Modifier.fillMaxSize(),
@@ -449,7 +421,7 @@ private fun ControlScreen(
       ) {
         SettingsBlockLabel(
           "Default agent",
-          "Used when you start a new session from the glasses web app.",
+          "Used when you start a new session from the glasses web app. Folders are picked from recent Mac sessions on glasses — no path typing here.",
         )
         AmbientPillGrid(
           pills = UserPrefs.DEFAULT_AGENTS.map { it.replaceFirstChar { c -> c.uppercase() } },
@@ -463,52 +435,32 @@ private fun ControlScreen(
             RelayService.pushCompanionConfig(ctx)
           },
         )
-        InlineSaveField(
-          label = "Working directory",
-          value = cwd,
-          onValueChange = { cwd = it; clearCwdFeedback() },
-          placeholder = "~/Projects/my-app",
-          actionLabel = "Save",
-          actionLoading = cwdSaveLoading,
-          onAction = {
-            val v = cwd.trim()
-            if (v.isEmpty()) {
-              cwdSaveStatus = ActionLine("Enter a folder path", ok = false)
-              return@InlineSaveField
-            }
-            cwdSaveLoading = true
-            clearCwdFeedback()
-            scope.launch {
-              persistCwdToMac(v, create = false)
-              cwdSaveLoading = false
-            }
-          },
-        )
-        InlineActionStatus(cwdSaveStatus)
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-        SettingsBlockLabel("Theme")
-        AmbientPillGrid(
-          pills = listOf("Meta", "Dracula", "Tokyo", "Catppuccin", "Nord"),
-          selected = setOf(
-            when (uiTheme) {
-              "dracula" -> "Dracula"
-              "tokyo-night" -> "Tokyo"
-              "catppuccin" -> "Catppuccin"
-              "nord" -> "Nord"
-              else -> "Meta"
+        if (showAdvanced) {
+          HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+          SettingsBlockLabel("Theme")
+          AmbientPillGrid(
+            pills = listOf("Meta", "Dracula", "Tokyo", "Catppuccin", "Nord"),
+            selected = setOf(
+              when (uiTheme) {
+                "dracula" -> "Dracula"
+                "tokyo-night" -> "Tokyo"
+                "catppuccin" -> "Catppuccin"
+                "nord" -> "Nord"
+                else -> "Meta"
+              },
+            ),
+            onPillClick = { label ->
+              val next = when (label) {
+                "Dracula" -> "dracula"
+                "Tokyo" -> "tokyo-night"
+                "Catppuccin" -> "catppuccin"
+                "Nord" -> "nord"
+                else -> "meta"
+              }
+              onUiThemeChange(next)
             },
-          ),
-          onPillClick = { label ->
-            val next = when (label) {
-              "Dracula" -> "dracula"
-              "Tokyo" -> "tokyo-night"
-              "Catppuccin" -> "catppuccin"
-              "Nord" -> "nord"
-              else -> "meta"
-            }
-            onUiThemeChange(next)
-          },
-        )
+          )
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
         SettingsBlockLabel("Glasses action chips")
         CompactToggle(
@@ -526,31 +478,33 @@ private fun ControlScreen(
           checked = showDictate,
           onCheckedChange = { persistChipToggles(showContinue, it) },
         )
-        if (hasUsageData) {
-          AiQuickReplySuggestions(
+        if (showAdvanced) {
+          if (hasUsageData) {
+            AiQuickReplySuggestions(
+              hazeState = hazeState,
+              suggestions = suggestions.quickReplies,
+              loading = suggestionsLoading,
+              fromAi = suggestions.fromAi,
+              selected = quickReplies.toSet(),
+              onAdd = { pill ->
+                persistQuickReplies(
+                  if (pill in quickReplies) quickReplies.filter { it != pill }
+                  else (quickReplies + pill).distinct().take(12),
+                )
+              },
+            )
+          }
+          QuickRepliesEditor(
+            replies = quickReplies,
             hazeState = hazeState,
-            suggestions = suggestions.quickReplies,
-            loading = suggestionsLoading,
-            fromAi = suggestions.fromAi,
-            selected = quickReplies.toSet(),
-            onAdd = { pill ->
-              persistQuickReplies(
-                if (pill in quickReplies) quickReplies.filter { it != pill }
-                else (quickReplies + pill).distinct().take(12),
-              )
+            addStatus = addReplyStatus,
+            onChange = { list ->
+              val added = list.size > quickReplies.size
+              persistQuickReplies(list)
+              if (added) addReplyStatus = ActionLine("Quick reply added", ok = true)
             },
           )
         }
-        QuickRepliesEditor(
-          replies = quickReplies,
-          hazeState = hazeState,
-          addStatus = addReplyStatus,
-          onChange = { list ->
-            val added = list.size > quickReplies.size
-            persistQuickReplies(list)
-            if (added) addReplyStatus = ActionLine("Quick reply added", ok = true)
-          },
-        )
       }
 
       SectionCard(title = "Snooze") {
@@ -571,7 +525,7 @@ private fun ControlScreen(
             if (mins != null) pickSnoozeMinutes(mins)
           },
         )
-        if (hasUsageData) {
+        if (showAdvanced && hasUsageData) {
           AiSnoozeSuggestions(
             hazeState = hazeState,
             suggestions = suggestions.snooze,
@@ -632,12 +586,29 @@ private fun ControlScreen(
         )
         if (svcStatus.url.isNotBlank()) {
           InlineMono("Host", svcStatus.url)
-          val webOrigin = svcStatus.url
-            .replace("wss://", "https://")
-            .replace("ws://", "http://")
-            .substringBefore("/ambient-link")
-          InlineMono("Web", if (lanOnly || svcStatus.url.startsWith("ws://")) "$webOrigin/ambient-link/" else "public.computer (cloud)")
+          InlineMono("Web", glassesWebUrl)
         }
+        AmbientPrimaryButton(
+          text = "Open glasses web app",
+          onClick = {
+            if (GlassesWebPreview.usesInAppSheet(glassesWebUrl)) {
+              webPreviewUrl = glassesWebUrl
+              relayActionStatus = ActionLine("In-app preview $glassesWebUrl", ok = true)
+            } else {
+              GlassesWebPreview.launchPartial(activity, glassesWebUrl, customTabLauncher)
+              relayActionStatus = ActionLine("Opened $glassesWebUrl", ok = true)
+            }
+          },
+        )
+        Text(
+          if (GlassesWebPreview.usesInAppSheet(glassesWebUrl)) {
+            "LAN preview uses an in-app sheet (Chrome blocks http://). Same glasses UI; companion stays open."
+          } else {
+            "Partial Chrome sheet — same UI as glasses without leaving this app."
+          },
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (svcStatus.threads.isNotEmpty()) InlineMono("Threads", svcStatus.threads.joinToString(", "))
         svcStatus.lastError?.takeIf { !svcStatus.running }?.let {
           Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2)
@@ -651,8 +622,8 @@ private fun ControlScreen(
           },
         )
         CompactToggle(
-          label = "Glasses Bluetooth mic (in-call UI)",
-          description = "Uses glasses mic for web companion dictate (brief in-call UI on glasses). Auto-on for web dictate.",
+          label = "Dictate with glasses mic",
+          description = "Off = phone mic (pocket OK, quieter). On = glasses mic via Bluetooth call audio (clearer, shows brief in-call UI). Web app has one Dictate button — this setting chooses the mic.",
           checked = bluetoothSco,
           onCheckedChange = {
             bluetoothSco = it
@@ -795,78 +766,68 @@ private fun ControlScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-        SettingsBlockLabel(
-          "AI Core",
-          "On-device Gemini Nano for smarter quick-reply and snooze suggestions.",
-        )
-        AiCoreSettingsSection(status = aiCoreStatus, probing = suggestionsLoading)
+        if (showAdvanced) {
+          HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+          SettingsBlockLabel(
+            "AI Core",
+            "On-device Gemini Nano for smarter quick-reply and snooze suggestions.",
+          )
+          AiCoreSettingsSection(status = aiCoreStatus, probing = suggestionsLoading)
+        }
       }
 
-      Spacer(Modifier.height(8.dp))
+      Spacer(modifier = Modifier.height(8.dp))
       }
 
-      cwdCreatePrompt?.let { resolved ->
-        AlertDialog(
-          onDismissRequest = { cwdCreatePrompt = null },
-          title = { Text("Create folder?") },
-          text = {
-            Text(
-              "This folder is not on your Mac yet:\n$resolved",
-              style = MaterialTheme.typography.bodyMedium,
-            )
-          },
-          confirmButton = {
-            TextButton(
-              enabled = !cwdCreateLoading,
-              onClick = {
-                cwdCreateLoading = true
-                scope.launch {
-                  persistCwdToMac(cwd, create = true)
-                  cwdCreateLoading = false
-                }
-              },
-            ) { Text(if (cwdCreateLoading) "Creating…" else "Create on Mac") }
-          },
-          dismissButton = {
-            TextButton(onClick = { cwdCreatePrompt = null }) { Text("Cancel") }
-          },
+      webPreviewUrl?.let { previewUrl ->
+        GlassesWebPreviewSheet(
+          url = previewUrl,
+          onDismiss = { webPreviewUrl = null },
         )
       }
 
       if (showTipOverlay) {
-        FirstRunTipOverlay(
-          aiCore = aiCoreStatus,
-          probing = suggestionsLoading,
-          downloadBusy = modelDownloadBusy,
-          onDismiss = {
-            UserPrefs.setCompanionTipSeen(ctx)
-            showTipOverlay = false
-          },
-          onDownloadModel = {
-            modelDownloadBusy = true
-            scope.launch {
-              val ok = AiCoreProbe.downloadModel()
-              aiCoreStatus = AiCoreProbe.probe()
-              if (ok) refreshAiCoreAndSuggestions()
-              modelDownloadBusy = false
-              Toast.makeText(
-                ctx,
-                if (ok) "Gemini Nano ready" else "Download failed — try AI Core settings",
-                Toast.LENGTH_LONG,
-              ).show()
-            }
-          },
-          onOpenAiCore = {
-            if (!AiCoreProbe.openAiCore(ctx)) {
-              Toast.makeText(
-                ctx,
-                "Settings → Google → System services → AI Core",
-                Toast.LENGTH_LONG,
-              ).show()
-            }
-          },
-        )
+        if (showAdvanced) {
+          FirstRunTipOverlay(
+            aiCore = aiCoreStatus,
+            probing = suggestionsLoading,
+            downloadBusy = modelDownloadBusy,
+            onDismiss = {
+              UserPrefs.setCompanionTipSeen(ctx)
+              showTipOverlay = false
+            },
+            onDownloadModel = {
+              modelDownloadBusy = true
+              scope.launch {
+                val ok = AiCoreProbe.downloadModel()
+                aiCoreStatus = AiCoreProbe.probe()
+                if (ok) refreshAiCoreAndSuggestions()
+                modelDownloadBusy = false
+                Toast.makeText(
+                  ctx,
+                  if (ok) "Gemini Nano ready" else "Download failed — try AI Core",
+                  Toast.LENGTH_LONG,
+                ).show()
+              }
+            },
+            onOpenAiCore = {
+              if (!AiCoreProbe.openAiCore(ctx)) {
+                Toast.makeText(
+                  ctx,
+                  "Settings → Google → System services → AI Core",
+                  Toast.LENGTH_LONG,
+                ).show()
+              }
+            },
+          )
+        } else {
+          SimpleCompanionTipOverlay(
+            onDismiss = {
+              UserPrefs.setCompanionTipSeen(ctx)
+              showTipOverlay = false
+            },
+          )
+        }
       }
     }
   }

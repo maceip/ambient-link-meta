@@ -40,7 +40,7 @@ sending ──> accepted ──> queued|delivered ──> landed | failed
 | `thread_busy` | `thread,at` | `busy=true` (agent thinking) |
 | `thread_idle` | yank shape (below) | Same handler as `hud_yank` |
 | `hud_yank` | `thread,label,agent,lastAssistant,lastUserInput,awaiting,permissionPrompt,at` | Update row card + merge agent turn into chat log (`chipset.js parseYank`) |
-| `companion_config` | `quick_replies[],snooze_until,show_continue,show_dictate,default_agent` | Update chip config; re-render action row |
+| `companion_config` | `quick_replies[],snooze_until,show_continue,show_dictate,default_agent,dictate_mic,wake_hint?` | Update chip config; soft-handoff wake hint |
 | `dictate_active` | `thread,source` | Enter listening UI (phone-initiated if `source != "web"`) |
 | `dictate_partial` | `thread,text` | Stream partial to listening line (and hidden draft input) |
 | `dictate_end` | `thread,text,ok,error` | Commit result: ok → delivered user bubble; !ok → keep draft, toast error |
@@ -56,23 +56,31 @@ liveness clock.
 |---|---|---|
 | `subscribe` | `since` (cursor object from `hello`) | On every `hello` |
 | `input` | `session_id,thread,text,client_id` | Quick-reply chip tap (composer/Send removed in v81); flushes of the offline queue |
-| `companion_ui` | `screen: list\|create\|session\|idle`, `source` | On view change, ws open, page hide |
+| `companion_ui` | `screen: list\|create\|session\|idle`, `source` | On view change, ws open, page hide; heartbeat ~15s while visible (Android lease ~45s) |
 | `session_focus` / `session_blur` | `thread,source` | Thread open/close, app foreground (warms the phone mic) |
 | `hud_yank` | `thread` | On thread open + manual card refresh (asks relay to re-yank) |
-| `dictate_begin` | `thread,source` | Dictate tap |
-| `dictate_commit` | `thread,text,source` | Manual end ("Done — send") with accumulated partial |
+| `dictate_begin` | `thread,source` | Dictate tap (single button) |
+| `dictate_commit` | `thread,text,source` | Manual end ("Done") with accumulated partial |
 | `dictate_abort` | `thread,source` | Cancel with empty transcript / leaving the view |
 | `ping` | — | Heartbeat: sent when idle >25s; socket closed when idle >45s |
 
 ## Dictation (two initiators, one arbiter)
 
+Web action row is **Switch/Back · Dictate · configurable chip** (≤3 buttons —
+glasses nav budget). Slot 1 is **Switch** (FIFO oldest waiting session) when
+the wake stack is non-empty, otherwise **Back** → session list. Hardware Back
+→ `Escape` (Neural Band middle→thumb, temple two-finger tap) always returns
+to the list. Mic path is **not** a web choice: the Android app setting
+“Dictate with glasses mic” selects phone mic vs glasses SCO, and
+`companion_config.dictate_mic` (`phone`|`glasses`) tells the web which path is
+active for listening chrome copy.
+
 Web taps Dictate → `dictate_begin` → relay fans `dictate_active` to the phone,
-which captures on-device (SODA) and streams `dictate_partial`. EITHER the
-phone auto-commits on the silence endpoint (its `dictate_commit`) or the user
-taps again and the web commits (`dictate_commit` with the last partial). The
-relay injects into the agent and answers `dictate_end {ok|error}` — the only
-frame that renders a bubble. Web-initiated commit tells the phone to drop its
-mic without committing (no double-send).
+which captures on-device (SODA) on the configured path and streams
+`dictate_partial`. EITHER the phone auto-commits on silence or the user taps
+Done and the web commits. The relay injects and answers `dictate_end
+{ok|error}` — the only frame that renders a bubble. Glasses SCO may flash the
+in-call UI (intentional tradeoff).
 
 ## HTTP endpoints (same origin, `Authorization: Bearer` when token present)
 
@@ -83,7 +91,9 @@ mic without committing (no double-send).
 - `GET /ambient-link/history?session_id=&limit=48` — hydrate chat scrollback
   once per session (`rows[] {role,text,at,id}` merged de-duped).
 - `POST /ambient-link/sessions` `{agent,cwd,prompt}` — create; `200 {ok:
-  "spawned", tmux}` or honest failure surfaced verbatim.
+  "spawned", tmux}` or honest failure surfaced verbatim. Glasses New Session
+  picks `cwd` from known folder chips (live sessions / host default /
+  last-used) or **New here** on a list row — no free-text path field.
 
 ## Connection management (all client-side, port as-is)
 
@@ -107,10 +117,39 @@ mic without committing (no double-send).
 | `ambient-link:delivery-states` | message-id → last known lifecycle state |
 | `al_default_cwd` | last used create-session cwd |
 
+## Glasses copy (DAT + web session)
+
+Waveguide and web chat show **decisions**, not transcripts:
+
+| `awaiting` | Body shown |
+|---|---|
+| `permission` | `permissionPrompt` only (≤120 chars / 3 lines) |
+| `question` | Last ask extract (`?` sentence), else clamped short paragraph |
+| `done` | `ready` or `ready · last: <user>` — never assistant prose |
+
+Diffs, code dumps, and tables are dropped for display. Chips remain the primary action UI. Full agent text stays on the Mac.
+
+## Cross-surface roles (DAT ↔ web)
+
+- **DAT (Android)** wakes the glasses when the web app is closed; quick chips
+  act in place. It does **not** open the installed glasses web app.
+- **Web** owns the launcher icon and deep work. While `companion_ui` screen ≠
+  `idle` (with a ~45s lease refreshed by a ~15s web heartbeat), Android
+  queues HUD peeks instead of pushing. Dead/backgrounded web stops
+  heartbeating → lease expires → DAT may peek again.
+- Soft handoff stack: phone publishes `companion_config.wake_hint =
+  { thread, at, reason }` whenever a peek would have fired (including when
+  web owns the display). Web keeps a FIFO stack (max 8, ~15 min TTL).
+  - Soft-open: from the list only, and only if `at` is within ~2 minutes.
+  - Switch: action-row slot 1 opens the oldest waiting session (count when
+    >1). Empty stack → same as Back (session list). Opening a thread
+    dismisses it from the stack. Re-ping of the same thread moves it to the
+    end. Hardware Escape always → list regardless of stack.
+
 ## UI invariants (regression-tested in `web/test/e2e-live.spec.mjs`)
 
 - No typed composer, no Send button. Session action row is exactly:
-  Back · Dictate · first configured quick-reply chip.
+  Switch/Back · Dictate · first configured quick-reply chip.
 - Chat history is inert (no focus stop, no touch scroll) and always snapped
   to the newest message.
 - New session pill is a permanent first row of the list.

@@ -317,7 +317,7 @@ class RelayService : Service() {
             // socket; landed frames fan out to everyone (session-scoped).
             if (ev.status == "failed") p.onInputFailed(ev.thread, ev.error)
           }
-          is RelayClient.Event.DictateActive -> dictation.onActive(ev.thread, ev.source)
+          is RelayClient.Event.DictateActive -> dictation.onActive(ev.thread, ev.source, ev.mic)
           is RelayClient.Event.DictateCommit -> dictation.onCommitFromWeb(ev.thread)
           is RelayClient.Event.DictateAbort -> dictation.onAbortFromWeb(ev.thread)
           is RelayClient.Event.DictateEnd   -> {
@@ -455,6 +455,8 @@ class RelayService : Service() {
       state?.webDictation?.setBluetoothScoEnabled(on)
         ?: ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
           .edit().putBoolean(PREF_BLUETOOTH_SCO, on).apply()
+      // Keep the glasses web listening chrome in sync with the mic path.
+      pushCompanionConfig(ctx)
     }
 
     /** Debug: never use cloud relay; glasses web loads from Mac HTTP origin. */
@@ -474,6 +476,7 @@ class RelayService : Service() {
         UserPrefs.showContinueChip(ctx),
         UserPrefs.showDictateChip(ctx),
         UserPrefs.getDefaultAgent(ctx),
+        if (isBluetoothScoEnabled(ctx)) "glasses" else "phone",
       )
     }
 

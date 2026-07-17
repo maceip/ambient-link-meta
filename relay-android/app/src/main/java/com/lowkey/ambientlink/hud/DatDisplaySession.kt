@@ -174,9 +174,9 @@ class DatDisplaySession(private val scope: CoroutineScope) {
   }
 
   /**
-   * Dismiss the waveguide without killing the DeviceSession — sends the SDK's
-   * DisplayStopRequest via [removeDisplay]. Calling [DeviceSession.stop] alone
-   * often leaves Meta's home shell lit until the glasses' own screen timeout.
+   * SDK DisplayStopRequest via [removeDisplay]. Keeps [DeviceSession] alive for
+   * a fast re-attach (next peek). Prefer [powerOffDisplay] when the user is done
+   * — keeping the session often leaves Meta's home shell lit on the waveguide.
    */
   suspend fun sleepDisplay() {
     val d = synchronized(lock) { display }
@@ -184,11 +184,8 @@ class DatDisplaySession(private val scope: CoroutineScope) {
     if (d == null && s == null) return
     Log.i(TAG, "sleepDisplay — removeDisplay (keep session=${s != null})")
     cleanupDisplay()
-    if (d != null) {
-      try { d.stop() } catch (e: Throwable) {
-        Log.w(TAG, "display.stop: ${e.message}")
-      }
-    }
+    // removeDisplay first (DisplayStopRequest). Calling display.stop() beforehand
+    // can surface Meta home before the stop request lands.
     if (s != null) {
       val result = withTimeoutOrNull(4_000) {
         s.removeDisplay()
@@ -202,6 +199,21 @@ class DatDisplaySession(private val scope: CoroutineScope) {
         )
       }
     }
+    if (d != null) {
+      try { d.stop() } catch (e: Throwable) {
+        Log.w(TAG, "display.stop: ${e.message}")
+      }
+    }
+  }
+
+  /**
+   * Go fully dark after Continue / dismiss: removeDisplay, then drop the
+   * DeviceSession so Meta home does not stay lit on the waveguide.
+   */
+  suspend fun powerOffDisplay() {
+    Log.i(TAG, "powerOffDisplay — removeDisplay + release session")
+    sleepDisplay()
+    releaseSession()
   }
 
   fun stop() {
@@ -212,8 +224,7 @@ class DatDisplaySession(private val scope: CoroutineScope) {
   }
 
   private suspend fun releaseSessionFully() {
-    sleepDisplay()
-    releaseSession()
+    powerOffDisplay()
   }
 
   private fun releaseSession() {

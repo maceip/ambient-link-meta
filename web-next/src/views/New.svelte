@@ -1,7 +1,7 @@
 <script>
   import {
-    app, pickAgent, startNewThread, closeNewSessionView, defaultCwd,
-    showToast, clockNow,
+    app, pickAgent, pickFolder, startNewThread, closeNewSessionView,
+    defaultCwd, knownFolders, showToast, clockNow,
   } from '../lib/store.svelte.js';
   import { agentClass } from '../lib/format.js';
   import { agentIcon } from '../lib/icons.js';
@@ -13,15 +13,19 @@
     { key: 'cursor', label: 'Cursor' },
   ];
 
-  let cwd = $state('');
   let prompt = $state('');
 
   const ac = $derived(agentClass(app.pickedAgent));
   const title = $derived('create' + app.pickedAgent.charAt(0).toUpperCase() + app.pickedAgent.slice(1));
+  const folders = $derived(knownFolders());
+  const selectedCwd = $derived((app.newDraft && app.newDraft.cwd) || defaultCwd() || '');
 
-  // Prefill cwd each time the view opens (host default → recent → last used).
+  // Ensure a folder is selected when the view opens (draft / default / first chip).
   $effect(() => {
-    if (app.view === 'new' && !cwd) cwd = defaultCwd();
+    if (app.view !== 'new') return;
+    if (selectedCwd) return;
+    const first = folders[0];
+    if (first) pickFolder(first.path);
   });
 
   function debugPingText() {
@@ -36,11 +40,11 @@
   }
 
   function start() {
-    if (startNewThread(cwd, prompt)) prompt = '';
+    if (startNewThread(selectedCwd, prompt)) prompt = '';
   }
 </script>
 
-<!-- NEW SESSION — blk-form; same BEM classes as legacy. -->
+<!-- NEW SESSION — pick agent + folder chips (no path typing on glasses). -->
 <section id="view-new" class="view blk-form-view" class:hidden={app.view !== 'new'}>
   <header class="hdr new-hdr blk-form-view__hdr">
     <div class="new-title-wrap blk-form-view__title-wrap">
@@ -61,13 +65,30 @@
         </button>
       {/each}
     </div>
-    <label class="field-label" for="new-cwd">working directory (on your Mac)</label>
-    <input id="new-cwd" class="text-input focusable" type="text"
-           placeholder="~/Projects/my-app" tabindex="-1" aria-hidden="true"
-           bind:value={cwd}>
-    <label class="field-label" for="new-prompt">prompt</label>
+    <p class="field-label" id="folder-label">folder on Mac</p>
+    <div id="folder-chips" class="folder-chips" role="radiogroup" aria-labelledby="folder-label">
+      {#if folders.length}
+        {#each folders as f (f.path)}
+          <button type="button" class="folder-chip focusable"
+                  class:selected={selectedCwd === f.path}
+                  data-cwd={f.path} role="radio"
+                  aria-checked={selectedCwd === f.path ? 'true' : 'false'}
+                  title={f.path}
+                  use:tap onclick={() => pickFolder(f.path)}>
+            <span class="folder-chip__label">{f.label}</span>
+            {#if f.isDefault}
+              <span class="folder-chip__tag">default</span>
+            {/if}
+          </button>
+        {/each}
+      {:else}
+        <p class="folder-chips-empty">No folders yet — start from a session’s New here, or tell the agent to clone in your first prompt.</p>
+      {/if}
+    </div>
+    <label class="field-label" for="new-prompt">first prompt</label>
     <textarea id="new-prompt" class="text-input focusable" rows="3"
-              placeholder="what should the agent do?" tabindex="-1" aria-hidden="true"
+              placeholder="what should the agent do? (clone a repo, continue work…)"
+              tabindex="-1" aria-hidden="true"
               bind:value={prompt}></textarea>
   </div>
   <nav class="new-actions blk-form-view__actions" role="toolbar" aria-label="create session">

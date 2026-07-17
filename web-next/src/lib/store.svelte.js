@@ -9,12 +9,14 @@
 
 import * as CS from './chipset.js';
 import * as PIPE from './content-pipeline.js';
+import * as GC from './glasses-copy.js';
 import { KEYS, loadJson, saveJson, loadString, saveString } from './persist.js';
 import { createWsClient } from './ws.js';
-import { listPreviewPlain } from './format.js';
+import { listPreviewPlain, shortName, expandHomePath } from './format.js';
 
 const MAX_LIST_ITEMS = 4;
 const CONN_GRACE_MS = 2500;
+const MAX_KNOWN_FOLDERS = 6;
 
 export const app = $state({
   view: 'list', // list | thread | new
@@ -22,8 +24,15 @@ export const app = $state({
   threads: {},
   threadOrder: [],
   conn: 'connecting', // displayed: connecting | warn | on | off
-  dictate: { phase: 'idle', partial: '', draft: '', phoneThread: null },
-  companion: { quickReplies: [], snoozeUntil: 0, showContinue: true, showDictate: true },
+  // mic: which capture path the phone should use for this turn — 'phone' |
+  // 'glasses' | null. Chosen by the two dictate buttons on the session row.
+  dictate: { phase: 'idle', partial: '', draft: '', phoneThread: null, mic: null },
+  // dictateMic mirrors the Android app setting (phone | glasses) so the
+  // listening chrome can say which path is live — choice is NOT a web button.
+  companion: { quickReplies: [], snoozeUntil: 0, showContinue: true, showDictate: true, dictateMic: 'phone' },
+  // Sessions that would have DAT-peeked while web owned the display.
+  // FIFO stack; Switch jumps to the oldest other-than-current entry.
+  wakeStack: [],
   host: {
     relayDebug: false,
     journal: 0,
@@ -39,6 +48,8 @@ export const app = $state({
   pickedAgent: 'cursor',
   pendingCreate: null,
   listFocusedThreadId: null,
+  // Prefill for New session (folder pick / New here). No free-text path.
+  newDraft: { cwd: '', fromThread: null },
   toast: { text: '', kind: '', seq: 0 },
 });
 
@@ -228,31 +239,26 @@ export function listConnectionDot(t) {
 }
 
 function agentTextFromYank(yank) {
-  if (!yank) return '';
-  if (yank.awaiting === CS.Awaiting.PERMISSION) {
-    return ((yank.permissionPrompt && yank.permissionPrompt.trim()) || yank.lastAssistant || '').trim();
-  }
-  return (yank.lastAssistant || '').trim();
+  return GC.displayForYank(yank);
 }
 
 export function lastAgentPreview(row) {
+  if (row && row.yank) return agentTextFromYank(row.yank);
   const log = row && row.chatLog;
   if (log && log.length) {
     for (let i = log.length - 1; i >= 0; i--) {
       if (log[i].role === 'agent' && log[i].text) return log[i].text;
     }
   }
-  if (row && row.yank) return agentTextFromYank(row.yank);
   return '';
 }
 
 export function listPreviewText(t) {
   if (t.ended) return 'session ended';
   if (t.busy) return 'thinking…';
+  if (t.yank) return listPreviewPlain(agentTextFromYank(t.yank));
   const agentPrev = lastAgentPreview(t);
   if (agentPrev) return listPreviewPlain(agentPrev);
-  if (t.lastAssistant) return listPreviewPlain(t.lastAssistant);
-  if (t.yank && t.yank.lastAssistant) return listPreviewPlain(t.yank.lastAssistant);
   return '';
 }
 
@@ -354,14 +360,30 @@ function appendChatMessage(row, role, rawText, opts) {
   if (!rawText || !String(rawText).trim()) return;
   opts = opts || {};
   if (opts.id && chatFindByMsgId(row, opts.id)) return;
-  if (chatHasRoleText(row, role, rawText)) return;
-  const filtered = filterText(rawText);
+  // Agent copy is already glasses-shaped (ask/ready); user text still classified.
+  let display;
+  let kind;
+  let truncated;
+  if (role === 'agent') {
+    display = String(rawText).trim();
+    if (!display) return;
+    kind = opts.kind || 'glasses';
+    truncated = false;
+  } else {
+    if (chatHasRoleText(row, role, rawText)) return;
+    const filtered = filterText(rawText);
+    display = filtered.display;
+    if (!display) return;
+    kind = filtered.kind;
+    truncated = filtered.truncated;
+  }
+  if (role === 'agent' && chatHasExact(row, role, display)) return;
   if (!row.chatLog) row.chatLog = [];
   row.chatLog.push({
     role,
-    text: filtered.display,
-    kind: filtered.kind,
-    truncated: filtered.truncated,
+    text: display,
+    kind,
+    truncated,
     at: opts.at || clockNow(),
     msgId: opts.id || '',
     status: opts.status || '',
@@ -369,6 +391,12 @@ function appendChatMessage(row, role, rawText, opts) {
   });
   if (row.chatLog.length > 48) row.chatLog = row.chatLog.slice(-48);
   saveChatLogs();
+}
+
+function chatHasExact(row, role, text) {
+  const log = row && row.chatLog;
+  if (!log || !text) return false;
+  return log.some((m) => m.role === role && m.text === text);
 }
 
 /** Update a user bubble's lifecycle status by message ID. Honest relay
@@ -390,12 +418,16 @@ function appendUserMessage(row, text, opts) {
 
 function recordAgentReply(row, rawText) {
   if (!row || row.busy) return;
-  appendChatMessage(row, 'agent', rawText);
+  const display = GC.displayAgentHistory(rawText);
+  if (!display) return;
+  appendChatMessage(row, 'agent', display, { kind: 'glasses' });
 }
 
 function mergeAgentFromYank(row) {
   if (!row || !row.yank) return;
-  recordAgentReply(row, agentTextFromYank(row.yank));
+  const display = agentTextFromYank(row.yank);
+  if (!display) return;
+  appendChatMessage(row, 'agent', display, { kind: 'glasses' });
 }
 
 function replayDeliveredUserMessages(row) {
@@ -420,7 +452,8 @@ function hydrateChatIfEmpty(row) {
   if (!row.busy) {
     mergeAgentFromYank(row);
     if ((!row.chatLog || !row.chatLog.length) && row.lastAssistant) {
-      recordAgentReply(row, row.lastAssistant);
+      const display = GC.displayAgentHistory(row.lastAssistant);
+      if (display) appendChatMessage(row, 'agent', display, { kind: 'glasses' });
     }
   }
 }
@@ -450,15 +483,29 @@ export function mergeHistoryRows(row, rows) {
   const seenIds = {};
   rows.forEach((r) => {
     if (!r || !r.text || !String(r.text).trim()) return;
-    const filtered = filterText(r.text);
+    const isUser = r.role === 'human' || r.role === 'user';
+    let display;
+    let kind;
+    let truncated;
+    if (isUser) {
+      const filtered = filterText(r.text);
+      display = filtered.display;
+      kind = filtered.kind;
+      truncated = filtered.truncated;
+    } else {
+      display = GC.displayAgentHistory(r.text);
+      kind = 'glasses';
+      truncated = false;
+    }
+    if (!display) return;
     const entry = {
-      role: r.role === 'human' ? 'user' : 'agent',
-      text: filtered.display,
-      kind: filtered.kind,
-      truncated: filtered.truncated,
+      role: isUser ? 'user' : 'agent',
+      text: display,
+      kind,
+      truncated,
       at: r.at || 0,
       msgId: r.message_id || '',
-      status: r.role === 'human' ? (r.delivery_status || '') : '',
+      status: isUser ? (r.delivery_status || '') : '',
       error: '',
     };
     if (entry.msgId) seenIds[entry.msgId] = true;
@@ -653,6 +700,77 @@ function applyOutboxStatus(outbox) {
 
 // ── companion config / quick replies ────────────────────────────────────────
 
+const WAKE_STACK_MAX = 8;
+/** Auto-open from list only if the ping is this fresh. */
+const WAKE_SOFT_OPEN_MS = 2 * 60 * 1000;
+/** Keep Switch targets around long enough to finish the current session. */
+const WAKE_STACK_KEEP_MS = 15 * 60 * 1000;
+
+/** Read-only TTL filter — safe during Svelte render (no $state writes). */
+function wakeStackLive() {
+  const now = clockNow();
+  return (app.wakeStack || []).filter(
+    (h) => h && h.thread && now - (h.at || 0) <= WAKE_STACK_KEEP_MS,
+  );
+}
+
+/** Drop expired hints. Call only from event/write paths, never from render. */
+function pruneWakeStack() {
+  const live = wakeStackLive();
+  if (live.length !== (app.wakeStack || []).length) app.wakeStack = live;
+}
+
+/** Push/refresh a wake hint. Same thread moves to the end (re-pinged). */
+export function pushWakeHint(hint) {
+  if (!hint || !hint.thread) return;
+  const entry = {
+    thread: String(hint.thread),
+    at: typeof hint.at === 'number' ? hint.at : clockNow(),
+    reason: hint.reason || 'done',
+    sessionId: hint.session_id || hint.sessionId || '',
+  };
+  threadRow(entry.thread); // ensure list row exists for labels
+  pruneWakeStack();
+  app.wakeStack = app.wakeStack.filter((h) => h.thread !== entry.thread);
+  app.wakeStack.push(entry);
+  if (app.wakeStack.length > WAKE_STACK_MAX) {
+    app.wakeStack = app.wakeStack.slice(-WAKE_STACK_MAX);
+  }
+  // Soft open: only from the list, and only for a fresh ping.
+  if (app.view === 'list' && clockNow() - entry.at <= WAKE_SOFT_OPEN_MS) {
+    openThread(entry.thread, false);
+  }
+}
+
+/** Waiting sessions other than the one currently open (FIFO). */
+export function waitingWakeStack() {
+  const cur = app.activeThread;
+  return wakeStackLive().filter((h) => h.thread && h.thread !== cur);
+}
+
+export function nextWakeHint() {
+  const waiting = waitingWakeStack();
+  return waiting.length ? waiting[0] : null;
+}
+
+/** FIFO: open the oldest waiting session. Empty stack → session list
+ *  (same as hardware Back / Escape). */
+export function switchToNextWake() {
+  const next = nextWakeHint();
+  if (next) {
+    app.wakeStack = (app.wakeStack || []).filter((h) => h.thread !== next.thread);
+    openThread(next.thread, false);
+    return true;
+  }
+  if (app.view === 'thread') closeThreadView();
+  return false;
+}
+
+function dismissWakeForThread(thread) {
+  if (!thread) return;
+  app.wakeStack = (app.wakeStack || []).filter((h) => h.thread !== thread);
+}
+
 export function applyCompanionConfig(msg) {
   if (msg.quick_replies && Array.isArray(msg.quick_replies)) {
     app.companion.quickReplies = msg.quick_replies.filter((s) => s && String(s).trim());
@@ -662,13 +780,19 @@ export function applyCompanionConfig(msg) {
   if (typeof msg.snooze_until === 'number') app.companion.snoozeUntil = msg.snooze_until;
   if (typeof msg.show_continue === 'boolean') app.companion.showContinue = msg.show_continue;
   if (typeof msg.show_dictate === 'boolean') app.companion.showDictate = msg.show_dictate;
+  if (typeof msg.dictate_mic === 'string') {
+    app.companion.dictateMic = msg.dictate_mic === 'glasses' ? 'glasses' : 'phone';
+  }
   if (typeof msg.default_agent === 'string') {
     const da = msg.default_agent.toLowerCase();
     if (da === 'cursor' || da === 'claude' || da === 'codex') app.pickedAgent = da;
   }
+  if (msg.wake_hint && typeof msg.wake_hint === 'object') {
+    pushWakeHint(msg.wake_hint);
+  }
 }
 
-/** One action row on glasses: Back · Dictate · first configured quick reply. */
+/** One action row on glasses: Switch/Back · Dictate · first chip (≤3). */
 export function firstQuickReply() {
   const chips = CS.sessionQuickReplies({
     quickReplies: app.companion.quickReplies,
@@ -702,12 +826,17 @@ function upsertHelloRow(t) {
   row.lastEventAt = row.lastEventAt || clockNow();
 }
 
-// ── dictation (phone mic is the only capture path on glasses) ───────────────
+// ── dictation (phone SODA capture; mic path chosen per turn) ────────────────
+
+function normalizeMic(mic) {
+  return mic === 'glasses' ? 'glasses' : 'phone';
+}
 
 function sendDictate(type, thread, text) {
   if (!wsLive() || !thread) return;
   const o = { type, thread, source: 'web' };
   if (text != null && text !== '') o.text = text;
+  // Mic path is an Android app setting. Web does not choose per tap.
   wsc.send(o);
 }
 
@@ -720,8 +849,10 @@ function resetDictateUi() {
   app.dictate.phase = 'idle';
   app.dictate.partial = '';
   app.dictate.draft = '';
+  app.dictate.mic = null;
 }
 
+/** Start listening. Capture path comes from the Android dictate-mic setting. */
 export function startDictate() {
   const t = app.activeThread ? app.threads[app.activeThread] : null;
   if (!t) { showToast('open a session first', 'error'); return; }
@@ -730,6 +861,7 @@ export function startDictate() {
     return;
   }
   app.dictate.phoneThread = t.id;
+  app.dictate.mic = normalizeMic(app.companion.dictateMic);
   app.dictate.draft = '';
   app.dictate.partial = '';
   sendSessionSignal('session_focus', t.id);
@@ -737,8 +869,7 @@ export function startDictate() {
   app.dictate.phase = 'listening';
 }
 
-/** Same button starts and finishes a dictation ("Done — send" while
-    listening). The phone auto-commits on silence; this is the manual end. */
+/** Same Dictate button starts and finishes. Silence auto-commits; Done = send now. */
 export function dictateToggle() {
   if (app.dictate.phase === 'listening') pauseDictate();
   else startDictate();
@@ -754,7 +885,7 @@ export function pauseDictate() {
     return;
   }
   sendDictate('dictate_commit', t.id, text);
-  app.dictate.phase = 'idle';
+  resetDictateUi();
 }
 
 /** Redo: drop the last user bubble and start listening again. */
@@ -809,6 +940,17 @@ function sendCompanionUi(which) {
   wsc.send({ type: 'companion_ui', screen: companionScreenForView(which), source: 'web' });
 }
 
+/** Heartbeat so Android's ~45s lease does not expire while the web is open. */
+const COMPANION_UI_HEARTBEAT_MS = 15_000;
+
+function pulseCompanionUi() {
+  try {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  } catch { /* non-browser */ }
+  if (!wsLive()) return;
+  sendCompanionUi(app.view);
+}
+
 function setUrlForSession(id, compose) {
   try {
     const url = new URL(location.href);
@@ -833,6 +975,7 @@ export function openThread(id, compose) {
   if (app.activeThread && app.activeThread !== id) sendSessionSignal('session_blur', app.activeThread);
   app.activeThread = id;
   app.listFocusedThreadId = id;
+  dismissWakeForThread(id);
   setUrlForSession(id, !!compose);
   showView('thread');
   sendSessionSignal('session_focus', id);
@@ -853,15 +996,36 @@ export function closeThreadView() {
 }
 
 export function openNewSession() {
+  app.newDraft = { cwd: defaultCwd(), fromThread: null };
+  showView('new');
+}
+
+/** Case 3: another session in a folder already on the list. */
+export function openNewHere(threadId) {
+  const row = threadId ? app.threads[threadId] : null;
+  if (!row) {
+    openNewSession();
+    return;
+  }
+  if (row.agent) {
+    const a = String(row.agent).toLowerCase();
+    if (a === 'cursor' || a === 'claude' || a === 'codex') app.pickedAgent = a;
+  }
+  app.newDraft = { cwd: (row.cwd || '').trim() || defaultCwd(), fromThread: threadId };
   showView('new');
 }
 
 export function closeNewSessionView() {
+  app.newDraft = { cwd: '', fromThread: null };
   showView('list');
 }
 
 export function pickAgent(agent) {
   app.pickedAgent = agent;
+}
+
+export function pickFolder(path) {
+  app.newDraft = { ...app.newDraft, cwd: (path || '').trim() };
 }
 
 function parseDeepLink() {
@@ -894,33 +1058,50 @@ export function defaultCwd() {
   return loadString(KEYS.defaultCwd);
 }
 
-function findThreadForAgent(agent, cwd) {
-  const live = liveThreads();
-  const wantCwd = (cwd || '').trim();
-  for (let i = 0; i < live.length; i++) {
-    if ((live[i].agent || '').toLowerCase() !== agent.toLowerCase()) continue;
-    if (wantCwd && (live[i].cwd || '') !== wantCwd) continue;
-    return live[i];
-  }
-  return null;
+function folderLeaf(path) {
+  const leaf = shortName(expandHomePath(path));
+  return leaf || String(path || '').trim() || 'folder';
+}
+
+/** Pick-list for New session — leaf labels, full path as value. No typing. */
+export function knownFolders() {
+  const def = (app.host.defaultCwd || '').trim();
+  const seen = new Set();
+  const out = [];
+  const add = (path, isDefault) => {
+    const p = (path || '').trim();
+    if (!p || seen.has(p)) return;
+    seen.add(p);
+    out.push({
+      path: p,
+      label: folderLeaf(p),
+      isDefault: !!(isDefault || (def && p === def)),
+    });
+  };
+  if (def) add(def, true);
+  const last = loadString(KEYS.defaultCwd);
+  if (last) add(last, false);
+  const byRecent = visibleThreads()
+    .filter((t) => t && t.cwd)
+    .slice()
+    .sort((a, b) => (b.lastEventAt || 0) - (a.lastEventAt || 0));
+  byRecent.forEach((t) => {
+    if (out.length >= MAX_KNOWN_FOLDERS) return;
+    add(t.cwd, false);
+  });
+  return out.slice(0, MAX_KNOWN_FOLDERS);
 }
 
 /* Create honesty: the web never invents a thread ID. A session exists only
    when the relay broadcasts thread_started (with session_id). Until then the
    UI shows "starting…"; failures arrive as create_status frames (or the HTTP
-   error) and render as errors. */
+   error) and render as errors. Always spawns a new session (New / New here). */
 export function startNewThread(cwd, prompt) {
   const text = (prompt || '').trim();
-  const dir = (cwd || '').trim();
+  const dir = (cwd || app.newDraft.cwd || defaultCwd() || '').trim();
   if (dir) saveString(KEYS.defaultCwd, dir);
   if (!text) { showToast('enter a first message', 'error'); return false; }
   if (!wsLive()) { showToast('not connected', 'error'); return false; }
-  const existing = findThreadForAgent(app.pickedAgent, dir);
-  if (existing) {
-    sendPrompt(existing.id, text);
-    openThread(existing.id, true);
-    return true;
-  }
   createHostSession(app.pickedAgent, dir, text);
   return true;
 }
@@ -1148,6 +1329,7 @@ export function init(overrides) {
   wsc.start();
   syncFromHost();
   setInterval(syncFromHost, 15000);
+  setInterval(pulseCompanionUi, COMPANION_UI_HEARTBEAT_MS);
 
   window.addEventListener('online', () => wsc.forceReconnect());
   window.addEventListener('pagehide', () => {
@@ -1162,10 +1344,31 @@ export function init(overrides) {
   };
   window.addEventListener('pageshow', regainSessionFocus);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') regainSessionFocus();
+    if (document.visibilityState === 'visible') {
+      regainSessionFocus();
+      sendCompanionUi(app.view);
+    } else if (wsLive()) {
+      wsc.send({ type: 'companion_ui', screen: 'idle', source: 'web' });
+    }
   });
 
   window.__ambientOpenNew = openNewSession;
+  // Device / WebView probe — phone preview + CDP can read stack state.
+  window.__ambientDebug = {
+    snapshot: () => ({
+      view: app.view,
+      activeThread: app.activeThread,
+      conn: app.conn,
+      wakeStack: (app.wakeStack || []).map((h) => ({
+        thread: h.thread,
+        reason: h.reason,
+        at: h.at,
+      })),
+      waiting: waitingWakeStack().map((h) => h.thread),
+    }),
+    switchToNextWake,
+    pushWakeHint,
+  };
 }
 
 // ── test hooks ──────────────────────────────────────────────────────────────
@@ -1178,8 +1381,9 @@ export function resetForTest(opts) {
   app.threads = {};
   app.threadOrder = [];
   app.conn = 'connecting';
-  app.dictate = { phase: 'idle', partial: '', draft: '', phoneThread: null };
-  app.companion = { quickReplies: [], snoozeUntil: 0, showContinue: true, showDictate: true };
+  app.dictate = { phase: 'idle', partial: '', draft: '', phoneThread: null, mic: null };
+  app.companion = { quickReplies: [], snoozeUntil: 0, showContinue: true, showDictate: true, dictateMic: 'phone' };
+  app.wakeStack = [];
   app.host = {
     relayDebug: false, journal: 0, now: 0, delivery: {}, defaultCwd: '',
     relayConnected: null, laptopPeerConnected: false, liveSessionCount: 0,
@@ -1189,6 +1393,7 @@ export function resetForTest(opts) {
   app.pickedAgent = 'cursor';
   app.pendingCreate = null;
   app.listFocusedThreadId = null;
+  app.newDraft = { cwd: '', fromThread: null };
   app.toast = { text: '', kind: '', seq: 0 };
   if (connGraceTimer) { clearTimeout(connGraceTimer); connGraceTimer = null; }
   pendingConnState = null;

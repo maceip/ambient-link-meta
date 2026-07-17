@@ -1,7 +1,7 @@
 <script>
   import {
-    app, wsConnected, closeThreadView, dictateToggle, redoDictate,
-    sendPrompt, firstQuickReply,
+    app, wsConnected, dictateToggle, redoDictate,
+    sendPrompt, firstQuickReply, waitingWakeStack, nextWakeHint, switchToNextWake,
   } from '../lib/store.svelte.js';
   import * as CS from '../lib/chipset.js';
   import { displayLabel, chatAgentLabel, chatStatusLabel } from '../lib/format.js';
@@ -15,6 +15,39 @@
   const dictateOn = $derived(app.companion.showDictate !== false);
   const dictateDisabled = $derived(!!(t && t.ended) || !dictateOn);
   const connState = $derived(app.conn === 'connecting' ? 'warn' : app.conn);
+  // Mic path is chosen in the Android app (phone vs glasses).
+  const micLabel = $derived(app.companion.dictateMic === 'glasses' ? 'glasses' : 'phone');
+  const listenHint = $derived(
+    micLabel === 'glasses'
+      ? 'Listening on glasses mic — speak, then tap Done'
+      : 'Listening on phone mic — speak into the phone, then tap Done',
+  );
+  // Slot 1: FIFO Switch to oldest waiting session, or Back → list when empty.
+  // Hardware Back (Neural Band / temple → Escape) always returns to the list.
+  const wakeWaiting = $derived(waitingWakeStack());
+  const wakeNext = $derived(nextWakeHint());
+  const wakeNextLabel = $derived.by(() => {
+    if (!wakeNext) return '';
+    const row = app.threads[wakeNext.thread];
+    return row ? displayLabel(row) : wakeNext.thread;
+  });
+  const wakeBtnLabel = $derived.by(() => {
+    if (!wakeNext) return 'Back';
+    const n = wakeWaiting.length;
+    return n > 1 ? `Switch · ${n}` : 'Switch';
+  });
+  const wakeBtnAria = $derived(
+    wakeNext
+      ? ('switch to waiting session' + (wakeNextLabel ? ': ' + wakeNextLabel : ''))
+      : 'back to sessions',
+  );
+  const wakeBtnTitle = $derived.by(() => {
+    if (!wakeNext) return 'Back to sessions';
+    const n = wakeWaiting.length;
+    return n > 1
+      ? `Next waiting: ${wakeNextLabel} (${n} waiting)`
+      : `Next waiting: ${wakeNextLabel}`;
+  });
 
   /* The meta strip earns its row only when it says something the chat bubbles
      don't: a broken relay or an agent waiting on the human. */
@@ -62,7 +95,12 @@
 </script>
 
 <!-- SESSION COMPOSE — same BEM classes as legacy markup. -->
-<section id="view-thread" class="view blk-agent-screen" class:hidden={app.view !== 'thread'}>
+<section id="view-thread" class="view blk-agent-screen"
+         class:hidden={app.view !== 'thread'}
+         class:dictate-live={listening}>
+  <!-- Full-viewport listening frame: state must be obvious beyond the red
+       button ring. Soft salmon neon edge + pulse while SODA is capturing. -->
+  <div class="dictate-frame" class:hidden={!listening} aria-hidden="true"></div>
   <div id="thread-conn" class="thread-conn {connState}" role="status" aria-live="polite">
     <span class="thread-conn-dot" aria-hidden="true"></span>
     <span id="thread-conn-label" class="thread-conn-label">
@@ -90,8 +128,7 @@
                 {m.role === 'user' ? 'You' : chatAgentLabel(t && t.agent)}
               </div>
             {/if}
-            <div class="blk-chat-bubble blk-chat-bubble--{m.role}"
-                 class:blk-chat-bubble--truncated={m.truncated}>
+            <div class="blk-chat-bubble blk-chat-bubble--{m.role}">
               <div class="blk-chat-bubble__text">{m.text}</div>
               {#if m.at}
                 <div class="blk-chat-bubble__time">{bubbleTime(m.at)}</div>
@@ -125,18 +162,38 @@
   <div id="dictate-chrome" class="dictate-chrome" class:hidden={!listening} aria-live="polite">
     <div id="dictate-status" class="dictate-status" class:hidden={!listening}>
       <span class="dictate-cursor" aria-hidden="true"></span>
-      <span id="dictate-status-text">{app.dictate.partial || 'Listening…'}</span>
+      <span id="dictate-status-text">
+        {app.dictate.partial || listenHint}
+      </span>
     </div>
+    <p class="dictate-hint">
+      {micLabel === 'glasses'
+        ? 'Glasses mic. Tap Done when finished (silence also sends). Mic source is set in the phone app Debug.'
+        : 'Phone mic — hold phone near your mouth. Tap Done when finished (silence also sends). Mic source is set in the phone app Debug.'}
+    </p>
   </div>
-  <!-- No visible composer on glasses: no keyboard. Dictate auto-sends and
-       quick replies auto-send: one row only — Back · Dictate · user chip. -->
+  <!-- Action row ≤3: Switch/Back · Dictate · chip.
+       Hardware Escape always → list; this button Switch (FIFO) or Back → list. -->
   <nav id="thread-actions" class="thread-actions new-actions blk-form-view__actions"
        class:dictate-listening={listening}
        role="toolbar" aria-label="session actions">
     <div class="rbtn-row blk-rbtn-row" id="thread-rbtn-row" use:rbtnGroup>
-      <button type="button" id="back" class="rbtn focusable rbtn-stroke" aria-label="back"
-              use:tap onclick={closeThreadView}>
-        <span class="rbtn-pill"><span class="rbtn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M15 5.5 8 12l7 6.5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="rbtn-label">Back</span></span>
+      <button type="button" id="wake-switch" class="rbtn focusable rbtn-stroke"
+              class:rbtn-wake={!!wakeNext}
+              class:hidden={listening}
+              aria-label={wakeBtnAria}
+              title={wakeBtnTitle}
+              use:tap onclick={() => switchToNextWake()}>
+        <span class="rbtn-pill">
+          <span class="rbtn-icon" aria-hidden="true">
+            {#if wakeNext}
+              <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            {:else}
+              <svg viewBox="0 0 24 24" fill="none"><path d="M15 5.5 8 12l7 6.5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            {/if}
+          </span>
+          <span class="rbtn-label">{wakeBtnLabel}</span>
+        </span>
       </button>
       <button type="button" id="dictate-redo" class="rbtn focusable rbtn-stroke"
               class:hidden={!listening} aria-label="redo dictation"
@@ -147,19 +204,19 @@
               class:recording={listening} class:rbtn-active={listening}
               disabled={dictateDisabled}
               style:display={dictateOn ? '' : 'none'}
-              title="dictate" aria-label="dictate"
-              use:tap onclick={dictateToggle}>
+              title={listening ? 'Listening — tap to send now' : 'Dictate'}
+              aria-label={listening ? 'done — send' : 'dictate'}
+              use:tap onclick={() => dictateToggle()}>
         <span class="rbtn-pill">
           <span class="rbtn-icon rbtn-icon--dictate" aria-hidden="true">
-            <svg class="icon-mic" class:hidden={listening} viewBox="0 0 24 24" fill="none"><rect x="9" y="4" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.75"/><path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><path d="M12 18v3M8 21h8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
-            <svg class="icon-wave" class:hidden={!listening} viewBox="0 0 24 24" fill="none"><path d="M4 10v4M7 8v8M10 6v12M13 9v6M16 7v10M19 10v4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+            <svg class="icon-mic" class:hidden={listening} viewBox="0 0 24 24" fill="none"><rect x="9" y="3.5" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.9"/><path d="M5 11.5a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M12 18.5v3M8 21.5h8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+            <svg class="icon-wave" class:hidden={!listening} viewBox="0 0 24 24" fill="none"><path d="M4 10v4M7 8v8M10 6v12M13 9v6M16 7v10M19 10v4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
           </span>
-          <!-- The same button starts and finishes a dictation — say so. -->
-          <span class="rbtn-label">{listening ? 'Done — send' : 'Dictate'}</span>
+          <span class="rbtn-label">{listening ? 'Done' : 'Dictate'}</span>
         </span>
       </button>
       <span id="quick-replies" class="thread-user-chips" role="presentation"
-            class:hidden={!chip || app.view !== 'thread'}>
+            class:hidden={!chip || app.view !== 'thread' || listening}>
         {#if chip}
           <button type="button"
                   class="quick-reply-pill focusable"

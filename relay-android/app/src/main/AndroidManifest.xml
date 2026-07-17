@@ -73,11 +73,10 @@
             android:exported="false"
             android:foregroundServiceType="dataSync|microphone" />
 
-        <!-- Probe: NotificationListenerService. Lets us snoop com.anthropic.claude notifications
-             and inspect their action PendingIntents. Requires user grant in Settings → Notifications,
-             or via adb:  settings put secure enabled_notification_listeners <pkg>/<svc> -->
+        <!-- Research-only probe — disabled. Not part of the product path. -->
         <service
             android:name=".probe.ClaudeNotificationListener"
+            android:enabled="false"
             android:exported="true"
             android:label="ambient link notif probe"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">

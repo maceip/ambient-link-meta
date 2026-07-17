@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   app, handleFrame, resetForTest, setWsClientForTest, threadRow,
   openThread, listThreads, statusBadge,
+  pushWakeHint, waitingWakeStack, switchToNextWake,
 } from '../src/lib/store.svelte.js';
 
 function fakeWs() {
@@ -60,7 +61,7 @@ describe('thread lifecycle frames', () => {
     expect(listThreads()).toHaveLength(0);
   });
 
-  it('hud_yank updates the card and merges the agent turn into the chat log', () => {
+  it('hud_yank updates the card and merges ask/ready into the chat log', () => {
     handleFrame({
       type: 'hud_yank',
       thread: 't1',
@@ -73,8 +74,20 @@ describe('thread lifecycle frames', () => {
     const row = app.threads.t1;
     expect(row.yank.awaiting).toBe('done');
     expect(row.busy).toBe(false);
-    expect(row.chatLog.some((m) => m.role === 'agent' && m.text === 'I finished the refactor.')).toBe(true);
+    // Done turns never dump assistant prose — ready marker only.
+    expect(row.chatLog.some((m) => m.role === 'agent' && m.text === 'ready')).toBe(true);
     expect(statusBadge(row)).toBe('done');
+
+    handleFrame({
+      type: 'hud_yank',
+      thread: 't2',
+      lastAssistant: 'Plan looks good.\n\nShip the Switch button now?',
+      awaiting: 'question',
+      at: 600,
+    });
+    expect(app.threads.t2.chatLog.some(
+      (m) => m.role === 'agent' && m.text === 'Ship the Switch button now?',
+    )).toBe(true);
   });
 
   it('yank is ignored while snoozed', () => {
@@ -94,6 +107,46 @@ describe('companion_config', () => {
     });
     expect(app.companion.quickReplies).toEqual(['looks good', 'explain more']);
     expect(app.pickedAgent).toBe('codex');
+  });
+});
+
+describe('wake_hint stack', () => {
+  it('stacks multiple waiting sessions and Switch opens FIFO', () => {
+    const now = Date.now();
+    // Stay on a thread so soft-open does not consume the stack.
+    threadRow('current');
+    openThread('current');
+    pushWakeHint({ thread: 'a', at: now, reason: 'done' });
+    pushWakeHint({ thread: 'b', at: now + 1, reason: 'question' });
+    pushWakeHint({ thread: 'a', at: now + 2, reason: 'done' }); // re-ping → end
+    expect(waitingWakeStack().map((h) => h.thread)).toEqual(['b', 'a']);
+
+    expect(switchToNextWake()).toBe(true);
+    expect(app.activeThread).toBe('b');
+    expect(waitingWakeStack().map((h) => h.thread)).toEqual(['a']);
+
+    expect(switchToNextWake()).toBe(true);
+    expect(app.activeThread).toBe('a');
+    expect(waitingWakeStack()).toHaveLength(0);
+  });
+
+  it('soft-opens a fresh hint from the list', () => {
+    app.view = 'list';
+    app.activeThread = null;
+    pushWakeHint({ thread: 'fresh', at: Date.now(), reason: 'done' });
+    expect(app.activeThread).toBe('fresh');
+    expect(app.view).toBe('thread');
+    // Opened thread is dismissed from the stack.
+    expect(app.wakeStack).toHaveLength(0);
+  });
+
+  it('empty stack Switch returns to the session list', () => {
+    threadRow('solo');
+    openThread('solo');
+    expect(app.wakeStack).toHaveLength(0);
+    expect(switchToNextWake()).toBe(false);
+    expect(app.view).toBe('list');
+    expect(app.activeThread).toBeNull();
   });
 });
 

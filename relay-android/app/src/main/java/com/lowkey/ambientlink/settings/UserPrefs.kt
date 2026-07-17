@@ -20,7 +20,8 @@ object UserPrefs {
     ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
   fun getQuickReplies(ctx: Context): List<String> {
-    val raw = prefs(ctx).getString(KEY_QUICK_REPLIES, null) ?: return DEFAULT_QUICK_REPLIES
+    // Missing prefs → empty: HUD relies on Continue / Dictate / Yes / No toggles.
+    val raw = prefs(ctx).getString(KEY_QUICK_REPLIES, null) ?: return emptyList()
     return try {
       val arr = JSONArray(raw)
       buildList {
@@ -28,9 +29,9 @@ object UserPrefs {
           val s = arr.optString(i, "").trim()
           if (s.isNotEmpty()) add(s)
         }
-      }.ifEmpty { DEFAULT_QUICK_REPLIES }
+      }
     } catch (_: Exception) {
-      DEFAULT_QUICK_REPLIES
+      emptyList()
     }
   }
 

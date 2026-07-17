@@ -12,8 +12,9 @@ import kotlinx.coroutines.launch
 
 /**
  * Glasses web dictate: warm the mic on session focus (optional), then stream partials
- * once [dictate_active] arrives from the relay. Prefers glasses HFP via Bluetooth SCO
- * when enabled (may show a brief call-style UI on the glasses — intentional tradeoff).
+ * once [dictate_active] arrives from the relay. Capture path is chosen per turn via
+ * `mic` on the frame: "phone" (default pocket mic) or "glasses" (Bluetooth SCO/HFP —
+ * may flash the in-call UI on glasses).
  */
 class WebDictationBridge(
   private val context: Context,
@@ -23,6 +24,8 @@ class WebDictationBridge(
 ) {
   private var standbyThread: String? = null
   private var liveThread: String? = null
+  /** Last requested capture path for the live/standby session. */
+  @Volatile private var activeMic: String = "phone"
   @Volatile private var forwardPartials = false
   private var standbyTimeoutJob: Job? = null
 
@@ -61,21 +64,34 @@ class WebDictationBridge(
     stopStandby()
   }
 
-  fun onActive(msgThread: String, source: String) {
+  @Suppress("UNUSED_PARAMETER")
+  fun onActive(msgThread: String, source: String, mic: String = "phone") {
     if (source != "web") return
     standbyTimeoutJob?.cancel()
+    // Source of truth is the Android app setting (phone mic vs glasses SCO).
+    // Frame `mic` is ignored so glasses stay a single Dictate button.
+    val wantSco = isBluetoothScoEnabled()
+    val alreadyWarm =
+      standbyThread == msgThread &&
+        DictationManager.isActive() &&
+        (activeMic == "glasses") == wantSco
     liveThread = msgThread
+    activeMic = if (wantSco) "glasses" else "phone"
     forwardPartials = true
     RelayService.setMicrophoneForeground(true)
-    if (standbyThread == msgThread && DictationManager.isActive()) {
-      Log.i(TAG, "dictate live (mic already warm) thread=$msgThread")
+    if (alreadyWarm) {
+      Log.i(TAG, "dictate live (mic already warm) thread=$msgThread mic=$activeMic")
       DictationManager.lastPartialText().takeIf { it.isNotBlank() }?.let {
         client.sendDictatePartial(msgThread, it)
       }
       return
     }
+    // Mic path changed (e.g. standby phone → live glasses) — restart capture.
+    if (DictationManager.isActive()) {
+      DictationManager.stop(commitPartial = false, notify = false)
+    }
     standbyThread = msgThread
-    startLiveCapture(msgThread)
+    startLiveCapture(msgThread, wantSco)
   }
 
   fun onHudDictationStart(thread: String) {
@@ -113,18 +129,21 @@ class WebDictationBridge(
 
   private fun armStandbyMic(thread: String) {
     if (DictationManager.isActive() && standbyThread != thread) return
+    // Standby always warms the phone mic — SCO/in-call UI only on explicit glasses tap.
+    activeMic = "phone"
     RelayService.setMicrophoneForeground(true)
-    startCapture(thread, live = false)
+    startCapture(thread, live = false, useBluetoothSco = false)
   }
 
-  private fun startLiveCapture(thread: String) {
+  private fun startLiveCapture(thread: String, useBluetoothSco: Boolean) {
     forwardPartials = true
     if (DictationManager.isActive()) return
-    startCapture(thread, live = true)
+    startCapture(thread, live = true, useBluetoothSco = useBluetoothSco)
   }
 
-  private fun startCapture(thread: String, live: Boolean) {
+  private fun startCapture(thread: String, live: Boolean, useBluetoothSco: Boolean) {
     forwardPartials = live
+    Log.i(TAG, "startCapture thread=$thread live=$live sco=$useBluetoothSco")
     DictationManager.start(
       context,
       object : DictationCallback {
@@ -158,7 +177,7 @@ class WebDictationBridge(
           if (live) abortLive() else stopStandby()
         }
       },
-      useBluetoothSco = isBluetoothScoEnabled(),
+      useBluetoothSco = useBluetoothSco,
     )
   }
 

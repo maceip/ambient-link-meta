@@ -554,6 +554,72 @@ fun FirstRunTipOverlay(
   }
 }
 
+/** Slim first-run tip when advanced companion UI is off — BT / Meta AI only. */
+@Composable
+fun SimpleCompanionTipOverlay(onDismiss: () -> Unit) {
+  val scale by animateFloatAsState(
+    targetValue = 1f,
+    animationSpec = tween(durationMillis = 280),
+    label = "simpleTipScale",
+  )
+  Box(
+    Modifier
+      .fillMaxSize()
+      .zIndex(100f),
+  ) {
+    Box(
+      Modifier
+        .fillMaxSize()
+        .background(Color.Black.copy(alpha = 0.5f))
+        .pointerInput(Unit) {
+          detectTapGestures(onTap = { onDismiss() })
+        },
+    )
+    Column(
+      Modifier
+        .align(Alignment.Center)
+        .padding(horizontal = 28.dp)
+        .widthIn(max = 340.dp)
+        .scale(scale)
+        .shadow(24.dp, RoundedCornerShape(22.dp), ambientColor = Color.Black, spotColor = Color.Black)
+        .clip(RoundedCornerShape(22.dp))
+        .background(Color(0xFF141820))
+        .border(1.5.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(22.dp))
+        .padding(horizontal = 22.dp, vertical = 24.dp)
+        .pointerInput(Unit) {
+          detectTapGestures { /* consume taps on the card */ }
+        },
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      Text(
+        "Tips",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.8.sp,
+      )
+      Text(
+        "Connect glasses, then forget this screen",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+      )
+      Text(
+        "Grant Bluetooth when asked and register Meta AI so peek chips can wake the glasses. " +
+          "Status, default agent, Continue/Dictate, and snooze are all you need here.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        lineHeight = 20.sp,
+      )
+      AmbientPrimaryButton(text = "Got it", onClick = onDismiss)
+      TextButton(onClick = onDismiss) {
+        Text("Tap outside to dismiss", color = MaterialTheme.colorScheme.onSurfaceVariant)
+      }
+    }
+  }
+}
+
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun AiQuickReplySuggestions(
