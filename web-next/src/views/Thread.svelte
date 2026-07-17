@@ -15,13 +15,6 @@
   const dictateOn = $derived(app.companion.showDictate !== false);
   const dictateDisabled = $derived(!!(t && t.ended) || !dictateOn);
   const connState = $derived(app.conn === 'connecting' ? 'warn' : app.conn);
-  // Mic path is chosen in the Android app (phone vs glasses).
-  const micLabel = $derived(app.companion.dictateMic === 'glasses' ? 'glasses' : 'phone');
-  const listenHint = $derived(
-    micLabel === 'glasses'
-      ? 'Listening on glasses mic — speak, then tap Done'
-      : 'Listening on phone mic — speak into the phone, then tap Done',
-  );
   // Slot 1: FIFO Switch to oldest waiting session, or Back → list when empty.
   // Hardware Back (Neural Band / temple → Escape) always returns to the list.
   const wakeWaiting = $derived(waitingWakeStack());
@@ -162,15 +155,8 @@
   <div id="dictate-chrome" class="dictate-chrome" class:hidden={!listening} aria-live="polite">
     <div id="dictate-status" class="dictate-status" class:hidden={!listening}>
       <span class="dictate-cursor" aria-hidden="true"></span>
-      <span id="dictate-status-text">
-        {app.dictate.partial || listenHint}
-      </span>
+      <span id="dictate-status-text">{app.dictate.partial || ''}</span>
     </div>
-    <p class="dictate-hint">
-      {micLabel === 'glasses'
-        ? 'Glasses mic. Tap Done when finished (silence also sends). Mic source is set in the phone app Debug.'
-        : 'Phone mic — hold phone near your mouth. Tap Done when finished (silence also sends). Mic source is set in the phone app Debug.'}
-    </p>
   </div>
   <!-- Action row ≤3: Switch/Back · Dictate · chip.
        Hardware Escape always → list; this button Switch (FIFO) or Back → list. -->

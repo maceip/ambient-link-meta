@@ -1,6 +1,6 @@
 <script>
   import {
-    app, listThreads, openThread, openNewSession, openNewHere, wsConnected, connectionCopy,
+    app, listThreads, openThread, openNewSession, wsConnected, connectionCopy,
     statusBadge, listConnectionDot, listPreviewText, emptyHintText, isSnoozing,
     liveThreads, clockNow, waitingWakeStack, nextWakeHint, switchToNextWake,
   } from '../lib/store.svelte.js';
@@ -89,51 +89,42 @@
         {#each rows as t (t.id)}
           {@const ac = agentClass(t.agent)}
           {@const zinc = zincIconFor(t.agent)}
-          <div class="thread-row-wrap" role="listitem">
-            <button type="button"
-                    class="blk-list-item thread-row list-item focusable dm-row agent-{ac} {statusBadge(t)}"
-                    class:session-offline={!wsConnected()}
-                    data-thread-id={t.id}
-                    aria-label={rowAria(t)}
-                    use:tap
-                    onclick={() => open(t)}>
-              <div class="blk-list-item__avatar avatar agent-{ac}">
-                {#if zinc}
-                  <img class="avatar-zinc" src={zinc} alt="" draggable="false">
-                {:else}
-                  {@html agentIcon(ac) || (folderTitle(t) || '?').charAt(0).toUpperCase()}
-                {/if}
+          <button type="button"
+                  class="blk-list-item thread-row list-item focusable dm-row agent-{ac} {statusBadge(t)}"
+                  class:session-offline={!wsConnected()}
+                  data-thread-id={t.id}
+                  role="listitem"
+                  aria-label={rowAria(t)}
+                  use:tap
+                  onclick={() => open(t)}>
+            <div class="blk-list-item__avatar avatar agent-{ac}">
+              {#if zinc}
+                <img class="avatar-zinc" src={zinc} alt="" draggable="false">
+              {:else}
+                {@html agentIcon(ac) || (folderTitle(t) || '?').charAt(0).toUpperCase()}
+              {/if}
+            </div>
+            <div class="blk-list-item__body thread-body">
+              <div class="blk-list-item__top thread-top">
+                <span class="blk-list-item__label thread-label">{folderTitle(t)}</span>
+                <span class="blk-list-item__time thread-time">{rowTime(t)}</span>
               </div>
-              <div class="blk-list-item__body thread-body">
-                <div class="blk-list-item__top thread-top">
-                  <span class="blk-list-item__label thread-label">{folderTitle(t)}</span>
-                  <span class="blk-list-item__time thread-time">{rowTime(t)}</span>
+              <div class="blk-list-item__bottom thread-bottom">
+                <div class="blk-list-item__preview preview body-preview">
+                  {listPreviewText(t) || 'Waiting for agent…'}
                 </div>
-                <div class="blk-list-item__bottom thread-bottom">
-                  <div class="blk-list-item__preview preview body-preview">
-                    {listPreviewText(t) || 'Waiting for agent…'}
-                  </div>
-                  <div class="blk-list-item__meta thread-meta">
-                    {#if isSnoozing()}
-                      <span class="thread-mute-icon" aria-label="snoozed">
-                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4.5c-4.1 0-7.5 3.4-7.5 7.5v3.8l-1.7 1.7a1 1 0 0 0 .7 1.7h17a1 1 0 0 0 .7-1.7L19.5 15.8V12c0-4.1-3.4-7.5-7.5-7.5Z" stroke="currentColor" stroke-width="1.5"/><path d="M10 20a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="m4 4 16 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                      </span>
-                    {/if}
-                    <span class="thread-conn-dot thread-conn-dot--{listConnectionDot(t)}"
-                          aria-label={listConnectionDot(t)}></span>
-                  </div>
+                <div class="blk-list-item__meta thread-meta">
+                  {#if isSnoozing()}
+                    <span class="thread-mute-icon" aria-label="snoozed">
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4.5c-4.1 0-7.5 3.4-7.5 7.5v3.8l-1.7 1.7a1 1 0 0 0 .7 1.7h17a1 1 0 0 0 .7-1.7L19.5 15.8V12c0-4.1-3.4-7.5-7.5-7.5Z" stroke="currentColor" stroke-width="1.5"/><path d="M10 20a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="m4 4 16 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    </span>
+                  {/if}
+                  <span class="thread-conn-dot thread-conn-dot--{listConnectionDot(t)}"
+                        aria-label={listConnectionDot(t)}></span>
                 </div>
               </div>
-            </button>
-            <button type="button"
-                    class="thread-new-here focusable"
-                    aria-label={'new session in ' + folderTitle(t)}
-                    title="New session in this folder"
-                    use:tap
-                    onclick={() => openNewHere(t.id)}>
-              New
-            </button>
-          </div>
+            </div>
+          </button>
         {/each}
       </div>
     </div>
